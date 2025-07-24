@@ -1,0 +1,9 @@
+[submodule "ros2_ws/src/ros2_whill"]
+	path = ros2_ws/src/ros2_whill
+	url = https://github.com/Tsubaki26/ros2_whill.git
+[submodule "ros2_ws/src/ros2_whill_interfaces"]
+	path = ros2_ws/src/ros2_whill_interfaces
+	url = https://github.com/Tsubaki26/ros2_whill_interfaces.git
+[submodule "ros2_ws/src/src/urdf_tutorial"]
+	path = ros2_ws/src/src/urdf_tutorial
+	url = https://github.com/Tsubaki26/urdf_tutorial.git
