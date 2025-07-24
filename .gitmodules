@@ -7,3 +7,6 @@
 [submodule "ros2_ws/src/src/urdf_tutorial"]
 	path = ros2_ws/src/src/urdf_tutorial
 	url = https://github.com/Tsubaki26/urdf_tutorial.git
+[submodule "ros2_ws/src/urdf_tutorial"]
+	path = ros2_ws/src/urdf_tutorial
+	url = https://github.com/Tsubaki26/urdf_tutorial.git
