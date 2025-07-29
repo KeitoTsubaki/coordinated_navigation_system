@@ -15,7 +15,44 @@ Considering this system is developed for WHILL mobilities that is ridden by huma
 
 
 ## Repository Structure
-![alt text](image.png)
+```bash
+coordinated_navigation_system\
+├── .gitignore
+├── .gitmodules
+├── GEMINI.md
+├── README.md
+├── requirements.txt
+├── .vscode/
+│   └── settings.json
+│
+├── rl_training/                      # <-- "The Brain": Your RL algorithms live here.
+│   ├── train_ddpg.py
+│   ├── your_new_rl_agent.py          # Your new agent that learns from the simulator.
+│   ├── requirements.txt              # Python dependencies for RL (PyTorch, etc.).
+│   ├── ... (other existing files)
+│
+└── ros2_ws/                          # <-- "The Body": The robot environment lives here.
+    ├── src/
+    │   ├── ... (your other ros2 packages)
+    │   └── matplotlib_2d_simulator/  # <-- NEW: The ROS2 2D Simulator Package.
+    │       ├── matplotlib_2d_simulator/  # Python source code for the node.
+    │       │   ├── __init__.py
+    │       │   ├── simulator_node.py     # Main executable ROS2 node.
+    │       │   ├── environment.py        # Defines the 2D world.
+    │       │   └── robot.py              # Simulates robot physics & LiDAR.
+    │       ├── config/
+    │       │   └── simulator_config.yaml # All simulation parameters.
+    │       ├── launch/
+    │       │   └── simulator.launch.py   # A convenient way to run the node.
+    │       ├── resource/
+    │       │   └── matplotlib_2d_simulator # Required for package discovery.
+    │       ├── setup.py                  # Build instructions for colcon.
+    │       └── package.xml               # ROS2 package manifest.
+    │
+    ├── build/   (Will be created by `colcon build`)
+    ├── install/ (Will be created by `colcon build`)
+    └── log/     (Will be created by `colcon build`)
+```
 
 ## Getting Started
 
