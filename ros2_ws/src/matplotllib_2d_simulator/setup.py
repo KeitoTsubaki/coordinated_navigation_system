@@ -1,11 +1,11 @@
-from setuptools import setup
+from setuptools import find_packages, setup
 
-package_name = 'matplotlib_2d_simulator'
+package_name = 'matplotllib_2d_simulator'
 
 setup(
     name=package_name,
     version='0.0.0',
-    packages=[package_name],
+    packages=find_packages(exclude=['test']),
     data_files=[
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
@@ -13,14 +13,13 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='user',
-    maintainer_email='user@todo.todo',
-    description='A 2D matplotlib simulator for robot navigation.',
-    license='Apache-2.0',
+    maintainer='tsubaki',
+    maintainer_email='tsubaki@todo.todo',
+    description='TODO: Package description',
+    license='TODO: License declaration',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'simulator_node = matplotlib_2d_simulator.simulator_node:main'
         ],
     },
 )

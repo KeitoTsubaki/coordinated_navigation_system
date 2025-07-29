@@ -15,7 +15,7 @@ Considering this system is developed for WHILL mobilities that is ridden by huma
 
 
 ## Repository Structure
-
+![alt text](image.png)
 
 ## Getting Started
 

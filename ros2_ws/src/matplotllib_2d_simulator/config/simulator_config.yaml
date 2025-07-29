@@ -1,0 +1,7 @@
+# Parameters for the simulation
+# This file will store all the parameters for your simulation, making it easy to adjust without changing the code.
+#   - Environment: map_size, num_obstacles, obstacle_size_range.
+#   - Robot: start_pos, goal_pos (can be set to 'random'), radius.
+#   - LiDAR: lidar_range, lidar_fov (field of view), num_scan_points.
+#   - ROS Topics: twist_topic: /cmd_vel, scan_topic: /cloud.
+#   - Teleop: linear_speed, angular_speed.
