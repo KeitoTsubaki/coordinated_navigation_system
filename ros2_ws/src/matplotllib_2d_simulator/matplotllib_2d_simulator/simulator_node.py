@@ -44,6 +44,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import matplotlib.patches as patches
+import matplotlib.animation as animation
 import math
 from shapely.geometry import Point, LineString, Polygon
 import random
@@ -245,8 +246,8 @@ def plot_lidar_scan(
     robot_color = "#1492C7"
     obstacle_color = "#000000"
 
-    plt.figure(figsize=(12, 12))
-
+    # plt.figure(figsize=(12, 12))
+    plt.cla()
     # Plot obstacles
     for obstacle in obstacles:
         plt.plot(
@@ -258,25 +259,25 @@ def plot_lidar_scan(
         )
 
     # Plot LiDAR scan lines
-    for distance, angle in zip(distances, angles):
-        end_x = sensor_position[0] + distance * np.cos(angle)
-        end_y = sensor_position[1] + distance * np.sin(angle)
-        if distance < max_range:
-            plt.plot(
-                [sensor_position[0], end_x],
-                [sensor_position[1], end_y],
-                color=LiDAR_sensor_color,
-                linestyle="-",
-                alpha=0.5,
-            )
-        else:
-            plt.plot(
-                [sensor_position[0], end_x],
-                [sensor_position[1], end_y],
-                color=LiDAR_sensor_color,
-                linestyle=":",
-                alpha=0.3,
-            )
+    # for distance, angle in zip(distances, angles):
+    #     end_x = sensor_position[0] + distance * np.cos(angle)
+    #     end_y = sensor_position[1] + distance * np.sin(angle)
+    #     if distance < max_range:
+    #         plt.plot(
+    #             [sensor_position[0], end_x],
+    #             [sensor_position[1], end_y],
+    #             color=LiDAR_sensor_color,
+    #             linestyle="-",
+    #             alpha=0.5,
+    #         )
+    #     else:
+    #         plt.plot(
+    #             [sensor_position[0], end_x],
+    #             [sensor_position[1], end_y],
+    #             color=LiDAR_sensor_color,
+    #             linestyle=":",
+    #             alpha=0.3,
+    #         )
 
     # Plot valid points if available
     if points is not None and len(points) > 0:
@@ -286,7 +287,13 @@ def plot_lidar_scan(
         sensor_position, 0.2, color=robot_color, alpha=1, label="Sensor", zorder=10
     )
     robot_around = patches.Circle(
-        sensor_position, 0.3, edgecolor=robot_color, fill=False, alpha=1, label="Sensor", zorder=10
+        sensor_position,
+        0.3,
+        edgecolor=robot_color,
+        fill=False,
+        alpha=1,
+        label="Sensor",
+        zorder=10,
     )
     plt.gca().add_patch(robot)
     plt.gca().add_patch(robot_around)
@@ -303,10 +310,10 @@ def plot_lidar_scan(
     plt.title("Synthetic 2D Lidar Simulated Scan")
 
     # Save the plot
-    plt.savefig("assets/plot.png", dpi=300, bbox_inches="tight")
+    # plt.savefig("assets/plot.png", dpi=300, bbox_inches="tight")
 
     # Display the plot
-    plt.show()
+    # plt.show()
 
 
 """
@@ -349,7 +356,7 @@ random_polygons_segments = generate_random_polygons(
 # Combine warehouse boundaries and generated obstacle segments
 obstacles = warehouse + random_polygons_segments
 
-sensor_position = (5, 0)  # Position of the LiDAR sensor for simulation
+# sensor_position = (0, 0)  # Position of the LiDAR sensor for simulation
 
 """
 USE CASE PRAMETERS
@@ -363,22 +370,50 @@ scan_angle = (
 """
 LiDAR SCAN GENERATION
 """
-distances, angles = generate_lidar_scan(
-    sensor_position, obstacles, num_beams, max_range, scan_angle
-)
-# Filter out points that do not encounter obstacles
-points = calculate_valid_points(distances, angles, sensor_position, max_range)
+# distances, angles = generate_lidar_scan(
+#     sensor_position, obstacles, num_beams, max_range, scan_angle
+# )
+# # Filter out points that do not encounter obstacles
+# points = calculate_valid_points(distances, angles, sensor_position, max_range)
 
 """
 PLOT SIMULATION
 """
-plot_lidar_scan(
-    obstacles,
-    distances,
-    angles,
-    sensor_position,
-    max_range,
-    points,
-    warehouse_length,
-    warehouse_width,
-)
+fig = plt.figure(figsize=(10, 10))
+
+# plot_lidar_scan(
+#     obstacles,
+#     distances,
+#     angles,
+#     sensor_position,
+#     max_range,
+#     points,
+#     warehouse_length,
+#     warehouse_width,
+# )
+
+
+def update(i):
+    sensor_position = (0 + i * 0.1, 0)
+    distances, angles = generate_lidar_scan(
+        sensor_position, obstacles, num_beams, max_range, scan_angle
+    )
+    # Filter out points that do not encounter obstacles
+    points = calculate_valid_points(distances, angles, sensor_position, max_range)
+
+    plot_lidar_scan(
+        obstacles,
+        distances,
+        angles,
+        sensor_position,
+        max_range,
+        points,
+        warehouse_length,
+        warehouse_width,
+    )
+
+
+ani = animation.FuncAnimation(fig, update, frames=30, interval=30)
+plt.show()
+
+# ani.save("sine_wave.gif", writer="pillow")

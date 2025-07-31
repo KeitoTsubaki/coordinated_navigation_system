@@ -5,3 +5,32 @@
 #   - LiDAR: lidar_range, lidar_fov (field of view), num_scan_points.
 #   - ROS Topics: twist_topic: /cmd_vel, scan_topic: /cloud.
 #   - Teleop: linear_speed, angular_speed.
+
+#! Prerequisites: 
+#!  - Map size is twice the length of the lidar range.
+#!  - Map shape is square.
+
+robot:
+  radius_m: 0.3          # ロボットの半径（m）
+  color: "#1492C7"  # RGBでロボットの色
+
+lidar:
+  range_m: 10           # 最大距離（m）
+  resolution: 60       # スキャン点の数（例：360°で60点 → 6度ごと）
+  noise: 1.0           # ノイズの強さ（標準偏差）
+  angle_start: 0       # 開始角（ラジアン）
+  angle_end: 6.28318   # 終了角（2πラジアン）
+  line_color: "#45E0D1"
+  points_color: "#04C4CD"  # スキャン点の色
+
+map:
+  size: 800 # マップのサイズ（ピクセル）
+  background_color: "#FFFFFF"
+
+obstacles:
+  count: 6            # ランダム障害物の数
+  min_size_m: 20
+  max_size_m: 80
+  T_do_m: 7.5 # The threshold distance between each objects (meters)
+  T_dt_m: 15 # The threshold distance between the start and end position (meters)
+  color: "#C2C4D0"  # 障害物の色（黒）
