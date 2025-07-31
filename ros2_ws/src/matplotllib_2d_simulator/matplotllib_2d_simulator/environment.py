@@ -18,6 +18,8 @@ import pygame
 import random
 import yaml
 
+import sensors
+
 
 class buildEnvironment:
 
@@ -30,9 +32,14 @@ class buildEnvironment:
             config = yaml.safe_load(f)
 
         self.background_color = config["map"]["background_color"]
-        self.robot_radius_m = config["robot"]["radius_m"]
-        self.lidar_range_m = config["lidar"]["range_m"]
         self.map_w, self.map_h = config["map"]["size"], config["map"]["size"]
+
+        self.robot_radius_m = config["robot"]["radius_m"]
+        self.robot_color = config["robot"]["color"]
+
+        self.lidar_range_m = config["lidar"]["range_m"]
+        self.lidar_line_color = config["lidar"]["line_color"]
+        self.lidar_points_color = config["lidar"]["points_color"]
 
         self.T_do_m = config["obstacles"]["T_do_m"]
         self.n_obstacles = config["obstacles"]["count"]
@@ -48,15 +55,18 @@ class buildEnvironment:
         self.map = pygame.display.set_mode((self.map_w, self.map_h))
         self.map.fill(self.background_color)
 
-        # self.pointCloud = (
-        #     []
-        # )  # array containing coordinates of sensed objects (walls). Purely just (x,y) information.
+        self.pointCloud = (
+            []
+        )  # array containing coordinates of sensed objects (walls). Purely just (x,y) information.
 
         self.map_center_x = self.map_w // 2
         self.map_center_y = self.map_h // 2
 
-        # self.lidar_sensor_layer = pygame.Surface((self.map_w, self.map_h))
-        # self.robot_layer = pygame.Surface((self.map_w, self.map_h))
+        self.obstacle_layer = pygame.Surface((self.map_w, self.map_h), pygame.SRCALPHA)
+        self.lidar_sensor_layer = pygame.Surface(
+            (self.map_w, self.map_h), pygame.SRCALPHA
+        )
+        self.robot_layer = pygame.Surface((self.map_w, self.map_h))
 
         # self.nothing_map = self.map.copy()
 
@@ -82,10 +92,8 @@ class buildEnvironment:
     def create_random_map(self):
         """Creates a random map with obstacles"""
         # map = self.nothing_map.copy()
-        self.obstacle_layer = pygame.Surface(
-            (self.map_w, self.map_h), flags=pygame.SRCALPHA
-        )
-        self.obstacle_layer.fill((255, 255, 255))  # Fill the map with white background
+
+        # self.obstacle_layer.fill((255, 255, 255))  # Fill the map with white background
         # Draw walls
         wall_width = 1
         pygame.draw.polygon(
@@ -115,12 +123,12 @@ class buildEnvironment:
             width=0,
         )
 
-        obstacle_pos_list = []  # The list of obstacle positions (cx, cy)
+        self.obstacle_pos_list = []  # The list of obstacle positions (cx, cy)
         count = 0
-        while len(obstacle_pos_list) < self.n_obstacles:
+        while len(self.obstacle_pos_list) < self.n_obstacles:
             count += 1
             if count > 100:
-                obstacle_pos_list = []
+                self.obstacle_pos_list = []
                 count = 0
 
             obstacle_cx = random.randint(
@@ -131,12 +139,12 @@ class buildEnvironment:
                 self.map_center_y - obstacle_area_height // 2,
                 self.map_center_y + obstacle_area_height // 2,
             )
-            if len(obstacle_pos_list) == 0:
-                obstacle_pos_list.append((obstacle_cx, obstacle_cy))
+            if len(self.obstacle_pos_list) == 0:
+                self.obstacle_pos_list.append((obstacle_cx, obstacle_cy))
                 # break
             else:
                 is_ok = True
-                for pos in obstacle_pos_list:
+                for pos in self.obstacle_pos_list:
                     # Check if the new obstacle is far enough from existing obstacles
                     # T_do_m is the threshold distance between each object in meters
                     # Convert to pixels by multiplying with PIXELS_PER_METER
@@ -147,11 +155,11 @@ class buildEnvironment:
                     if distance < self.T_do_m * self.pixels_per_meter:
                         is_ok = False
                 if is_ok:
-                    obstacle_pos_list.append((obstacle_cx, obstacle_cy))
+                    self.obstacle_pos_list.append((obstacle_cx, obstacle_cy))
                     # break
         print(f"Obstacle Position: {obstacle_cx}, {obstacle_cy}")
-        
-        for obstacle_cx, obstacle_cy in obstacle_pos_list:
+
+        for obstacle_cx, obstacle_cy in self.obstacle_pos_list:
             # obstacle_width = random.randint(60, 120)
             # obstacle_height = random.randint(60, 120)
             shape_random = random.randint(0, 1)
@@ -192,7 +200,7 @@ class buildEnvironment:
             # Draw a center point for the obstacle
             pygame.draw.circle(
                 self.obstacle_layer,
-                (10,10,10),
+                (10, 10, 10),
                 (obstacle_cx, obstacle_cy),
                 1,
             )
@@ -206,11 +214,12 @@ class buildEnvironment:
     def dataStorage(
         self, data
     ):  # data = [Distance, Angle, (x,y)] --> This is the input. Storing data in point cloud.
-        print(len(self.pointCloud))
+        # print(len(self.pointCloud))
+        self.pointCloud = []  # Reset point cloud for new data
         if data != False:  # if data exists, then start for loop
             for element in data:
                 point = self.AD2pos(
-                    element[0], element[1], element[2]
+                    element[0], element[1]  # , element[2]
                 )  # Input: data = [Distance, Angle, (x,y)]. Output: (x,y) coordinate of objects/walls.
                 if (
                     point not in self.pointCloud
@@ -219,43 +228,175 @@ class buildEnvironment:
             self.last_robot_position = (int(data[0][2][0]), int(data[0][2][1]))
 
     def show_sensorData(self, data=None, robot_position=None, goal_position=None):
-        self.infomap = self.base_map.copy()  # Reset infomap to the base map
         if data != False:  # if data exists, then start for loop
             for element in data:
                 point = self.AD2pos(
-                    element[0], element[1], element[2]
+                    element[0], element[1], robot_position
                 )  # Input: data = [Distance, Angle, (x,y)]. Output: (x,y) coordinate of objects/walls.
                 pygame.draw.line(
-                    self.infomap,
-                    (135, 206, 250),
-                    (int(element[2][0]), int(element[2][1])),
+                    self.lidar_sensor_layer,
+                    self.lidar_line_color,
+                    (int(robot_position[0]), int(robot_position[1])),
                     (int(point[0]), int(point[1])),
                     1,
                 )
+                pygame.draw.circle(
+                    self.lidar_sensor_layer,
+                    self.lidar_points_color,
+                    (int(point[0]), int(point[1])),
+                    2,
+                )
             # Draw the robot's position
+            robot_frame_radius = self.robot_radius_m * self.pixels_per_meter
+            robot_radius = self.robot_radius_m * 0.8 * self.pixels_per_meter
             pygame.draw.circle(
-                self.infomap,
-                (0, 0, 255),
+                self.lidar_sensor_layer,
+                self.robot_color,
                 robot_position,
-                self.robot_radius,
+                robot_frame_radius,
+                width=2,  # Draw a circle around the robot
             )
+            pygame.draw.circle(
+                self.lidar_sensor_layer,
+                self.robot_color,
+                robot_position,
+                robot_radius,
+            )
+
             # Draw goal position
             # pygame.draw.circle(
-            #     self.infomap,
+            #     self.lidar_sensor_layer,
             #     (0, 255, 0),
             #     goal_position,
             #     self.robot_radius,
             # )
+            env.map.blit(
+                self.lidar_sensor_layer, (0, 0)
+            )  # Overlay lidar sensor layer on the map
+
+    def reset_environment(self):
+        """Resets the environment by clearing the point cloud and reinitializing the map."""
+        self.map.fill(self.background_color)  # Clear the map
+        self.obstacle_layer = pygame.Surface((self.map_w, self.map_h), pygame.SRCALPHA)
+        self.lidar_sensor_layer = pygame.Surface(
+            (self.map_w, self.map_h), pygame.SRCALPHA
+        )
+
+    def reset_window(self):
+        env.map.fill(env.background_color)
+        env.map.blit(env.obstacle_layer, (0, 0))  # Draw the obstacle layer onto the map
+        env.lidar_sensor_layer = pygame.Surface((env.map_w, env.map_h), pygame.SRCALPHA)
+
+
+def hex_to_rgb(hex_color):
+    hex_color = hex_color.lstrip("#")  # 先頭の # を削除
+    # 6文字 (RRGGBB) でなければエラー
+    if len(hex_color) != 6:
+        raise ValueError("カラーコードは6桁の16進数で指定してください。")
+    r = int(hex_color[0:2], 16)
+    g = int(hex_color[2:4], 16)
+    b = int(hex_color[4:6], 16)
+    return (r, g, b)
+
+
+def operate_moving(robot_position, env):
+    keys = pygame.key.get_pressed()
+    step_size = 10  # Move by 10 pixels per key press
+    if keys[pygame.K_a] and robot_position[0] > env.robot_radius_pixels:
+        next_position = (
+            robot_position[0] - int(env.robot_radius_pixels) - 10,
+            robot_position[1],
+        )
+        if next_position[0] > 0:
+            if env.map.get_at(next_position) != hex_to_rgb(env.obstacle_color):
+                robot_position = (
+                    robot_position[0] - 10,
+                    robot_position[1],
+                )  # Move robot left
+                env.reset_window()
+    if keys[pygame.K_d] and robot_position[0] < env.map_w - env.robot_radius_pixels:
+        next_position = (
+            robot_position[0] + int(env.robot_radius_pixels) + 10,
+            robot_position[1],
+        )
+        if next_position[0] < env.map_w:
+            if env.map.get_at(next_position) != hex_to_rgb(env.obstacle_color):
+                robot_position = (
+                    robot_position[0] + 10,
+                    robot_position[1],
+                )  # Move robot right
+                env.reset_window()
+    if keys[pygame.K_w] and robot_position[1] > env.robot_radius_pixels:
+        next_position = (
+            robot_position[0],
+            robot_position[1] - int(env.robot_radius_pixels) - 10,
+        )
+        if next_position[1] > 0:
+            if env.map.get_at(next_position) != hex_to_rgb(env.obstacle_color):
+                robot_position = (
+                    robot_position[0],
+                    robot_position[1] - 10,
+                )  # Move robot left
+                env.reset_window()
+    if keys[pygame.K_s] and robot_position[1] < env.map_h - env.robot_radius_pixels:
+        next_position = (
+            robot_position[0],
+            robot_position[1] + int(env.robot_radius_pixels) + 10,
+        )
+        if next_position[1] < env.map_h:
+            if env.map.get_at(next_position) != hex_to_rgb(env.obstacle_color):
+                robot_position = (
+                    robot_position[0],
+                    robot_position[1] + 10,
+                )  # Move robot left
+                env.reset_window()
+    return robot_position  # Return the updated robot position
+
+
+def randomize_position(env):
+    """Generates a random position within the environment."""
+    while True:
+        buffer = 10
+        x = random.randint(
+            env.map_center_x - env.map_w // 2 + env.robot_radius_pixels + buffer,
+            env.map_center_x + env.map_w // 2 - env.robot_radius_pixels - buffer,
+        )
+        y = random.randint(
+            env.map_center_y - env.map_h // 2 + env.robot_radius_pixels + buffer,
+            env.map_center_y + env.map_h // 2 - env.robot_radius_pixels - buffer,
+        )
+        surrounding_colors = []
+        for i in range(-1, 2):
+            for j in range(-1, 2):
+                surrounding_colors.append(
+                    env.map.get_at(
+                        (
+                            int(x + i * env.robot_radius_pixels),
+                            int(y + j * env.robot_radius_pixels),
+                        )
+                    )
+                )
+        is_ok = True
+        for color in surrounding_colors:
+            if color == hex_to_rgb(env.obstacle_color):
+                is_ok = False
+                break
+        if is_ok:
+            return (x, y)  # Return the random position
 
 
 if __name__ == "__main__":
     # Example usage
     env = buildEnvironment()
     env.create_random_map()
-    env.map.blit(env.obstacle_layer, (0, 0))  # Draw the obstacle layer onto the map
     print("Environment created with obstacles.")
     running = True
+    robot_position = randomize_position(env)
+    # robot_position = (env.map_center_x, env.map_center_y)
+    print((env.map_center_x, env.map_center_y))
     while running:
+
+        env.reset_window()  # Reset the environment window
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -263,9 +404,20 @@ if __name__ == "__main__":
                 if event.key == pygame.K_ESCAPE:
                     running = False
                 if event.key == pygame.K_SPACE:
+                    env.reset_environment()  # Reset the environment
                     env.create_random_map()
                     env.map.blit(env.obstacle_layer, (0, 0))
+                    robot_position = randomize_position(env)
 
+        robot_position = operate_moving(robot_position, env)  # Handle robot movement
+
+        laser = sensors.LaserSensor(env.lidar_range_pixels, env.map, uncertainty=(0, 0))
+        laser.position = robot_position
+        sensor_data = laser.sense_obstacles(
+            env.map, env.obstacle_color
+        )  # Step 3: Sense. Stores sensed data array into sensor_data
+        # env.dataStorage(sensor_data)  # Step 4: point cloud data storage
+        env.show_sensorData(sensor_data, robot_position)
 
         # ウィンドウを更新
         pygame.display.flip()
