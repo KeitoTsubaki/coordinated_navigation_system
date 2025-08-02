@@ -1,7 +1,7 @@
 # Parameters for the simulation
 # This file will store all the parameters for your simulation, making it easy to adjust without changing the code.
 #   - Environment: map_size, num_obstacles, obstacle_size_range.
-#   - Robot: start_pos, goal_pos (can be set to 'random'), radius.
+#   - Robot: start_pos, target_pos (can be set to 'random'), radius.
 #   - LiDAR: lidar_range, lidar_fov (field of view), num_scan_points.
 #   - ROS Topics: twist_topic: /cmd_vel, scan_topic: /cloud.
 #   - Teleop: linear_speed, angular_speed.
@@ -9,10 +9,17 @@
 #! Prerequisites: 
 #!  - Map size is twice the length of the lidar range.
 #!  - Map shape is square.
-
+simulation:
+  k8: 2400  
+  k9: 2400
 robot:
-  radius_m: 0.3          # ロボットの半径（m）
-  color: "#1492C7"  # RGBでロボットの色
+  radius_m: 0.4          # ロボットの半径（m）
+  robot_color: "#1492C7"  # RGBでロボットの色
+  target_color: "#F5BF98"    # RGBでゴールの色
+  T_dt_m_trap_shaped: 20 # The threshold distance between the start and end position (meters)
+  T_dt_m_zigzag: 15 # The threshold distance between the start and end position (meters)
+  T_dt_m_random: 20 # The threshold distance between the start and end position (
+  T_dt_m_empty: 20
 
 lidar:
   range_m: 10           # 最大距離（m）
@@ -32,5 +39,4 @@ obstacles:
   min_size_m: 20
   max_size_m: 80
   T_do_m: 7.5 # The threshold distance between each objects (meters)
-  T_dt_m: 15 # The threshold distance between the start and end position (meters)
   color: "#C2C4D0"  # 障害物の色（黒）
