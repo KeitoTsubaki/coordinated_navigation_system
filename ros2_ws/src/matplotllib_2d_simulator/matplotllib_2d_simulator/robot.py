@@ -16,3 +16,4 @@ communication directly.
     - For each ray, calculate the intersection point with the nearest obstacle.
     - Return a list of these intersection points (the point cloud).
 """
+

@@ -14,21 +14,35 @@ This class will procedurally generate and manage the state of the 2D world.
 """
 
 import math
-import pygame
 import random
+import os
+
 import yaml
+import pygame
+import rclpy
+from rclpy.node import Node
+from geometry_msgs.msg import Twist
+from ament_index_python.packages import get_package_share_directory
+from sensor_msgs.msg import PointCloud2
 
-import sensors
+# import sensors
+from matplotllib_2d_simulator import sensors
 
 
-class buildEnvironment:
+class Environment(Node):
 
     def __init__(self):
+        super().__init__("environment")
         self.window_name = "2D LiDAR Simulation"
         pygame.display.set_caption(self.window_name)
 
         # Set parameters
-        with open("../config/simulator_config.yaml", "r", encoding="utf-8") as f:
+        config_path = os.path.join(
+            get_package_share_directory("matplotllib_2d_simulator"),
+            "config",
+            "simulator_config.yaml",
+        )
+        with open(config_path, "r", encoding="utf-8") as f:
             config = yaml.safe_load(f)
 
         self.background_color = config["map"]["background_color"]
@@ -72,6 +86,12 @@ class buildEnvironment:
             (self.map_w, self.map_h), pygame.SRCALPHA
         )
         self.robot_layer = pygame.Surface((self.map_w, self.map_h))
+        # Robot's orientation in radians
+        # 0 radians is facing up (north), and increases clockwise
+        self.robot_position = (self.map_center_x, self.map_center_y)
+        self.target_position = (self.map_center_x, self.map_center_y)
+        self.robot_theta = 0.0
+        self.target_theta = 0.0
 
         self.map_type = "empty"  # ["trap_shaped", "zigzag", "random", "empty"]
 
@@ -90,6 +110,41 @@ class buildEnvironment:
         self.divided_space_width = (
             self.map_h // 5
         )  # width of the divided space in the zigzag-shaped map
+
+        self.publisher_ = self.create_publisher(PointCloud2, "pointcloud", 10)
+        self.get_logger().info("PointCloud Publisher Node has been started.")
+
+        self.subscription = self.create_subscription(
+            Twist,
+            "cmd_vel",  # 通常はcmd_velというトピック名
+            self.listener_callback,
+            10,  # QoS
+        )
+
+    def listener_callback(self, msg: Twist):
+        self.get_logger().info(
+            f"Received Twist:\n"
+            f"  linear:  x={msg.linear.x:.2f}, y={msg.linear.y:.2f}, z={msg.linear.z:.2f}\n"
+            f"  angular: x={msg.angular.x:.2f}, y={msg.angular.y:.2f}, z={msg.angular.z:.2f}"
+        )
+        speed = 5
+        if (
+            self.robot_position[1] > self.robot_radius_pixels
+            and self.robot_position[1] < self.map_h - self.robot_radius_pixels
+        ):
+            next_position = (
+                self.robot_position[0]
+                + msg.linear.x * speed * math.sin(self.robot_theta),
+                self.robot_position[1]
+                - msg.linear.x * speed * math.cos(self.robot_theta),
+            )
+            if next_position[1] > 0:
+                if check_surrounding_colors(self, next_position):
+                    self.robot_position = next_position  # Move robot left
+                    self.reset_window()
+        self.robot_theta += msg.angular.z  # Rotate robot clockwise
+        if self.robot_theta > 2 * math.pi:
+            self.robot_theta -= 2 * math.pi
 
     def create_base_map(self):
         """Creates a base map with walls."""
@@ -235,10 +290,10 @@ class buildEnvironment:
             l_vertical_right = 6 * p_t + 1 + 4 * random.uniform(0, 1)
             if i == 0:
                 if random.randint(0, 1) == 0:
-                    l_vertical_left = env.map_h
+                    l_vertical_left = self.map_h
             elif i == 2:
                 if random.randint(0, 1) == 0:
-                    l_vertical_right = env.map_h
+                    l_vertical_right = self.map_h
             l_vertical.append([l_vertical_left, l_vertical_right])
         w_passage_0 = -1.6 * p_t + 2.5 + 0.2 * random.uniform(0, 1)
         w_passage_1 = (0.5 + 0.5 * random.uniform(0, 1)) * w_passage_0
@@ -253,16 +308,16 @@ class buildEnvironment:
         # Define the positions of the H-shaped obstacles
         positions_of_H_shaped_obstacles = [
             (
-                env.map_center_x - distance_btwn_H_shaped_obstacles_left,
-                env.map_center_y + random.uniform(-1, 1) * self.pixels_per_meter,
+                self.map_center_x - distance_btwn_H_shaped_obstacles_left,
+                self.map_center_y + random.uniform(-1, 1) * self.pixels_per_meter,
             ),
             (
-                env.map_center_x,
-                env.map_center_y + random.uniform(-1, 1) * self.pixels_per_meter,
+                self.map_center_x,
+                self.map_center_y + random.uniform(-1, 1) * self.pixels_per_meter,
             ),
             (
-                env.map_center_x + distance_btwn_H_shaped_obstacles_right,
-                env.map_center_x + random.uniform(-1, 1) * self.pixels_per_meter,
+                self.map_center_x + distance_btwn_H_shaped_obstacles_right,
+                self.map_center_x + random.uniform(-1, 1) * self.pixels_per_meter,
             ),
         ]
 
@@ -414,16 +469,16 @@ class buildEnvironment:
                     self.pointCloud.append(point)  # [(x1,y1), (x2,y2), (x3,y3)]
             self.last_robot_position = (int(data[0][2][0]), int(data[0][2][1]))
 
-    def show_sensorData(self, data=None, robot_position=None, target_position=None):
+    def show_sensorData(self, data=None):
         if data != False:  # if data exists, then start for loop
             for element in data:
                 point = self.AD2pos(
-                    element[0], element[1], robot_position
+                    element[0], element[1], self.robot_position
                 )  # Input: data = [Distance, Angle, (x,y)]. Output: (x,y) coordinate of objects/walls.
                 pygame.draw.line(
                     self.lidar_sensor_layer,
                     self.lidar_line_color,
-                    (int(robot_position[0]), int(robot_position[1])),
+                    (int(self.robot_position[0]), int(self.robot_position[1])),
                     (int(point[0]), int(point[1])),
                     1,
                 )
@@ -441,23 +496,36 @@ class buildEnvironment:
             pygame.draw.circle(
                 self.lidar_sensor_layer,
                 self.target_color,
-                target_position,
+                self.target_position,
                 robot_frame_radius,
                 width=2,  # Draw a circle around the robot
             )
             pygame.draw.circle(
                 self.lidar_sensor_layer,
                 self.target_color,
-                target_position,
+                self.target_position,
                 robot_radius,
+            )
+            target_head_position = (
+                self.target_position[0]
+                + robot_frame_radius * math.sin(self.target_theta),
+                self.target_position[1]
+                - robot_frame_radius * math.cos(self.target_theta),
+            )
+            pygame.draw.line(
+                self.lidar_sensor_layer,
+                (255, 0, 0),  # Red color for the target's head
+                self.target_position,
+                target_head_position,
+                2,  # Draw the target's head
             )
             # font = pygame.font.SysFont("arial", 16)
             # text = font.render("Target", True, (0, 0, 0))
             # self.lidar_sensor_layer.blit(
             #     text,
             #     (
-            #         target_position[0],
-            #         target_position[1] + text.get_height() // 2,
+            #         self.target_position[0],
+            #         self.target_position[1] + text.get_height() // 2,
             #     ),
             # )
 
@@ -465,18 +533,31 @@ class buildEnvironment:
             pygame.draw.circle(
                 self.lidar_sensor_layer,
                 self.robot_color,
-                robot_position,
+                self.robot_position,
                 robot_frame_radius,
                 width=2,  # Draw a circle around the robot
             )
             pygame.draw.circle(
                 self.lidar_sensor_layer,
                 self.robot_color,
-                robot_position,
+                self.robot_position,
                 robot_radius,
             )
+            robot_head_position = (
+                self.robot_position[0]
+                + robot_frame_radius * math.sin(self.robot_theta),
+                self.robot_position[1]
+                - robot_frame_radius * math.cos(self.robot_theta),
+            )
+            pygame.draw.line(
+                self.lidar_sensor_layer,
+                (255, 0, 0),  # Red color for the robot's head
+                self.robot_position,
+                robot_head_position,
+                2,  # Draw the robot's head
+            )
 
-            env.map.blit(
+            self.map.blit(
                 self.lidar_sensor_layer, (0, 0)
             )  # Overlay lidar sensor layer on the map
 
@@ -489,9 +570,13 @@ class buildEnvironment:
         )
 
     def reset_window(self):
-        env.map.fill(env.background_color)
-        env.map.blit(env.obstacle_layer, (0, 0))  # Draw the obstacle layer onto the map
-        env.lidar_sensor_layer = pygame.Surface((env.map_w, env.map_h), pygame.SRCALPHA)
+        self.map.fill(self.background_color)
+        self.map.blit(
+            self.obstacle_layer, (0, 0)
+        )  # Draw the obstacle layer onto the map
+        self.lidar_sensor_layer = pygame.Surface(
+            (self.map_w, self.map_h), pygame.SRCALPHA
+        )
 
 
 def hex_to_rgb(hex_color):
@@ -562,58 +647,55 @@ def check_surrounding_colors(env, position):
     return is_ok
 
 
-def operate_moving(robot_position, env):
+def operate_moving(env):
     keys = pygame.key.get_pressed()
     step_size = 5  # Move by 10 pixels per key press
-    if keys[pygame.K_a] and robot_position[0] > env.robot_radius_pixels:
+    # if keys[pygame.K_a] and self.robot_position[0] > env.robot_radius_pixels:
+    #     next_position = (
+    #         self.robot_position[0] - step_size,
+    #         self.robot_position[1],
+    #     )
+    #     if next_position[0] > 0:
+    #         if check_surrounding_colors(env, next_position):
+    #             self.robot_position = next_position  # Move robot left
+    #             env.reset_window()
+    # if keys[pygame.K_d] and self.robot_position[0] < env.map_w - env.robot_radius_pixels:
+    #     next_position = (
+    #         self.robot_position[0] + step_size,
+    #         self.robot_position[1],
+    #     )
+    #     if next_position[0] < env.map_w:
+    #         if check_surrounding_colors(env, next_position):
+    #             self.robot_position = next_position  # Move robot right
+    #             env.reset_window()
+    if keys[pygame.K_w] and env.robot_position[1] > env.robot_radius_pixels:
         next_position = (
-            robot_position[0] - step_size,
-            robot_position[1],
-        )
-        if next_position[0] > 0:
-            if check_surrounding_colors(env, next_position):
-                robot_position = (
-                    robot_position[0] - step_size,
-                    robot_position[1],
-                )  # Move robot left
-                env.reset_window()
-    if keys[pygame.K_d] and robot_position[0] < env.map_w - env.robot_radius_pixels:
-        next_position = (
-            robot_position[0] + step_size,
-            robot_position[1],
-        )
-        if next_position[0] < env.map_w:
-            if check_surrounding_colors(env, next_position):
-                robot_position = (
-                    robot_position[0] + step_size,
-                    robot_position[1],
-                )  # Move robot right
-                env.reset_window()
-    if keys[pygame.K_w] and robot_position[1] > env.robot_radius_pixels:
-        next_position = (
-            robot_position[0],
-            robot_position[1] - step_size,
+            env.robot_position[0] + step_size * math.sin(env.robot_theta),
+            env.robot_position[1] - step_size * math.cos(env.robot_theta),
         )
         if next_position[1] > 0:
             if check_surrounding_colors(env, next_position):
-                robot_position = (
-                    robot_position[0],
-                    robot_position[1] - step_size,
-                )  # Move robot left
+                env.robot_position = next_position  # Move robot left
                 env.reset_window()
-    if keys[pygame.K_s] and robot_position[1] < env.map_h - env.robot_radius_pixels:
+    if keys[pygame.K_s] and env.robot_position[1] < env.map_h - env.robot_radius_pixels:
         next_position = (
-            robot_position[0],
-            robot_position[1] + step_size,
+            env.robot_position[0] - step_size * math.sin(env.robot_theta),
+            env.robot_position[1] + step_size * math.cos(env.robot_theta),
         )
         if next_position[1] < env.map_h:
             if check_surrounding_colors(env, next_position):
-                robot_position = (
-                    robot_position[0],
-                    robot_position[1] + step_size,
-                )  # Move robot left
+                env.robot_position = next_position  # Move robot left
                 env.reset_window()
-    return robot_position  # Return the updated robot position
+    if keys[pygame.K_e]:
+        env.robot_theta += 0.1  # Rotate robot clockwise
+        if env.robot_theta > 2 * math.pi:
+            env.robot_theta -= 2 * math.pi
+    if keys[pygame.K_q]:
+        env.robot_theta -= 0.1  # Rotate robot counterclockwise
+        if env.robot_theta < 0:
+            env.robot_theta += 2 * math.pi
+
+    # return env.robot_position  # Return the updated robot position
 
 
 def randomize_position(env, spawn_area):
@@ -653,17 +735,18 @@ def create_start_and_target_position(env, start_spawn_area, target_spawn_area):
     elif env.map_type == "empty":
         T_dt_m = env.T_dt_m_empty
     while True:
-        robot_position = randomize_position(env, start_spawn_area)
-        target_position = randomize_position(env, target_spawn_area)
+        env.robot_position = randomize_position(env, start_spawn_area)
+        env.target_position = randomize_position(env, target_spawn_area)
         distance_btwn_robot_and_target = math.sqrt(
-            (target_position[0] - robot_position[0]) ** 2
-            + (target_position[1] - robot_position[1]) ** 2
+            (env.target_position[0] - env.robot_position[0]) ** 2
+            + (env.target_position[1] - env.robot_position[1]) ** 2
         )
         if distance_btwn_robot_and_target > T_dt_m * env.pixels_per_meter:
             print(
                 f"Distance between robot and target: {distance_btwn_robot_and_target // env.pixels_per_meter} m"
             )
-            return robot_position, target_position
+            break
+            # return env.robot_position, env.target_position
 
 
 def calculate_spawan_area_in_zigzag_map(env):
@@ -730,7 +813,7 @@ def initialize_map_parameters(env):
             env.map_center_y - env.map_h // 2 + env.robot_radius_pixels,
             env.map_center_y + env.map_h // 2 - env.robot_radius_pixels,
         ]
-        target_spwan_area = start_spawn_area
+        target_spawn_area = start_spawn_area
     return start_spawn_area, target_spawn_area
 
 
@@ -746,16 +829,17 @@ def create_environment(env, start_spawn_area, target_spawn_area):
     elif env.map_type == "empty":
         env.create_empty_map()
     env.map.blit(env.obstacle_layer, (0, 0))
-    robot_position, target_position = create_start_and_target_position(
+    env.robot_position, env.target_position = create_start_and_target_position(
         env, start_spawn_area, target_spawn_area
     )
-    return robot_position, target_position
+    # return env.robot_position, env.target_position
 
 
-if __name__ == "__main__":
-    # Example usage
+def main():
     pygame.init()
-    env = buildEnvironment()
+    rclpy.init()
+
+    env = Environment()
 
     map_type_list = ["trap_shaped", "zigzag", "random", "empty"]
     env.map_type = "empty"  # ["trap_shaped", "zigzag", "random", "empty"]
@@ -763,12 +847,14 @@ if __name__ == "__main__":
     env.reset_window()
     print("Environment created with obstacles.")
     running = True
-    robot_position, target_position = create_start_and_target_position(
-        env, start_spawn_area, target_spawn_area
-    )
+    create_start_and_target_position(env, start_spawn_area, target_spawn_area)
+    # self.robot_position, self.target_position = create_start_and_target_position(
+    #     env, start_spawn_area, target_spawn_area
+    # )
 
     print((env.map_center_x, env.map_center_y))
     while running:
+        rclpy.spin_once(env, timeout_sec=0.01)
 
         env.reset_window()  # Reset the environment window
         for event in pygame.event.get():
@@ -787,28 +873,58 @@ if __name__ == "__main__":
 
                     env.reset_environment()
                     start_spawn_area, target_spawn_area = initialize_map_parameters(env)
-                    robot_position, target_position = create_start_and_target_position(
+                    create_start_and_target_position(
                         env, start_spawn_area, target_spawn_area
                     )
+                    # self.robot_position, self.target_position = (
+                    #     create_start_and_target_position(
+                    #         env, start_spawn_area, target_spawn_area
+                    #     )
+                    # )
                 if event.key == pygame.K_SPACE:
                     env.reset_environment()  # Reset the environment
                     start_spawn_area, target_spawn_area = initialize_map_parameters(env)
-                    robot_position, target_position = create_start_and_target_position(
+                    create_start_and_target_position(
                         env, start_spawn_area, target_spawn_area
                     )
+                    # self.robot_position, self.target_position = (
+                    #     create_start_and_target_position(
+                    #         env, start_spawn_area, target_spawn_area
+                    #     )
+                    # )
 
-        robot_position = operate_moving(robot_position, env)  # Handle robot movement
+        operate_moving(env)  # Handle robot movement
+        # self.robot_position = operate_moving(
+        #     self.robot_position, env
+        # )  # Handle robot movement
 
-        laser = sensors.LaserSensor(env.lidar_range_pixels, env.map, uncertainty=(0, 0))
-        laser.position = robot_position
-        sensor_data = laser.sense_obstacles(
+        sensor = sensors.LiDARSensor(
+            env.lidar_range_pixels, env.map, uncertainty=(0, 0)
+        )
+        sensor.position = env.robot_position
+        sensor_data = sensor.sense_obstacles(
             env.map, env.obstacle_color
         )  # Step 3: Sense. Stores sensed data array into sensor_data
         # env.dataStorage(sensor_data)  # Step 4: point cloud data storage
-        env.show_sensorData(sensor_data, robot_position, target_position)
+        env.show_sensorData(sensor_data)
+
+        point_cloud_msg = sensor.convert_to_pointcloud2(
+            sensor_data,
+            time_stamp=env.get_clock().now().to_msg(),
+            pixels_per_meter=env.pixels_per_meter,
+        )
+
+        # env.get_logger().info(
+        #     f"Publishing a point cloud with {len(point_cloud_msg)} points."
+        # )
+        env.publisher_.publish(point_cloud_msg)
 
         # ウィンドウを更新
         pygame.display.flip()
 
     # 4. 終了処理
     pygame.quit()
+
+
+if __name__ == "__main__":
+    main()
