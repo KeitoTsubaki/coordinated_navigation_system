@@ -4,12 +4,15 @@ import numpy as np
 
 
 class Env(gym.Env):
-    def __init__(self, v_max, omega_max):
+    def __init__(self, v_max, omega_max, r_lidar, n_l, n_e):
         super().__init__()
         # Define action and observation space
 
         self.v_max = v_max
         self.omega_max = omega_max
+        self.r_lidar = r_lidar
+        self.n_l = n_l
+        self.n_e = n_e
 
         # DDPG allows continuous action space, and the action of differential-
         # driven robots includes the linear and angular velocity.
@@ -20,9 +23,31 @@ class Env(gym.Env):
             high=np.array([v_max, omega_max]),
             dtype=np.float32,
         )
-        # Example for using image as input (channel-first; channel-last also works):
-        self.observation_space = spaces.Box(
-            low=0, high=255, shape=(84, 84, 3), dtype=np.uint8
+        # We design a robot-centric observation space to remove the dependency
+        # on localization and global map.
+        # observation space includes o_l, o_g, o_v, o_o
+        # o_l: processed LiDAR data
+        # o_g:
+        # o_v:
+        # o_o:
+        self.observation_space = spaces.Dict(
+            {
+                "lidar": spaces.Box(
+                    low=0,
+                    high=100 * self.r_lidar,
+                    shape=(4, self.n_l + self.n_e),
+                    dtype=np.float32,
+                ),
+                "goal": spaces.Box(
+                    low=[0, -np.pi], high=[np.inf, np.pi], dtype=np.float32
+                ),
+                "velocity": spaces.Box(
+                    low=[0, 0], high=[self.v_max, self.omega_max], dtype=np.float32
+                ),
+                "closest_obstacle": spaces.Box(
+                    low=[0, -np.pi], high=[np.inf, np.pi], dtype=np.float32
+                ),
+            }
         )
 
     def step(self, action):
