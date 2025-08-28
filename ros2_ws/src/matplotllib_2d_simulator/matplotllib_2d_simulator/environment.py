@@ -852,7 +852,7 @@ def main():
     
     env.create_map()
     start_spawn_area, target_spawn_area = env.initialize_map_parameters()
-    env.reset_window()
+    env.reset_window()  #! TODO: なんのためにあるのか明確にする。不要なら消す
     print("Environment created with obstacles.")
     running = True
     env.create_start_and_target_position(start_spawn_area, target_spawn_area)
