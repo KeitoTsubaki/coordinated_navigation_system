@@ -19,6 +19,7 @@ import os
 
 import yaml
 import pygame
+import numpy as np
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
@@ -46,6 +47,8 @@ class Environment(Node):
         )
         with open(config_path, "r", encoding="utf-8") as f:
             config = yaml.safe_load(f)
+            
+        self.random_np = np.random.default_rng(0) # random number generator with seed 0
 
         self.background_color = config["map"]["background_color"]
         self.map_w, self.map_h = config["map"]["size"], config["map"]["size"]
@@ -115,19 +118,16 @@ class Environment(Node):
 
         self.publisher_ = self.create_publisher(PointCloud2, "pointcloud", 10)
         self.get_logger().info("PointCloud Publisher Node has been started.")
-        
-        self.publisher_ = self.create_publisher(PointCloud2, "pointcloud", 10)
-        self.get_logger().info("PointCloud Publisher Node has been started.")
 
         self.subscription = self.create_subscription(
             Twist,
             "cmd_vel",  # 通常はcmd_velというトピック名
-            self.listener_callback,
+            self._listener_callback,
             10,  # QoS
         )
         self.tf_broadcaster = TransformBroadcaster(self)
 
-    def listener_callback(self, msg: Twist):
+    def _listener_callback(self, msg: Twist):
         self.get_logger().info(
             f"Received Twist:\n"
             f"  linear:  x={msg.linear.x:.2f}, y={msg.linear.y:.2f}, z={msg.linear.z:.2f}\n"
@@ -145,14 +145,14 @@ class Environment(Node):
                 - msg.linear.x * speed * math.cos(self.robot_theta),
             )
             if next_position[1] > 0:
-                if check_surrounding_colors(self, next_position):
+                if _check_surrounding_colors(self, next_position):
                     self.robot_position = next_position  # Move robot left
                     self.reset_window()
         self.robot_theta += msg.angular.z  # Rotate robot clockwise
         if self.robot_theta > 2 * math.pi:
             self.robot_theta -= 2 * math.pi
 
-    def create_base_map(self):
+    def _create_base_map(self):
         """Creates a base map with walls."""
         wall_width = 1
         pygame.draw.polygon(
@@ -180,10 +180,10 @@ class Environment(Node):
             ),
         )
 
-    def create_random_map(self):
+    def _create_random_map(self):
         """Creates a random map with obstacles"""
         # Draw walls
-        self.create_base_map()
+        self._create_base_map()
 
         # Define the area for obstacles
         obstacle_area_width = self.map_w // 15 * 13
@@ -208,11 +208,11 @@ class Environment(Node):
                 self.obstacle_pos_list = []
                 count = 0
 
-            obstacle_cx = random.randint(
+            obstacle_cx = self.random_np.integers(
                 self.map_center_x - obstacle_area_width // 2,
                 self.map_center_x + obstacle_area_width // 2,
             )
-            obstacle_cy = random.randint(
+            obstacle_cy = self.random_np.integers(
                 self.map_center_y - obstacle_area_height // 2,
                 self.map_center_y + obstacle_area_height // 2,
             )
@@ -237,16 +237,16 @@ class Environment(Node):
         print(f"Obstacle Position: {obstacle_cx}, {obstacle_cy}")
 
         for obstacle_cx, obstacle_cy in self.obstacle_pos_list:
-            # obstacle_width = random.randint(60, 120)
-            # obstacle_height = random.randint(60, 120)
-            shape_random = random.randint(0, 1)
+            # obstacle_width = self.random_np.integers(60, 120)
+            # obstacle_height = self.random_np.integers(60, 120)
+            shape_random = self.random_np.integers(0, 1)
             if shape_random == 0:
                 # Draw a rectangle obstacle
-                rectangular_l_m = 4 + random.uniform(0, 1)
-                rectangular_w_m = 0.5 + random.uniform(0, 1) * 0.5
+                rectangular_l_m = 4 + self.random_np.uniform(0, 1)
+                rectangular_w_m = 0.5 + self.random_np.uniform(0, 1) * 0.5
                 rectangular_l_pixels = int(rectangular_l_m * self.pixels_per_meter)
                 rectangular_w_pixels = int(rectangular_w_m * self.pixels_per_meter)
-                if random.randint(0, 1) == 0:
+                if self.random_np.integers(0, 1) == 0:
                     object_width = rectangular_w_pixels
                     object_height = rectangular_l_pixels
                 else:
@@ -265,7 +265,7 @@ class Environment(Node):
                 )
             elif shape_random == 1:
                 # Draw a circular obstacle
-                radius_m = 0.5 + random.uniform(0, 1)
+                radius_m = 0.5 + self.random_np.uniform(0, 1)
                 radius_pixels = int(radius_m * self.pixels_per_meter)
                 pygame.draw.circle(
                     self.obstacle_layer,
@@ -282,27 +282,27 @@ class Environment(Node):
             #     1,
             # )
 
-    def create_trap_shaped_map(self):
+    def _create_trap_shaped_map(self):
         """Creates a trap-shaped map with obstacles"""
         # Parameters
         p_t = min(self.s_t / self.k8, 1)
         w_wall = 0.2  # Width of the walls in meters
         l_horizontal = []
         for i in range(3):
-            l_horizontal.append(1.5 * p_t + 3 + random.uniform(0, 1))
+            l_horizontal.append(1.5 * p_t + 3 + self.random_np.uniform(0, 1))
         l_vertical = []
         for i in range(3):
-            l_vertical_left = 6 * p_t + 1 + 4 * random.uniform(0, 1)
-            l_vertical_right = 6 * p_t + 1 + 4 * random.uniform(0, 1)
+            l_vertical_left = 6 * p_t + 1 + 4 * self.random_np.uniform(0, 1)
+            l_vertical_right = 6 * p_t + 1 + 4 * self.random_np.uniform(0, 1)
             if i == 0:
-                if random.randint(0, 1) == 0:
+                if self.random_np.integers(0, 1) == 0:
                     l_vertical_left = self.map_h
             elif i == 2:
-                if random.randint(0, 1) == 0:
+                if self.random_np.integers(0, 1) == 0:
                     l_vertical_right = self.map_h
             l_vertical.append([l_vertical_left, l_vertical_right])
-        w_passage_0 = -1.6 * p_t + 2.5 + 0.2 * random.uniform(0, 1)
-        w_passage_1 = (0.5 + 0.5 * random.uniform(0, 1)) * w_passage_0
+        w_passage_0 = -1.6 * p_t + 2.5 + 0.2 * self.random_np.uniform(0, 1)
+        w_passage_1 = (0.5 + 0.5 * self.random_np.uniform(0, 1)) * w_passage_0
 
         distance_btwn_H_shaped_obstacles_left = (
             l_horizontal[1] / 2 + w_passage_0 + w_wall * 2 + l_horizontal[0] / 2
@@ -315,20 +315,20 @@ class Environment(Node):
         positions_of_H_shaped_obstacles = [
             (
                 self.map_center_x - distance_btwn_H_shaped_obstacles_left,
-                self.map_center_y + random.uniform(-1, 1) * self.pixels_per_meter,
+                self.map_center_y + self.random_np.uniform(-1, 1) * self.pixels_per_meter,
             ),
             (
                 self.map_center_x,
-                self.map_center_y + random.uniform(-1, 1) * self.pixels_per_meter,
+                self.map_center_y + self.random_np.uniform(-1, 1) * self.pixels_per_meter,
             ),
             (
                 self.map_center_x + distance_btwn_H_shaped_obstacles_right,
-                self.map_center_x + random.uniform(-1, 1) * self.pixels_per_meter,
+                self.map_center_x + self.random_np.uniform(-1, 1) * self.pixels_per_meter,
             ),
         ]
 
         # Draw walls
-        self.create_base_map()
+        self._create_base_map()
 
         # Define the area for obstacles
         for i, position in enumerate(positions_of_H_shaped_obstacles):
@@ -377,20 +377,20 @@ class Environment(Node):
                 width=0,
             )
 
-    def create_zigzag_map(self):
+    def _create_zigzag_map(self):
         """Creates a zigzag-shaped map with obstacles"""
         # Parameters
         p_z = min(self.s_z / self.k9, 1)
         w_wall = 0.2
-        self.l_passage = 6 * p_z + 8 + 2 * random.uniform(0, 1)
+        self.l_passage = 6 * p_z + 8 + 2 * self.random_np.uniform(0, 1)
         w_openings = []
         for _ in range(4):
-            w_openings.append(-4.6 * p_z + 6 + 0.4 * random.uniform(0, 1))
+            w_openings.append(-4.6 * p_z + 6 + 0.4 * self.random_np.uniform(0, 1))
         d_deviations = []
         for _ in range(4):
-            d_deviations.append(2.4 * random.uniform(0, 1) - 1.2)
+            d_deviations.append(2.4 * self.random_np.uniform(0, 1) - 1.2)
 
-        self.create_base_map()
+        self._create_base_map()
 
         # Draw dotted lines
         for i in range(1, 5):
@@ -424,7 +424,7 @@ class Environment(Node):
             )
 
         # Draw horizontal walls
-        r = random.randint(0, 1)
+        r = self.random_np.integers(0, 1)
         for i in range(4):
             if i % 2 == r:
                 horizontal_wall_xmin = (
@@ -449,12 +449,12 @@ class Environment(Node):
                 width=0,
             )
 
-    def create_empty_map(self):
+    def _create_empty_map(self):
         """Creates an empty map with no obstacles."""
-        self.create_base_map()
+        self._create_base_map()
 
     # Uses Distance and Angle from data[] in sensors.sensesObstacles() to obtain cartesian coordinates of walls for point cloud
-    def AD2pos(self, distance, angle, robotPosition):
+    def _AD2pos(self, distance, angle, robotPosition):
         x = robotPosition[0] + distance * math.cos(angle)
         y = robotPosition[1] + distance * math.sin(angle)
         return (int(x), int(y))  # returns cartesian coordinates of walls.
@@ -466,7 +466,7 @@ class Environment(Node):
         self.pointCloud = []  # Reset point cloud for new data
         if data != False:  # if data exists, then start for loop
             for element in data:
-                point = self.AD2pos(
+                point = self._AD2pos(
                     element[0], element[1]  # , element[2]
                 )  # Input: data = [Distance, Angle, (x,y)]. Output: (x,y) coordinate of objects/walls.
                 if (
@@ -478,7 +478,7 @@ class Environment(Node):
     def show_sensorData(self, data=None):
         if data != False:  # if data exists, then start for loop
             for element in data:
-                point = self.AD2pos(
+                point = self._AD2pos(
                     element[0], element[1], self.robot_position
                 )  # Input: data = [Distance, Angle, (x,y)]. Output: (x,y) coordinate of objects/walls.
                 pygame.draw.line(
@@ -606,260 +606,229 @@ class Environment(Node):
         self.tf_broadcaster.sendTransform(t)
 
 
-def hex_to_rgb(hex_color):
-    hex_color = hex_color.lstrip("#")  # 先頭の # を削除
-    # 6文字 (RRGGBB) でなければエラー
-    if len(hex_color) != 6:
-        raise ValueError("カラーコードは6桁の16進数で指定してください。")
-    r = int(hex_color[0:2], 16)
-    g = int(hex_color[2:4], 16)
-    b = int(hex_color[4:6], 16)
-    return (r, g, b)
+    def _hex_to_rgb(self, hex_color):
+        hex_color = hex_color.lstrip("#")  # 先頭の # を削除
+        # 6文字 (RRGGBB) でなければエラー
+        if len(hex_color) != 6:
+            raise ValueError("カラーコードは6桁の16進数で指定してください。")
+        r = int(hex_color[0:2], 16)
+        g = int(hex_color[2:4], 16)
+        b = int(hex_color[4:6], 16)
+        return (r, g, b)
 
 
-def check_surrounding_colors(env, position):
-    """Checks the surrounding colors of a position in the environment."""
-    surrounding_colors = []
-    # Number of pixels to check in each direction (odd number)
-    num_surrounding_points = 5
-    for i in range(-2, 3):
-        for j in range(-2, 3):
-            if (
-                int(
-                    position[0]
-                    + i / (num_surrounding_points - 1) * 2 * env.robot_radius_pixels
-                )
-                >= 0
-                and int(
-                    position[1]
-                    + j / (num_surrounding_points - 1) * 2 * env.robot_radius_pixels
-                )
-                >= 0
-                and int(
-                    position[0]
-                    + i / (num_surrounding_points - 1) * 2 * env.robot_radius_pixels
-                )
-                <= env.map_w
-                and int(
-                    position[1]
-                    + j / (num_surrounding_points - 1) * 2 * env.robot_radius_pixels
-                )
-                <= env.map_h
-            ):
-                surrounding_colors.append(
-                    env.map.get_at(
-                        (
-                            int(
-                                position[0]
-                                + i
-                                / (num_surrounding_points - 1)
-                                * 2
-                                * env.robot_radius_pixels
-                            ),
-                            int(
-                                position[1]
-                                + j
-                                / (num_surrounding_points - 1)
-                                * 2
-                                * env.robot_radius_pixels
-                            ),
+    def _check_surrounding_colors(self, position):
+        """Checks the surrounding colors of a position in the environment."""
+        surrounding_colors = []
+        # Number of pixels to check in each direction (odd number)
+        num_surrounding_points = 5
+        for i in range(-2, 3):
+            for j in range(-2, 3):
+                if (
+                    int(
+                        position[0]
+                        + i / (num_surrounding_points - 1) * 2 * self.robot_radius_pixels
+                    )
+                    >= 0
+                    and int(
+                        position[1]
+                        + j / (num_surrounding_points - 1) * 2 * self.robot_radius_pixels
+                    )
+                    >= 0
+                    and int(
+                        position[0]
+                        + i / (num_surrounding_points - 1) * 2 * self.robot_radius_pixels
+                    )
+                    <= self.map_w
+                    and int(
+                        position[1]
+                        + j / (num_surrounding_points - 1) * 2 * self.robot_radius_pixels
+                    )
+                    <= self.map_h
+                ):
+                    surrounding_colors.append(
+                        self.map.get_at(
+                            (
+                                int(
+                                    position[0]
+                                    + i
+                                    / (num_surrounding_points - 1)
+                                    * 2
+                                    * self.robot_radius_pixels
+                                ),
+                                int(
+                                    position[1]
+                                    + j
+                                    / (num_surrounding_points - 1)
+                                    * 2
+                                    * self.robot_radius_pixels
+                                ),
+                            )
                         )
                     )
-                )
-    is_ok = True
-    for color in surrounding_colors:
-        if color == hex_to_rgb(env.obstacle_color):
-            is_ok = False
-            return is_ok
-    return is_ok
+        is_ok = True
+        for color in surrounding_colors:
+            if color == self._hex_to_rgb(self.obstacle_color):
+                is_ok = False
+                return is_ok
+        return is_ok
 
 
-def operate_moving(env):
-    keys = pygame.key.get_pressed()
-    step_size = 5  # Move by 10 pixels per key press
-    # if keys[pygame.K_a] and self.robot_position[0] > env.robot_radius_pixels:
-    #     next_position = (
-    #         self.robot_position[0] - step_size,
-    #         self.robot_position[1],
-    #     )
-    #     if next_position[0] > 0:
-    #         if check_surrounding_colors(env, next_position):
-    #             self.robot_position = next_position  # Move robot left
-    #             env.reset_window()
-    # if keys[pygame.K_d] and self.robot_position[0] < env.map_w - env.robot_radius_pixels:
-    #     next_position = (
-    #         self.robot_position[0] + step_size,
-    #         self.robot_position[1],
-    #     )
-    #     if next_position[0] < env.map_w:
-    #         if check_surrounding_colors(env, next_position):
-    #             self.robot_position = next_position  # Move robot right
-    #             env.reset_window()
-    if keys[pygame.K_w] and env.robot_position[1] > env.robot_radius_pixels:
-        next_position = (
-            env.robot_position[0] + step_size * math.sin(env.robot_theta),
-            env.robot_position[1] - step_size * math.cos(env.robot_theta),
-        )
-        if next_position[1] > 0:
-            if check_surrounding_colors(env, next_position):
-                env.robot_position = next_position  # Move robot left
-                env.reset_window()
-    if keys[pygame.K_s] and env.robot_position[1] < env.map_h - env.robot_radius_pixels:
-        next_position = (
-            env.robot_position[0] - step_size * math.sin(env.robot_theta),
-            env.robot_position[1] + step_size * math.cos(env.robot_theta),
-        )
-        if next_position[1] < env.map_h:
-            if check_surrounding_colors(env, next_position):
-                env.robot_position = next_position  # Move robot left
-                env.reset_window()
-    if keys[pygame.K_e]:
-        env.robot_theta += 0.1  # Rotate robot clockwise
-        if env.robot_theta > 2 * math.pi:
-            env.robot_theta -= 2 * math.pi
-    if keys[pygame.K_q]:
-        env.robot_theta -= 0.1  # Rotate robot counterclockwise
-        if env.robot_theta < 0:
-            env.robot_theta += 2 * math.pi
-
-    # return env.robot_position  # Return the updated robot position
-
-
-def randomize_position(env, spawn_area):
-    """Generates a random position within the environment.
-    area: [xmin, xmax, ymin, ymax] defines the area where the robot can be placed.
-    """
-    if spawn_area is None:
-        spawn_area_xmin = env.map_center_x - env.map_w // 2 + env.robot_radius_pixels
-        spawn_area_xmax = env.map_center_x + env.map_w // 2 - env.robot_radius_pixels
-        spawn_area_ymin = env.map_center_y - env.map_h // 2 + env.robot_radius_pixels
-        spawn_area_ymax = env.map_center_y + env.map_h // 2 - env.robot_radius_pixels
-    else:
-        spawn_area_xmin, spawn_area_xmax, spawn_area_ymin, spawn_area_ymax = spawn_area
-
-    while True:
-        buffer = 10
-        x = random.randint(
-            spawn_area_xmin + buffer,
-            spawn_area_xmax - buffer,
-        )
-        y = random.randint(
-            spawn_area_ymin + buffer,
-            spawn_area_ymax - buffer,
-        )
-        if check_surrounding_colors(env, (x, y)):
-            return (x, y)  # Return the random position
-
-
-def create_start_and_target_position(env, start_spawn_area, target_spawn_area):
-    """Creates random start and target positions for the robot."""
-    if env.map_type == "trap_shaped":
-        T_dt_m = env.T_dt_m_trap_shaped
-    elif env.map_type == "zigzag":
-        T_dt_m = env.T_dt_m_zigzag
-    elif env.map_type == "random":
-        T_dt_m = env.T_dt_m_random
-    elif env.map_type == "empty":
-        T_dt_m = env.T_dt_m_empty
-    while True:
-        env.robot_position = randomize_position(env, start_spawn_area)
-        env.target_position = randomize_position(env, target_spawn_area)
-        distance_btwn_robot_and_target = math.sqrt(
-            (env.target_position[0] - env.robot_position[0]) ** 2
-            + (env.target_position[1] - env.robot_position[1]) ** 2
-        )
-        if distance_btwn_robot_and_target > T_dt_m * env.pixels_per_meter:
-            print(
-                f"Distance between robot and target: {distance_btwn_robot_and_target // env.pixels_per_meter} m"
+    def _operate_moving(self):
+        keys = pygame.key.get_pressed()
+        step_size = 5  # Move by 10 pixels per key press
+        if keys[pygame.K_w] and self.robot_position[1] > self.robot_radius_pixels:
+            next_position = (
+                self.robot_position[0] + step_size * math.sin(self.robot_theta),
+                self.robot_position[1] - step_size * math.cos(self.robot_theta),
             )
-            break
-            # return env.robot_position, env.target_position
+            if next_position[1] > 0:
+                if self._check_surrounding_colors(next_position):
+                    self.robot_position = next_position  # Move robot left
+                    self.reset_window()
+        if keys[pygame.K_s] and self.robot_position[1] < self.map_h - self.robot_radius_pixels:
+            next_position = (
+                self.robot_position[0] - step_size * math.sin(self.robot_theta),
+                self.robot_position[1] + step_size * math.cos(self.robot_theta),
+            )
+            if next_position[1] < self.map_h:
+                if self._check_surrounding_colors(next_position):
+                    self.robot_position = next_position  # Move robot left
+                    self.reset_window()
+        if keys[pygame.K_e]:
+            self.robot_theta += 0.1  # Rotate robot clockwise
+            if self.robot_theta > 2 * math.pi:
+                self.robot_theta -= 2 * math.pi
+        if keys[pygame.K_q]:
+            self.robot_theta -= 0.1  # Rotate robot counterclockwise
+            if self.robot_theta < 0:
+                self.robot_theta += 2 * math.pi
 
 
-def calculate_spawan_area_in_zigzag_map(env):
-    """Calculates the spawn area for the robot in the zigzag map."""
-    print("l_passage:", env.l_passage)
-    start_spawn_area = [
-        env.map_center_x
-        - env.l_passage // 2 * env.pixels_per_meter
-        + env.robot_radius_pixels,
-        env.map_center_x
-        + env.l_passage // 2 * env.pixels_per_meter
-        - env.robot_radius_pixels,
-        env.map_h - int(env.divided_space_width * 0.85) + env.robot_radius_pixels,
-        env.map_h - int(env.divided_space_width * 0.15) - env.robot_radius_pixels,
-    ]
-    target_spawn_area = [
-        env.map_center_x
-        - env.l_passage // 2 * env.pixels_per_meter
-        + env.robot_radius_pixels,
-        env.map_center_x
-        + env.l_passage // 2 * env.pixels_per_meter
-        - env.robot_radius_pixels,
-        0 + int(env.divided_space_width * 0.15) + env.robot_radius_pixels,
-        0 + int(env.divided_space_width * 0.85) - env.robot_radius_pixels,
-    ]
-    return start_spawn_area, target_spawn_area
+    def randomize_position(self, spawn_area):
+        """Generates a random position within the environment.
+        area: [xmin, xmax, ymin, ymax] defines the area where the robot can be placed.
+        """
+        if spawn_area is None:
+            spawn_area_xmin = self.map_center_x - self.map_w // 2 + self.robot_radius_pixels
+            spawn_area_xmax = self.map_center_x + self.map_w // 2 - self.robot_radius_pixels
+            spawn_area_ymin = self.map_center_y - self.map_h // 2 + self.robot_radius_pixels
+            spawn_area_ymax = self.map_center_y + self.map_h // 2 - self.robot_radius_pixels
+        else:
+            spawn_area_xmin, spawn_area_xmax, spawn_area_ymin, spawn_area_ymax = spawn_area
+
+        while True:
+            buffer = 10
+            x = self.random_np.integers(
+                spawn_area_xmin + buffer,
+                spawn_area_xmax - buffer,
+            )
+            y = self.random_np.integers(
+                spawn_area_ymin + buffer,
+                spawn_area_ymax - buffer,
+            )
+            if self._check_surrounding_colors((x, y)):
+                return (x, y)  # Return the random position
 
 
-def initialize_map_parameters(env):
-    start_spawn_area = None  # [xmin, xmax, ymin, ymax]
-    target_spawn_area = None  # [xmin, xmax, ymin, ymax]
+    def create_start_and_target_position(self, start_spawn_area, target_spawn_area):
+        """Creates random start and target positions for the robot."""
+        if self.map_type == "trap_shaped":
+            T_dt_m = self.T_dt_m_trap_shaped
+        elif self.map_type == "zigzag":
+            T_dt_m = self.T_dt_m_zigzag
+        elif self.map_type == "random":
+            T_dt_m = self.T_dt_m_random
+        elif self.map_type == "empty":
+            T_dt_m = self.T_dt_m_empty
+        while True:
+            self.robot_position = self.randomize_position(start_spawn_area)
+            self.target_position = self.randomize_position(target_spawn_area)
+            distance_btwn_robot_and_target = math.sqrt(
+                (self.target_position[0] - self.robot_position[0]) ** 2
+                + (self.target_position[1] - self.robot_position[1]) ** 2
+            )
+            if distance_btwn_robot_and_target > T_dt_m * self.pixels_per_meter:
+                print(
+                    f"Distance between robot and target: {distance_btwn_robot_and_target // self.pixels_per_meter} m"
+                )
+                break
 
-    if env.map_type == "trap_shaped":
-        env.create_trap_shaped_map()
+
+    def _calculate_spawan_area_in_zigzag_map(self):
+        """Calculates the spawn area for the robot in the zigzag map."""
+        print("l_passage:", self.l_passage)
         start_spawn_area = [
-            env.map_center_x - int(env.map_w * 0.4) + env.robot_radius_pixels,
-            env.map_center_x + int(env.map_w * 0.4) - env.robot_radius_pixels,
-            env.map_center_y + int(env.map_h * 0.35) + env.robot_radius_pixels,
-            env.map_center_y + int(env.map_h * 0.5) - env.robot_radius_pixels,
+            self.map_center_x
+            - self.l_passage // 2 * self.pixels_per_meter
+            + self.robot_radius_pixels,
+            self.map_center_x
+            + self.l_passage // 2 * self.pixels_per_meter
+            - self.robot_radius_pixels,
+            self.map_h - int(self.divided_space_width * 0.85) + self.robot_radius_pixels,
+            self.map_h - int(self.divided_space_width * 0.15) - self.robot_radius_pixels,
         ]
         target_spawn_area = [
-            env.map_center_x - int(env.map_w * 0.4) + env.robot_radius_pixels,
-            env.map_center_x + int(env.map_w * 0.4) - env.robot_radius_pixels,
-            env.map_center_y - int(env.map_h * 0.5) + env.robot_radius_pixels,
-            env.map_center_y - int(env.map_h * 0.35) - env.robot_radius_pixels,
+            self.map_center_x
+            - self.l_passage // 2 * self.pixels_per_meter
+            + self.robot_radius_pixels,
+            self.map_center_x
+            + self.l_passage // 2 * self.pixels_per_meter
+            - self.robot_radius_pixels,
+            0 + int(self.divided_space_width * 0.15) + self.robot_radius_pixels,
+            0 + int(self.divided_space_width * 0.85) - self.robot_radius_pixels,
         ]
-    elif env.map_type == "zigzag":
-        env.create_zigzag_map()
-        start_spawn_area, target_spawn_area = calculate_spawan_area_in_zigzag_map(env)
-    elif env.map_type == "random":
-        env.create_random_map()
-        start_spawn_area = [
-            env.map_center_x - env.map_w // 2 + env.robot_radius_pixels,
-            env.map_center_x + env.map_w // 2 - env.robot_radius_pixels,
-            env.map_center_y - env.map_h // 2 + env.robot_radius_pixels,
-            env.map_center_y + env.map_h // 2 - env.robot_radius_pixels,
-        ]
-        target_spawn_area = start_spawn_area
-    elif env.map_type == "empty":
-        env.create_empty_map()
-        start_spawn_area = [
-            env.map_center_x - env.map_w // 2 + env.robot_radius_pixels,
-            env.map_center_x + env.map_w // 2 - env.robot_radius_pixels,
-            env.map_center_y - env.map_h // 2 + env.robot_radius_pixels,
-            env.map_center_y + env.map_h // 2 - env.robot_radius_pixels,
-        ]
-        target_spawn_area = start_spawn_area
-    return start_spawn_area, target_spawn_area
+        return start_spawn_area, target_spawn_area
 
 
-def create_environment(env, start_spawn_area, target_spawn_area):
-    """Creates the environment and initializes the map."""
-    if env.map_type == "trap_shaped":
-        env.create_trap_shaped_map()
-    elif env.map_type == "zigzag":
-        env.create_zigzag_map()
-        start_spawn_area, target_spawn_area = calculate_spawan_area_in_zigzag_map(env)
-    elif env.map_type == "random":
-        env.create_random_map()
-    elif env.map_type == "empty":
-        env.create_empty_map()
-    env.map.blit(env.obstacle_layer, (0, 0))
-    env.robot_position, env.target_position = create_start_and_target_position(
-        env, start_spawn_area, target_spawn_area
-    )
-    # return env.robot_position, env.target_position
+    def initialize_map_parameters(self):
+        start_spawn_area = None  # [xmin, xmax, ymin, ymax]
+        target_spawn_area = None  # [xmin, xmax, ymin, ymax]
+
+        if self.map_type == "trap_shaped":
+            start_spawn_area = [
+                self.map_center_x - int(self.map_w * 0.4) + self.robot_radius_pixels,
+                self.map_center_x + int(self.map_w * 0.4) - self.robot_radius_pixels,
+                self.map_center_y + int(self.map_h * 0.35) + self.robot_radius_pixels,
+                self.map_center_y + int(self.map_h * 0.5) - self.robot_radius_pixels,
+            ]
+            target_spawn_area = [
+                self.map_center_x - int(self.map_w * 0.4) + self.robot_radius_pixels,
+                self.map_center_x + int(self.map_w * 0.4) - self.robot_radius_pixels,
+                self.map_center_y - int(self.map_h * 0.5) + self.robot_radius_pixels,
+                self.map_center_y - int(self.map_h * 0.35) - self.robot_radius_pixels,
+            ]
+        elif self.map_type == "zigzag":
+            start_spawn_area, target_spawn_area = self._calculate_spawan_area_in_zigzag_map()
+        elif self.map_type == "random":
+            start_spawn_area = [
+                self.map_center_x - self.map_w // 2 + self.robot_radius_pixels,
+                self.map_center_x + self.map_w // 2 - self.robot_radius_pixels,
+                self.map_center_y - self.map_h // 2 + self.robot_radius_pixels,
+                self.map_center_y + self.map_h // 2 - self.robot_radius_pixels,
+            ]
+            target_spawn_area = start_spawn_area
+        elif self.map_type == "empty":
+            start_spawn_area = [
+                self.map_center_x - self.map_w // 2 + self.robot_radius_pixels,
+                self.map_center_x + self.map_w // 2 - self.robot_radius_pixels,
+                self.map_center_y - self.map_h // 2 + self.robot_radius_pixels,
+                self.map_center_y + self.map_h // 2 - self.robot_radius_pixels,
+            ]
+            target_spawn_area = start_spawn_area
+        return start_spawn_area, target_spawn_area
+
+    def create_map(self):
+        """Creates the environment and initializes the map."""
+        if self.map_type == "trap_shaped":
+            self._create_trap_shaped_map()
+        elif self.map_type == "zigzag":
+            self._create_zigzag_map()
+        elif self.map_type == "random":
+            self._create_random_map()
+        elif self.map_type == "empty":
+            self._create_empty_map()
+
 
 
 def main():
@@ -870,11 +839,12 @@ def main():
 
     map_type_list = ["trap_shaped", "zigzag", "random", "empty"]
     env.map_type = "empty"  # ["trap_shaped", "zigzag", "random", "empty"]
-    start_spawn_area, target_spawn_area = initialize_map_parameters(env)
+    env.create_map()
+    start_spawn_area, target_spawn_area = env.initialize_map_parameters()
     env.reset_window()
     print("Environment created with obstacles.")
     running = True
-    create_start_and_target_position(env, start_spawn_area, target_spawn_area)
+    env.create_start_and_target_position(start_spawn_area, target_spawn_area)
     # self.robot_position, self.target_position = create_start_and_target_position(
     #     env, start_spawn_area, target_spawn_area
     # )
@@ -899,9 +869,10 @@ def main():
                     print(f"Map type changed to: {env.map_type}")
 
                     env.reset_environment()
-                    start_spawn_area, target_spawn_area = initialize_map_parameters(env)
-                    create_start_and_target_position(
-                        env, start_spawn_area, target_spawn_area
+                    env.create_map()
+                    start_spawn_area, target_spawn_area = env.initialize_map_parameters()
+                    env.create_start_and_target_position(
+                        start_spawn_area, target_spawn_area
                     )
                     # self.robot_position, self.target_position = (
                     #     create_start_and_target_position(
@@ -910,9 +881,10 @@ def main():
                     # )
                 if event.key == pygame.K_SPACE:
                     env.reset_environment()  # Reset the environment
-                    start_spawn_area, target_spawn_area = initialize_map_parameters(env)
-                    create_start_and_target_position(
-                        env, start_spawn_area, target_spawn_area
+                    env.create_map()
+                    start_spawn_area, target_spawn_area = env.initialize_map_parameters()
+                    env.create_start_and_target_position(
+                        start_spawn_area, target_spawn_area
                     )
                     # self.robot_position, self.target_position = (
                     #     create_start_and_target_position(
@@ -920,8 +892,8 @@ def main():
                     #     )
                     # )
 
-        operate_moving(env)  # Handle robot movement
-        # self.robot_position = operate_moving(
+        env._operate_moving()  # Handle robot movement
+        # self.robot_position = _operate_moving(
         #     self.robot_position, env
         # )  # Handle robot movement
 
