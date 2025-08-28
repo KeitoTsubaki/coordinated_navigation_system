@@ -280,6 +280,9 @@ class Environment(Node):
             #     (obstacle_cx, obstacle_cy),
             #     1,
             # )
+        self.map.blit(
+            self.obstacle_layer, (0, 0)
+        )  # Draw the obstacle layer onto the map
 
     def _create_trap_shaped_map(self):
         """Creates a trap-shaped map with obstacles"""
@@ -375,6 +378,9 @@ class Environment(Node):
                 ),
                 width=0,
             )
+        self.map.blit(
+            self.obstacle_layer, (0, 0)
+        )  # Draw the obstacle layer onto the map
 
     def _create_zigzag_map(self):
         """Creates a zigzag-shaped map with obstacles"""
@@ -447,6 +453,9 @@ class Environment(Node):
                 ),
                 width=0,
             )
+        self.map.blit(
+            self.obstacle_layer, (0, 0)
+        )  # Draw the obstacle layer onto the map
 
     def _create_empty_map(self):
         """Creates an empty map with no obstacles."""
@@ -561,7 +570,50 @@ class Environment(Node):
                 robot_head_position,
                 2,  # Draw the robot's head
             )
-
+            
+            num_surrounding_points = 5
+            for i in range(-2, 3):
+                for j in range(-2, 3):
+                    if (
+                        int(
+                            self.target_position[0]
+                            + i / (num_surrounding_points - 1) * 2 * self.robot_radius_pixels
+                        )
+                        >= 0
+                        and int(
+                            self.target_position[1]
+                            + j / (num_surrounding_points - 1) * 2 * self.robot_radius_pixels
+                        )
+                        >= 0
+                        and int(
+                            self.target_position[0]
+                            + i / (num_surrounding_points - 1) * 2 * self.robot_radius_pixels
+                        )
+                        <= self.map_w
+                        and int(
+                            self.target_position[1]
+                            + j / (num_surrounding_points - 1) * 2 * self.robot_radius_pixels
+                        )
+                        <= self.map_h
+                    ):
+                        pygame.draw.circle(
+                            self.lidar_sensor_layer,
+                            (255, 0, 0),
+                            (
+                                int(
+                                    self.target_position[0]
+                                    + i / (num_surrounding_points - 1) * 2 * self.robot_radius_pixels
+                                ),
+                                int(
+                                    self.target_position[1]
+                                    + j / (num_surrounding_points - 1) * 2 * self.robot_radius_pixels
+                                ),
+                            ),
+                            1,
+                        )
+                # self.map.blit(
+                #     self.lidar_sensor_layer, (0, 0)
+                # )
             self.map.blit(
                 self.lidar_sensor_layer, (0, 0)
             )  # Overlay lidar sensor layer on the map
@@ -618,7 +670,6 @@ class Environment(Node):
 
     def _check_surrounding_colors(self, position):
         """Checks the surrounding colors of a position in the environment."""
-        surrounding_colors = []
         # Number of pixels to check in each direction (odd number)
         num_surrounding_points = 5
         for i in range(-2, 3):
@@ -645,32 +696,27 @@ class Environment(Node):
                     )
                     <= self.map_h
                 ):
-                    surrounding_colors.append(
-                        self.map.get_at(
+                    surrounding_color = self.map.get_at(
                             (
                                 int(
                                     position[0]
                                     + i
+                                    * 2 * self.robot_radius_pixels
                                     / (num_surrounding_points - 1)
-                                    * 2
-                                    * self.robot_radius_pixels
                                 ),
                                 int(
                                     position[1]
                                     + j
+                                    * 2 * self.robot_radius_pixels
                                     / (num_surrounding_points - 1)
-                                    * 2
-                                    * self.robot_radius_pixels
                                 ),
                             )
                         )
-                    )
-        is_ok = True
-        for color in surrounding_colors:
-            if color == self._hex_to_rgb(self.obstacle_color):
-                is_ok = False
-                return is_ok
-        return is_ok
+                    print(f"surrounding_color: {surrounding_color}")
+                    if surrounding_color == self._hex_to_rgb(self.obstacle_color):
+                        print("Collision detected!")
+                        return False
+        return True
 
 
     def _operate_moving(self):
