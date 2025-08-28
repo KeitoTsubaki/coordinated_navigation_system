@@ -20,6 +20,12 @@ robot:
   T_dt_m_zigzag: 15 # The threshold distance between the start and end position (meters)
   T_dt_m_random: 20 # The threshold distance between the start and end position (
   T_dt_m_empty: 20
+  v_max: 1.2            # 最大線速度（m/s）
+  omega_max: 4.71        # 最大角速度（rad/s） 1.5 * pi
+  a_max: 2            # 最大線加速度（m/ss）
+  alpha_max: 12.61        # 最大角加速度（rad/ss） 4 * pi
+  max_d: 0.12          # 1ステップで進む最大距離（m）
+  max_theta: 0.47    # 1ステップで回転する最大角度（rad）0.15 * pi
 
 lidar:
   range_m: 10           # 最大距離（m）
