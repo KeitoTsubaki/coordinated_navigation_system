@@ -838,7 +838,6 @@ def main():
     env = Environment()
 
     map_type_list = ["trap_shaped", "zigzag", "random", "empty"]
-    env.map_type = "empty"  # ["trap_shaped", "zigzag", "random", "empty"]
     env.create_map()
     start_spawn_area, target_spawn_area = env.initialize_map_parameters()
     env.reset_window()
