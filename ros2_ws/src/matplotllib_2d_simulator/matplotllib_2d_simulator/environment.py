@@ -828,6 +828,20 @@ class Environment(Node):
             self._create_random_map()
         elif self.map_type == "empty":
             self._create_empty_map()
+    
+    def switch_map_type(self, switch_mode="cycle"):
+        # switch_mode: "cycle", "random"
+        map_type_list = ["trap_shaped", "zigzag", "random", "empty"]
+        
+        if switch_mode == "cycle":
+            map_type_index = map_type_list.index(self.map_type)
+            self.map_type = map_type_list[
+                (map_type_index + 1) % len(map_type_list)
+            ]
+            print(f"Map type changed to: {self.map_type}")
+        elif switch_mode == "random":
+            self.map_type = self.random_np.choice(map_type_list)
+            print(f"Map type changed to: {self.map_type}")
 
 
 
@@ -836,8 +850,7 @@ def main():
     rclpy.init()
 
     env = Environment()
-
-    map_type_list = ["trap_shaped", "zigzag", "random", "empty"]
+    
     env.create_map()
     start_spawn_area, target_spawn_area = env.initialize_map_parameters()
     env.reset_window()
@@ -861,11 +874,7 @@ def main():
                     running = False
                 if event.key == pygame.K_c:
                     # Change the map type
-                    map_type_index = map_type_list.index(env.map_type)
-                    env.map_type = map_type_list[
-                        (map_type_index + 1) % len(map_type_list)
-                    ]
-                    print(f"Map type changed to: {env.map_type}")
+                    env.switch_map_type(switch_mode="cycle")
 
                     env.reset_environment()
                     env.create_map()
