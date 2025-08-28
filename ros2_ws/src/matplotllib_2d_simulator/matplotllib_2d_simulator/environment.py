@@ -145,7 +145,7 @@ class Environment(Node):
                 - msg.linear.x * speed * math.cos(self.robot_theta),
             )
             if next_position[1] > 0:
-                if _check_surrounding_colors(self, next_position):
+                if self._check_surrounding_colors(next_position):
                     self.robot_position = next_position  # Move robot left
                     self.reset_window()
         self.robot_theta += msg.angular.z  # Rotate robot clockwise
