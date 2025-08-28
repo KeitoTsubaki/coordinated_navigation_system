@@ -32,6 +32,7 @@ class LiDARSensor(Node):
             0,
             0,
         )  # <<< self.position should update to cursor's position!!!! BUG NEEDS TO BE FIXED
+        self.theta = 0
         # self.map = map
         self.W, self.H = pygame.display.get_surface().get_size()
         self.sensedObstacles = []
@@ -63,7 +64,8 @@ class LiDARSensor(Node):
                 x1 + self.Range * math.cos(angle),
                 y1 + self.Range * math.sin(angle),
             )  # coordinate of end of line segment
-            # print(angle)
+
+            
             for i in range(0, 100):  # If wall is within laser's path ...
                 u = i / 100  # Essentially a percentage
                 x = int(x1 + (x2 - x1) * u)
@@ -129,6 +131,7 @@ class LiDARSensor(Node):
             # print(point_data)
             distance = point_data[0]
             angle = point_data[1]
+            angle -= self.theta  # add robot's orientation to angle
             # x_distance = (
             #     point_data[2][0] + distance * math.cos(angle)
             # ) / pixels_per_meter
@@ -136,12 +139,17 @@ class LiDARSensor(Node):
             #     point_data[2][1] + distance * math.sin(angle)
             # ) / pixels_per_meter
             # robot centoroid
-            x_distance = (distance * math.cos(angle)) / pixels_per_meter
-            y_distance = (distance * math.sin(angle)) / pixels_per_meter
+            # x_distance = (distance * math.cos(angle)) / pixels_per_meter
+            # y_distance = (distance * math.sin(angle)) / pixels_per_meter
+            y_distance = -(distance * math.cos(angle)) / pixels_per_meter
+            x_distance = -(distance * math.sin(angle)) / pixels_per_meter
+            
+            
             # print("x_distance, y_distance: ", x_distance, y_distance)
             # x_distance = point_data[0]
             # y_distance = point_data[1]
             points.append([x_distance, y_distance, 0.0])  # 2Dデータのためz=0
+            # points.append([-y_distance, -x_distance, 0.0])  # 2Dデータのためz=0
 
         # PointCloud2のフィールドを定義
         fields = [

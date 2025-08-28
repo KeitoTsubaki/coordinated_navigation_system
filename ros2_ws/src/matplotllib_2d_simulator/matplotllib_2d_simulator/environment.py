@@ -24,6 +24,8 @@ from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from ament_index_python.packages import get_package_share_directory
 from sensor_msgs.msg import PointCloud2
+from tf2_ros import TransformBroadcaster
+from geometry_msgs.msg import TransformStamped
 
 # import sensors
 from matplotllib_2d_simulator import sensors
@@ -113,6 +115,9 @@ class Environment(Node):
 
         self.publisher_ = self.create_publisher(PointCloud2, "pointcloud", 10)
         self.get_logger().info("PointCloud Publisher Node has been started.")
+        
+        self.publisher_ = self.create_publisher(PointCloud2, "pointcloud", 10)
+        self.get_logger().info("PointCloud Publisher Node has been started.")
 
         self.subscription = self.create_subscription(
             Twist,
@@ -120,6 +125,7 @@ class Environment(Node):
             self.listener_callback,
             10,  # QoS
         )
+        self.tf_broadcaster = TransformBroadcaster(self)
 
     def listener_callback(self, msg: Twist):
         self.get_logger().info(
@@ -577,6 +583,27 @@ class Environment(Node):
         self.lidar_sensor_layer = pygame.Surface(
             (self.map_w, self.map_h), pygame.SRCALPHA
         )
+    
+    def publish_tf(self):
+        t = TransformStamped()
+
+        t.header.stamp = self.get_clock().now().to_msg()
+        t.header.frame_id = "map"        # ワールド座標系
+        t.child_frame_id = "base_link"    # ロボットのフレーム
+
+        # 2Dの位置を3Dに拡張
+        t.transform.translation.x = -(self.robot_position[1] - self.map_center_y) / self.pixels_per_meter
+        t.transform.translation.y = -(self.robot_position[0] - self.map_center_x) / self.pixels_per_meter
+        t.transform.translation.z = 0.0
+
+        # 角度をクォータニオンに変換
+        angle = self.robot_theta + math.pi # 2Dの角度を調整
+        qz = math.cos(angle / 2.0)
+        qw = math.sin(angle / 2.0)
+        t.transform.rotation.z = qz
+        t.transform.rotation.w = qw
+
+        self.tf_broadcaster.sendTransform(t)
 
 
 def hex_to_rgb(hex_color):
@@ -902,6 +929,7 @@ def main():
             env.lidar_range_pixels, env.map, uncertainty=(0, 0)
         )
         sensor.position = env.robot_position
+        sensor.theta = env.robot_theta
         sensor_data = sensor.sense_obstacles(
             env.map, env.obstacle_color
         )  # Step 3: Sense. Stores sensed data array into sensor_data
@@ -918,6 +946,7 @@ def main():
         #     f"Publishing a point cloud with {len(point_cloud_msg)} points."
         # )
         env.publisher_.publish(point_cloud_msg)
+        env.publish_tf()
 
         # ウィンドウを更新
         pygame.display.flip()
