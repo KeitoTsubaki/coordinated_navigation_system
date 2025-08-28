@@ -2,11 +2,12 @@ import os
 
 import gymnasium as gym
 from gymnasium import spaces
+import pygame
 import numpy as np
 import yaml
 from ament_index_python.packages import get_package_share_directory
 
-
+from matplotllib_2d_simulator import environment
 
 class Env(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 30}
@@ -138,4 +139,34 @@ class Env(gym.Env):
     def _get_info(self):
         info = None
         return info
+    
+    def render(self):
+        # Render the environment to the screen
+        if self.render_mode == "rgb_array":
+            return self._render_frame()
+        # elif self.render_mode == "human":
+        #     if self.window is None:
+        #         import pygame
 
+        #         pygame.init()
+        #         pygame.display.set_caption("2D Simulator")
+        #         self.window = pygame.display.set_mode((800, 800))
+        #         self.clock = pygame.time.Clock()
+
+        #     self._render_frame()
+        #     self.clock.tick(30)
+        #     pygame.display.flip()
+        
+    def _render_frame(self):
+        if self.window is None and self.render_mode == "human":
+            pygame.init()
+            pygame.display.init()
+            env = environment.Environment()
+            
+            self.window = env.map
+            
+        if self.clock is None and self.render_mode == "human":
+            self.clock = pygame.time.Clock()
+
+        if self.render_mode == "human":
+            pass
