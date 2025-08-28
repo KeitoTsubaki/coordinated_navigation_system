@@ -49,20 +49,34 @@ class Env(gym.Env):
                 ),
             }
         )
+        self.reset()
 
     def step(self, action):
         # Execute one time step within the environment
-        pass
+        #! TODO: actionの出力値に変更を加える
+        #! TODO: reward関数を作る
+        v, omega = action
+        dt = 0.1
+        self.robot_theta += omega * dt
+        self.robot_pos += v * dt * np.array([np.cos(self.robot_theta), np.sin(self.robot_theta)])
+
+        reward = -np.linalg.norm(self.robot_pos - self.goal_pos)
+        terminated = np.linalg.norm(self.robot_pos - self.goal_pos) < 0.5
+        truncated = self.step_count > 200
+        self.step_count += 1
+        observation = None
+        info = None
+        return observation, reward, terminated, truncated, info
 
     def reset(self, seed=None, options=None):
         # Reset the state of the environment to an initial state
         super().reset(seed=seed)
-        pass
+        #! TODO: 正しい初期化に変更。この時点でランダムな値にする？
+        self.robot_pos = np.array([1.0, 1.0])
+        self.robot_theta = 0.0
+        self.goal_pos = np.array([8.0, 8.0])
+        self.obstacles = [((4, 4), (2, 1))]  # (center), (width, height)
+        observation = None
+        info = None
+        return observation, info
 
-    def render(self):
-        # Render the environment to the screen
-        pass
-
-    def close(self):
-        # close the environment
-        pass
