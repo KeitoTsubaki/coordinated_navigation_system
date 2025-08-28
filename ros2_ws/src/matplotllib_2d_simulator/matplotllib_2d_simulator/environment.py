@@ -237,16 +237,15 @@ class Environment(Node):
         print(f"Obstacle Position: {obstacle_cx}, {obstacle_cy}")
 
         for obstacle_cx, obstacle_cy in self.obstacle_pos_list:
-            # obstacle_width = self.random_np.integers(60, 120)
-            # obstacle_height = self.random_np.integers(60, 120)
-            shape_random = self.random_np.integers(0, 1)
+            shape_random = self.random_np.integers(0, 1, endpoint=True)
+            print(f"shape_random: {shape_random}")
             if shape_random == 0:
                 # Draw a rectangle obstacle
                 rectangular_l_m = 4 + self.random_np.uniform(0, 1)
                 rectangular_w_m = 0.5 + self.random_np.uniform(0, 1) * 0.5
                 rectangular_l_pixels = int(rectangular_l_m * self.pixels_per_meter)
                 rectangular_w_pixels = int(rectangular_w_m * self.pixels_per_meter)
-                if self.random_np.integers(0, 1) == 0:
+                if self.random_np.integers(0, 1, endpoint=True) == 0:
                     object_width = rectangular_w_pixels
                     object_height = rectangular_l_pixels
                 else:
@@ -295,10 +294,10 @@ class Environment(Node):
             l_vertical_left = 6 * p_t + 1 + 4 * self.random_np.uniform(0, 1)
             l_vertical_right = 6 * p_t + 1 + 4 * self.random_np.uniform(0, 1)
             if i == 0:
-                if self.random_np.integers(0, 1) == 0:
+                if self.random_np.integers(0, 1, endpoint=True) == 0:
                     l_vertical_left = self.map_h
             elif i == 2:
-                if self.random_np.integers(0, 1) == 0:
+                if self.random_np.integers(0, 1, endpoint=True) == 0:
                     l_vertical_right = self.map_h
             l_vertical.append([l_vertical_left, l_vertical_right])
         w_passage_0 = -1.6 * p_t + 2.5 + 0.2 * self.random_np.uniform(0, 1)
@@ -424,7 +423,7 @@ class Environment(Node):
             )
 
         # Draw horizontal walls
-        r = self.random_np.integers(0, 1)
+        r = self.random_np.integers(0, 1, endpoint=True)
         for i in range(4):
             if i % 2 == r:
                 horizontal_wall_xmin = (
