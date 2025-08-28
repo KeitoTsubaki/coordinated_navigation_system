@@ -1,26 +1,52 @@
+import os
+
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
+import yaml
+from ament_index_python.packages import get_package_share_directory
+
 
 
 class Env(gym.Env):
-    def __init__(self, v_max, omega_max, r_lidar, n_l, n_e):
+    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 30}
+    def __init__(self, render_mode=None):
         super().__init__()
+        
+        config_path = os.path.join(
+            get_package_share_directory("matplotllib_2d_simulator"),
+            "config",
+            "simulator_config.yaml",
+        )
+        with open(config_path, "r", encoding="utf-8") as f:
+            config = yaml.safe_load(f)
+        
         # Define action and observation space
-
-        self.v_max = v_max
-        self.omega_max = omega_max
-        self.r_lidar = r_lidar
-        self.n_l = n_l
-        self.n_e = n_e
+        self.v_max = config["robot"]["v_max"]
+        self.omega_max = config["robot"]["omega_max"]
+        self.a_max = config["robot"]["a_max"]
+        self.alpha_max = config["robot"]["alpha_max"]
+        self.max_d = config["robot"]["max_d"]
+        self.max_theta = config["robot"]["max_theta"]
+        self.r_lidar = config["lidar"]["range_m"]
+        self.n_l = None
+        self.n_e = None
+        
+        self.v_previous = 0.0
+        self.omega_previous = 0.0
+        
+        
+        
+        
 
         # DDPG allows continuous action space, and the action of differential-
         # driven robots includes the linear and angular velocity.
         # v_n: 0 ~ v_max
         # omega_n: -omega_max ~ omega_max
+        # action = [v_n, omega_n]
         self.action_space = spaces.Box(
-            low=np.array([0, -omega_max]),
-            high=np.array([v_max, omega_max]),
+            low=np.array([0, -self.omega_max]),
+            high=np.array([self.v_max, self.omega_max]),
             dtype=np.float32,
         )
         # We design a robot-centric observation space to remove the dependency
@@ -49,8 +75,15 @@ class Env(gym.Env):
                 ),
             }
         )
-        self.reset()
-
+        
+        assert render_mode is None or render_mode in self.metadata["render_modes"]
+        self.render_mode = render_mode
+        
+        # for human-rendering
+        self.window = None
+        self.clock = None
+        
+        
     def step(self, action):
         # Execute one time step within the environment
         #! TODO: actionの出力値に変更を加える
@@ -79,4 +112,30 @@ class Env(gym.Env):
         observation = None
         info = None
         return observation, info
+    
+    def _action_to_executable_action(self, action):
+        v_n, omega_n = action
+
+        dt = 0.1  # 仮の値
+        v_kmin = max(0, self.v_previous - self.a_max * dt)
+        v_kmax = min(self.v_max, self.v_previous + self.a_max * dt)
+        omega_kmin = max(-self.omega_max, self.omega_previous - self.alpha_max * dt)
+        omega_kmax = min(self.omega_max, self.omega_previous + self.alpha_max * dt)
+        
+        v_e = np.clip(v_n, v_kmin, v_kmax)
+        omega_e = np.clip(omega_n, omega_kmin, omega_kmax)
+        
+        self.v_previous = v_e
+        self.omega_previous = omega_e
+        return v_e, omega_e
+    
+    def _get_obs(self):
+        observation = {
+                "lidar", "goal", "velocity", "closest_obstacle"
+            }
+        return observation
+
+    def _get_info(self):
+        info = None
+        return info
 
