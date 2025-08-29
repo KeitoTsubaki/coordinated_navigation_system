@@ -110,12 +110,16 @@ class Env(gym.Env):
         # Reset the state of the environment to an initial state
         super().reset(seed=seed)
         #! TODO: 正しい初期化に変更。この時点でランダムな値にする？
-        self.robot_pos = np.array([1.0, 1.0])
-        self.robot_theta = 0.0
-        self.goal_pos = np.array([8.0, 8.0])
-        self.obstacles = [((4, 4), (2, 1))]  # (center), (width, height)
-        observation = None
-        info = None
+        
+        self.env.np_random = self.np_random
+        self.env.render_window()
+        
+        observation = self._get_obs()
+        info = self._get_info()
+        
+        if self.render_mode == "human":
+            self._render_frame()
+        
         return observation, info
 
     def _calculate_reward(self):
@@ -165,7 +169,6 @@ class Env(gym.Env):
             self.clock = pygame.time.Clock()
 
         if self.render_mode == "human":
-            # env.render_window() # only for the first time or when the map is changed
             self.env.clear_lidar_layer()  # Reset the lidar line while remaining the map and obstacles
             
             self.env.change_map_by_event()
