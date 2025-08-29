@@ -95,7 +95,7 @@ class Env(gym.Env):
         # An eppisode is done if the robot has reached the target or collided with an obstacle
         # Terminated: Reached the target or collided with an obstacle
         # Truncated: Time limit exceeded
-        terminated = self.env.check_reaching_target() or self.env.check_collision(self.env.robot_position)
+        terminated = self.env.check_reaching_target() or self.env.is_collision(self.env.robot_position)
         truncated = False
         observation = self._get_obs()
         info = self._get_info()
