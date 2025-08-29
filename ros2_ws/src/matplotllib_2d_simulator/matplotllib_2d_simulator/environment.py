@@ -48,7 +48,7 @@ class Environment(Node):
         with open(config_path, "r", encoding="utf-8") as f:
             config = yaml.safe_load(f)
             
-        self.random_np = np.random.default_rng(0) # random number generator with seed 0
+        self.np_random = np.random.default_rng(0) # random number generator with seed 0
 
         self.background_color = config["map"]["background_color"]
         self.map_w, self.map_h = config["map"]["size"], config["map"]["size"]
@@ -213,11 +213,11 @@ class Environment(Node):
                 self.obstacle_pos_list = []
                 count = 0
 
-            obstacle_cx = self.random_np.integers(
+            obstacle_cx = self.np_random.integers(
                 self.map_center_x - obstacle_area_width // 2,
                 self.map_center_x + obstacle_area_width // 2,
             )
-            obstacle_cy = self.random_np.integers(
+            obstacle_cy = self.np_random.integers(
                 self.map_center_y - obstacle_area_height // 2,
                 self.map_center_y + obstacle_area_height // 2,
             )
@@ -242,15 +242,15 @@ class Environment(Node):
         print(f"Obstacle Position: {obstacle_cx}, {obstacle_cy}")
 
         for obstacle_cx, obstacle_cy in self.obstacle_pos_list:
-            shape_random = self.random_np.integers(0, 1, endpoint=True)
+            shape_random = self.np_random.integers(0, 1, endpoint=True)
             print(f"shape_random: {shape_random}")
             if shape_random == 0:
                 # Draw a rectangle obstacle
-                rectangular_l_m = 4 + self.random_np.uniform(0, 1)
-                rectangular_w_m = 0.5 + self.random_np.uniform(0, 1) * 0.5
+                rectangular_l_m = 4 + self.np_random.uniform(0, 1)
+                rectangular_w_m = 0.5 + self.np_random.uniform(0, 1) * 0.5
                 rectangular_l_pixels = int(rectangular_l_m * self.pixels_per_meter)
                 rectangular_w_pixels = int(rectangular_w_m * self.pixels_per_meter)
-                if self.random_np.integers(0, 1, endpoint=True) == 0:
+                if self.np_random.integers(0, 1, endpoint=True) == 0:
                     object_width = rectangular_w_pixels
                     object_height = rectangular_l_pixels
                 else:
@@ -269,7 +269,7 @@ class Environment(Node):
                 )
             elif shape_random == 1:
                 # Draw a circular obstacle
-                radius_m = 0.5 + self.random_np.uniform(0, 1)
+                radius_m = 0.5 + self.np_random.uniform(0, 1)
                 radius_pixels = int(radius_m * self.pixels_per_meter)
                 pygame.draw.circle(
                     self.obstacle_layer,
@@ -296,20 +296,20 @@ class Environment(Node):
         w_wall = 0.2  # Width of the walls in meters
         l_horizontal = []
         for i in range(3):
-            l_horizontal.append(1.5 * p_t + 3 + self.random_np.uniform(0, 1))
+            l_horizontal.append(1.5 * p_t + 3 + self.np_random.uniform(0, 1))
         l_vertical = []
         for i in range(3):
-            l_vertical_left = 6 * p_t + 1 + 4 * self.random_np.uniform(0, 1)
-            l_vertical_right = 6 * p_t + 1 + 4 * self.random_np.uniform(0, 1)
+            l_vertical_left = 6 * p_t + 1 + 4 * self.np_random.uniform(0, 1)
+            l_vertical_right = 6 * p_t + 1 + 4 * self.np_random.uniform(0, 1)
             if i == 0:
-                if self.random_np.integers(0, 1, endpoint=True) == 0:
+                if self.np_random.integers(0, 1, endpoint=True) == 0:
                     l_vertical_left = self.map_h
             elif i == 2:
-                if self.random_np.integers(0, 1, endpoint=True) == 0:
+                if self.np_random.integers(0, 1, endpoint=True) == 0:
                     l_vertical_right = self.map_h
             l_vertical.append([l_vertical_left, l_vertical_right])
-        w_passage_0 = -1.6 * p_t + 2.5 + 0.2 * self.random_np.uniform(0, 1)
-        w_passage_1 = (0.5 + 0.5 * self.random_np.uniform(0, 1)) * w_passage_0
+        w_passage_0 = -1.6 * p_t + 2.5 + 0.2 * self.np_random.uniform(0, 1)
+        w_passage_1 = (0.5 + 0.5 * self.np_random.uniform(0, 1)) * w_passage_0
 
         distance_btwn_H_shaped_obstacles_left = (
             l_horizontal[1] / 2 + w_passage_0 + w_wall * 2 + l_horizontal[0] / 2
@@ -322,15 +322,15 @@ class Environment(Node):
         positions_of_H_shaped_obstacles = [
             (
                 self.map_center_x - distance_btwn_H_shaped_obstacles_left,
-                self.map_center_y + self.random_np.uniform(-1, 1) * self.pixels_per_meter,
+                self.map_center_y + self.np_random.uniform(-1, 1) * self.pixels_per_meter,
             ),
             (
                 self.map_center_x,
-                self.map_center_y + self.random_np.uniform(-1, 1) * self.pixels_per_meter,
+                self.map_center_y + self.np_random.uniform(-1, 1) * self.pixels_per_meter,
             ),
             (
                 self.map_center_x + distance_btwn_H_shaped_obstacles_right,
-                self.map_center_x + self.random_np.uniform(-1, 1) * self.pixels_per_meter,
+                self.map_center_x + self.np_random.uniform(-1, 1) * self.pixels_per_meter,
             ),
         ]
 
@@ -392,13 +392,13 @@ class Environment(Node):
         # Parameters
         p_z = min(self.s_z / self.k9, 1)
         w_wall = 0.2
-        self.l_passage = 6 * p_z + 8 + 2 * self.random_np.uniform(0, 1)
+        self.l_passage = 6 * p_z + 8 + 2 * self.np_random.uniform(0, 1)
         w_openings = []
         for _ in range(4):
-            w_openings.append(-4.6 * p_z + 6 + 0.4 * self.random_np.uniform(0, 1))
+            w_openings.append(-4.6 * p_z + 6 + 0.4 * self.np_random.uniform(0, 1))
         d_deviations = []
         for _ in range(4):
-            d_deviations.append(2.4 * self.random_np.uniform(0, 1) - 1.2)
+            d_deviations.append(2.4 * self.np_random.uniform(0, 1) - 1.2)
 
         self._create_base_map()
 
@@ -434,7 +434,7 @@ class Environment(Node):
             )
 
         # Draw horizontal walls
-        r = self.random_np.integers(0, 1, endpoint=True)
+        r = self.np_random.integers(0, 1, endpoint=True)
         for i in range(4):
             if i % 2 == r:
                 horizontal_wall_xmin = (
@@ -779,11 +779,11 @@ class Environment(Node):
 
         while True:
             buffer = 10
-            x = self.random_np.integers(
+            x = self.np_random.integers(
                 spawn_area_xmin + buffer,
                 spawn_area_xmax - buffer,
             )
-            y = self.random_np.integers(
+            y = self.np_random.integers(
                 spawn_area_ymin + buffer,
                 spawn_area_ymax - buffer,
             )
@@ -900,7 +900,7 @@ class Environment(Node):
             ]
             print(f"Map type changed to: {self.map_type}")
         elif switch_mode == "random":
-            self.map_type = self.random_np.choice(map_type_list)
+            self.map_type = self.np_random.choice(map_type_list)
             print(f"Map type changed to: {self.map_type}")
 
     def render_window(self):
