@@ -150,7 +150,7 @@ class Environment(Node):
                 - msg.linear.x * speed * math.cos(self.robot_theta),
             )
             if next_position[1] > 0:
-                if self._check_surrounding_colors(next_position):
+                if self.check_surrounding_colors(next_position):
                     self.robot_position = next_position  # Move robot left
                     self.clear_lidar_layer()
         self.robot_theta += msg.angular.z  # Rotate robot clockwise
@@ -674,7 +674,7 @@ class Environment(Node):
         return (r, g, b)
 
 
-    def _check_surrounding_colors(self, position):
+    def check_surrounding_colors(self, position):
         """Checks the surrounding colors of a position in the environment."""
         # Number of pixels to check in each direction (odd number)
         num_surrounding_points = 5
@@ -734,7 +734,7 @@ class Environment(Node):
                 self.robot_position[1] - step_size * math.cos(self.robot_theta),
             )
             if next_position[1] > 0:
-                if self._check_surrounding_colors(next_position):
+                if self.check_surrounding_colors(next_position):
                     self.robot_position = next_position  # Move robot left
                     self.clear_lidar_layer()
         if keys[pygame.K_s] and self.robot_position[1] < self.map_h - self.robot_radius_pixels:
@@ -743,7 +743,7 @@ class Environment(Node):
                 self.robot_position[1] + step_size * math.cos(self.robot_theta),
             )
             if next_position[1] < self.map_h:
-                if self._check_surrounding_colors(next_position):
+                if self.check_surrounding_colors(next_position):
                     self.robot_position = next_position  # Move robot left
                     self.clear_lidar_layer()
         if keys[pygame.K_e]:
@@ -778,7 +778,7 @@ class Environment(Node):
                 spawn_area_ymin + buffer,
                 spawn_area_ymax - buffer,
             )
-            if self._check_surrounding_colors((x, y)):
+            if self.check_surrounding_colors((x, y)):
                 return (x, y)  # Return the random position
 
 
