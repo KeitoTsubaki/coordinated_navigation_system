@@ -141,21 +141,8 @@ class Env(gym.Env):
         return info
     
     def render(self):
-        # Render the environment to the screen
         if self.render_mode == "rgb_array":
             return self._render_frame()
-        # elif self.render_mode == "human":
-        #     if self.window is None:
-        #         import pygame
-
-        #         pygame.init()
-        #         pygame.display.set_caption("2D Simulator")
-        #         self.window = pygame.display.set_mode((800, 800))
-        #         self.clock = pygame.time.Clock()
-
-        #     self._render_frame()
-        #     self.clock.tick(30)
-        #     pygame.display.flip()
         
     def _render_frame(self):
         if self.window is None and self.render_mode == "human":
@@ -187,5 +174,9 @@ class Env(gym.Env):
             return np.transpose(
                 np.array(pygame.surfarray.pixels3d(self.window)), axes=(1, 0, 2)
             )
+    def close(self):
+        if self.window is not None:
+            pygame.display.quit()
+            pygame.quit()
             
             
