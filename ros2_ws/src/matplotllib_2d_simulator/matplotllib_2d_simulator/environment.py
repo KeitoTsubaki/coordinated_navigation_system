@@ -908,8 +908,8 @@ class Environment(Node):
         sensor_data = self.sensor.sense_obstacles(
             self.map, self.obstacle_color
         )
-        self.show_sensorData(sensor_data)
         return sensor_data
+        
     
     def change_map_by_event(self):
         for event in pygame.event.get():
@@ -943,6 +943,7 @@ def main():
         env._operate_moving()  # to handle robot movement
 
         sensor_data = env.lidar_scan()
+        env.show_sensorData(sensor_data)
 
         point_cloud_msg = env.sensor.convert_to_pointcloud2(
             sensor_data,
