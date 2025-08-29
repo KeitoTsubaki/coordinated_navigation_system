@@ -169,9 +169,20 @@ class Env(gym.Env):
             self.clock = pygame.time.Clock()
 
         if self.render_mode == "human":
+            # env.render_window() # only for the first time or when the map is changed
+            env.clear_lidar_layer()  # Reset the lidar line while remaining the map and obstacles
+            
+            env.change_map_by_event()
+
+            env._operate_moving()  # to handle robot movement
+
+            sensor_data = env.lidar_scan()
+            env.show_sensorData(sensor_data)
+            
             pygame.event.pump() # to update the event state
             pygame.display.update()
             self.clock.tick(self.metadata["render_fps"])
+            
         elif self.render_mode == "rgb_array":
             return np.transpose(
                 np.array(pygame.surfarray.pixels3d(self.window)), axes=(1, 0, 2)
