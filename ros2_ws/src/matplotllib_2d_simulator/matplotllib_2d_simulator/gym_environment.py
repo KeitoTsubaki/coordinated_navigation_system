@@ -37,6 +37,7 @@ class Env(gym.Env):
         self.omega_previous = 0.0
         
         
+        self.env = environment.Environment()
         
         
 
@@ -87,19 +88,23 @@ class Env(gym.Env):
         
     def step(self, action):
         # Execute one time step within the environment
-        #! TODO: actionの出力値に変更を加える
         #! TODO: reward関数を作る
-        v, omega = action
-        dt = 0.1
-        self.robot_theta += omega * dt
-        self.robot_pos += v * dt * np.array([np.cos(self.robot_theta), np.sin(self.robot_theta)])
-
-        reward = -np.linalg.norm(self.robot_pos - self.goal_pos)
-        terminated = np.linalg.norm(self.robot_pos - self.goal_pos) < 0.5
-        truncated = self.step_count > 200
-        self.step_count += 1
-        observation = None
-        info = None
+        
+        # Map the action to the executable action
+        v_e, omega_e = self._action_to_executable_action(action)
+        
+        # An eppisode is done if the robot has reached the target or collided with an obstacle
+        # Terminated: Reached the target or collided with an obstacle
+        # Truncated: Time limit exceeded
+        terminated = self.env.check_reaching_target() or self.env.check_collision(self.env.robot_position)
+        truncated = False
+        observation = self._get_obs()
+        info = self._get_info()
+        reward = self._calculate_reward()
+        
+        if self.render_mode == "human":
+            self._render_frame()
+        
         return observation, reward, terminated, truncated, info
 
     def reset(self, seed=None, options=None):
@@ -113,6 +118,10 @@ class Env(gym.Env):
         observation = None
         info = None
         return observation, info
+
+    def _calculate_reward(self):
+        reward = 0.0
+        return reward
     
     def _action_to_executable_action(self, action):
         v_n, omega_n = action
@@ -148,23 +157,23 @@ class Env(gym.Env):
         if self.window is None and self.render_mode == "human":
             pygame.init()
             pygame.display.init()
-            env = environment.Environment()
+            # env = environment.Environment()
             
-            self.window = env.map
+            self.window = self.env.map
             
         if self.clock is None and self.render_mode == "human":
             self.clock = pygame.time.Clock()
 
         if self.render_mode == "human":
             # env.render_window() # only for the first time or when the map is changed
-            env.clear_lidar_layer()  # Reset the lidar line while remaining the map and obstacles
+            self.env.clear_lidar_layer()  # Reset the lidar line while remaining the map and obstacles
             
-            env.change_map_by_event()
+            self.env.change_map_by_event()
 
-            env._operate_moving()  # to handle robot movement
+            self.env._operate_moving()  # to handle robot movement
 
-            sensor_data = env.lidar_scan()
-            env.show_sensorData(sensor_data)
+            sensor_data = self.env.lidar_scan()
+            self.env.show_sensorData(sensor_data)
             
             pygame.event.pump() # to update the event state
             pygame.display.update()
