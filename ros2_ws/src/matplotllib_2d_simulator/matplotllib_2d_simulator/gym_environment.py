@@ -88,7 +88,6 @@ class Env(gym.Env):
         
     def step(self, action):
         # Execute one time step within the environment
-        #! TODO: reward関数を作る
         
         # Map the action to the executable action
         v_e, omega_e = self._action_to_executable_action(action)
@@ -120,6 +119,7 @@ class Env(gym.Env):
         return observation, info
 
     def _calculate_reward(self):
+        #! TODO: reward関数を作る
         reward = 0.0
         return reward
     
