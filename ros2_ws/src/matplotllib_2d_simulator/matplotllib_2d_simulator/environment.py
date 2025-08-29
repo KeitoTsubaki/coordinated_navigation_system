@@ -126,6 +126,10 @@ class Environment(Node):
             10,  # QoS
         )
         self.tf_broadcaster = TransformBroadcaster(self)
+        
+        self.sensor = sensors.LiDARSensor(
+            self.lidar_range_pixels, self.map, uncertainty=(0, 0)
+        )
 
     def _listener_callback(self, msg: Twist):
         self.get_logger().info(
@@ -896,7 +900,16 @@ class Environment(Node):
         self.create_start_and_target_position(
             start_spawn_area, target_spawn_area
         )
-
+        
+    def lidar_scan(self):
+        self.sensor.position = self.robot_position
+        self.sensor.theta = self.robot_theta
+        sensor_data = self.sensor.sense_obstacles(
+            self.map, self.obstacle_color
+        )
+        self.show_sensorData(sensor_data)
+        return sensor_data
+        
 def main():
     pygame.init()
     rclpy.init()
@@ -904,7 +917,6 @@ def main():
     env = Environment()
     
     env.render_window()
-    print("Environment created with obstacles.")
     
     running = True
 
@@ -912,7 +924,7 @@ def main():
     while running:
         rclpy.spin_once(env, timeout_sec=0.01)
 
-        env.clear_lidar_layer()  # Reset the environment window
+        env.clear_lidar_layer()  # Reset the lidar line while remaining the map and obstacles
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -928,31 +940,19 @@ def main():
 
         env._operate_moving()  # to handle robot movement
 
-        sensor = sensors.LiDARSensor(
-            env.lidar_range_pixels, env.map, uncertainty=(0, 0)
-        )
-        sensor.position = env.robot_position
-        sensor.theta = env.robot_theta
-        sensor_data = sensor.sense_obstacles(
-            env.map, env.obstacle_color
-        )  # Step 3: Sense. Stores sensed data array into sensor_data
-        # env.dataStorage(sensor_data)  # Step 4: point cloud data storage
-        env.show_sensorData(sensor_data)
+        
+        sensor_data = env.lidar_scan()
 
-        point_cloud_msg = sensor.convert_to_pointcloud2(
+        point_cloud_msg = env.sensor.convert_to_pointcloud2(
             sensor_data,
             time_stamp=env.get_clock().now().to_msg(),
             pixels_per_meter=env.pixels_per_meter,
         )
-
-        # env.get_logger().info(
-        #     f"Publishing a point cloud with {len(point_cloud_msg)} points."
-        # )
         env.publisher_.publish(point_cloud_msg)
+        
         env.publish_tf()
 
-        # ウィンドウを更新
-        pygame.display.flip()
+        pygame.display.update() # ウィンドウを更新
 
     # 4. 終了処理
     pygame.quit()
