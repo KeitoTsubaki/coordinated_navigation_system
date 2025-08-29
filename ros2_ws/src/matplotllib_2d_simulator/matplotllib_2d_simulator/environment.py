@@ -130,6 +130,7 @@ class Environment(Node):
         self.sensor = sensors.LiDARSensor(
             self.lidar_range_pixels, self.map, uncertainty=(0, 0)
         )
+        self.running = True
 
     def _listener_callback(self, msg: Twist):
         self.get_logger().info(
@@ -909,7 +910,20 @@ class Environment(Node):
         )
         self.show_sensorData(sensor_data)
         return sensor_data
-        
+    
+    def change_map_by_event(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.running = False
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    self.running = False
+                if event.key == pygame.K_c:
+                    # Change the map type
+                    self.switch_map_type(switch_mode="cycle")
+                    self.render_window()
+                if event.key == pygame.K_SPACE:
+                    self.render_window()
 def main():
     pygame.init()
     rclpy.init()
@@ -917,30 +931,17 @@ def main():
     env = Environment()
     
     env.render_window()
-    
-    running = True
 
     print((env.map_center_x, env.map_center_y))
-    while running:
+    while env.running:
         rclpy.spin_once(env, timeout_sec=0.01)
 
         env.clear_lidar_layer()  # Reset the lidar line while remaining the map and obstacles
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    running = False
-                if event.key == pygame.K_c:
-                    # Change the map type
-                    env.switch_map_type(switch_mode="cycle")
-                    env.render_window()
-                if event.key == pygame.K_SPACE:
-                    env.render_window()
+        
+        env.change_map_by_event()
 
         env._operate_moving()  # to handle robot movement
 
-        
         sensor_data = env.lidar_scan()
 
         point_cloud_msg = env.sensor.convert_to_pointcloud2(
