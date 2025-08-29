@@ -147,7 +147,7 @@ class Environment(Node):
             if next_position[1] > 0:
                 if self._check_surrounding_colors(next_position):
                     self.robot_position = next_position  # Move robot left
-                    self.reset_window()
+                    self.clear_lidar_layer()
         self.robot_theta += msg.angular.z  # Rotate robot clockwise
         if self.robot_theta > 2 * math.pi:
             self.robot_theta -= 2 * math.pi
@@ -280,9 +280,9 @@ class Environment(Node):
             #     (obstacle_cx, obstacle_cy),
             #     1,
             # )
-        self.map.blit(
-            self.obstacle_layer, (0, 0)
-        )  # Draw the obstacle layer onto the map
+        # self.map.blit(
+        #     self.obstacle_layer, (0, 0)
+        # )  # Draw the obstacle layer onto the map
 
     def _create_trap_shaped_map(self):
         """Creates a trap-shaped map with obstacles"""
@@ -378,9 +378,9 @@ class Environment(Node):
                 ),
                 width=0,
             )
-        self.map.blit(
-            self.obstacle_layer, (0, 0)
-        )  # Draw the obstacle layer onto the map
+        # self.map.blit(
+        #     self.obstacle_layer, (0, 0)
+        # )  # Draw the obstacle layer onto the map
 
     def _create_zigzag_map(self):
         """Creates a zigzag-shaped map with obstacles"""
@@ -453,9 +453,9 @@ class Environment(Node):
                 ),
                 width=0,
             )
-        self.map.blit(
-            self.obstacle_layer, (0, 0)
-        )  # Draw the obstacle layer onto the map
+        # self.map.blit(
+        #     self.obstacle_layer, (0, 0)
+        # )  # Draw the obstacle layer onto the map
 
     def _create_empty_map(self):
         """Creates an empty map with no obstacles."""
@@ -483,6 +483,48 @@ class Environment(Node):
                     self.pointCloud.append(point)  # [(x1,y1), (x2,y2), (x3,y3)]
             self.last_robot_position = (int(data[0][2][0]), int(data[0][2][1]))
 
+    def visualize_search_point(self, position):
+        num_surrounding_points = 5
+        for i in range(-2, 3):
+            for j in range(-2, 3):
+                if (
+                    int(
+                        position[0]
+                        + i / (num_surrounding_points - 1) * 2 * self.robot_radius_pixels
+                    )
+                    >= 0
+                    and int(
+                        position[1]
+                        + j / (num_surrounding_points - 1) * 2 * self.robot_radius_pixels
+                    )
+                    >= 0
+                    and int(
+                        position[0]
+                        + i / (num_surrounding_points - 1) * 2 * self.robot_radius_pixels
+                    )
+                    <= self.map_w
+                    and int(
+                        position[1]
+                        + j / (num_surrounding_points - 1) * 2 * self.robot_radius_pixels
+                    )
+                    <= self.map_h
+                ):
+                    pygame.draw.circle(
+                        self.lidar_sensor_layer,
+                        (255, 0, 0),
+                        (
+                            int(
+                                position[0]
+                                + i / (num_surrounding_points - 1) * 2 * self.robot_radius_pixels
+                            ),
+                            int(
+                                position[1]
+                                + j / (num_surrounding_points - 1) * 2 * self.robot_radius_pixels
+                            ),
+                        ),
+                        1,
+                    )
+                    
     def show_sensorData(self, data=None):
         if data != False:  # if data exists, then start for loop
             for element in data:
@@ -571,54 +613,13 @@ class Environment(Node):
                 2,  # Draw the robot's head
             )
             
-            num_surrounding_points = 5
-            for i in range(-2, 3):
-                for j in range(-2, 3):
-                    if (
-                        int(
-                            self.target_position[0]
-                            + i / (num_surrounding_points - 1) * 2 * self.robot_radius_pixels
-                        )
-                        >= 0
-                        and int(
-                            self.target_position[1]
-                            + j / (num_surrounding_points - 1) * 2 * self.robot_radius_pixels
-                        )
-                        >= 0
-                        and int(
-                            self.target_position[0]
-                            + i / (num_surrounding_points - 1) * 2 * self.robot_radius_pixels
-                        )
-                        <= self.map_w
-                        and int(
-                            self.target_position[1]
-                            + j / (num_surrounding_points - 1) * 2 * self.robot_radius_pixels
-                        )
-                        <= self.map_h
-                    ):
-                        pygame.draw.circle(
-                            self.lidar_sensor_layer,
-                            (255, 0, 0),
-                            (
-                                int(
-                                    self.target_position[0]
-                                    + i / (num_surrounding_points - 1) * 2 * self.robot_radius_pixels
-                                ),
-                                int(
-                                    self.target_position[1]
-                                    + j / (num_surrounding_points - 1) * 2 * self.robot_radius_pixels
-                                ),
-                            ),
-                            1,
-                        )
-                # self.map.blit(
-                #     self.lidar_sensor_layer, (0, 0)
-                # )
+            self.visualize_search_point(self.robot_position)
+            self.visualize_search_point(self.target_position)
             self.map.blit(
                 self.lidar_sensor_layer, (0, 0)
             )  # Overlay lidar sensor layer on the map
 
-    def reset_environment(self):
+    def clear_environment(self):
         """Resets the environment by clearing the point cloud and reinitializing the map."""
         self.map.fill(self.background_color)  # Clear the map
         self.obstacle_layer = pygame.Surface((self.map_w, self.map_h), pygame.SRCALPHA)
@@ -626,7 +627,7 @@ class Environment(Node):
             (self.map_w, self.map_h), pygame.SRCALPHA
         )
 
-    def reset_window(self):
+    def clear_lidar_layer(self):
         self.map.fill(self.background_color)
         self.map.blit(
             self.obstacle_layer, (0, 0)
@@ -730,7 +731,7 @@ class Environment(Node):
             if next_position[1] > 0:
                 if self._check_surrounding_colors(next_position):
                     self.robot_position = next_position  # Move robot left
-                    self.reset_window()
+                    self.clear_lidar_layer()
         if keys[pygame.K_s] and self.robot_position[1] < self.map_h - self.robot_radius_pixels:
             next_position = (
                 self.robot_position[0] - step_size * math.sin(self.robot_theta),
@@ -739,7 +740,7 @@ class Environment(Node):
             if next_position[1] < self.map_h:
                 if self._check_surrounding_colors(next_position):
                     self.robot_position = next_position  # Move robot left
-                    self.reset_window()
+                    self.clear_lidar_layer()
         if keys[pygame.K_e]:
             self.robot_theta += 0.1  # Rotate robot clockwise
             if self.robot_theta > 2 * math.pi:
@@ -888,7 +889,13 @@ class Environment(Node):
             self.map_type = self.random_np.choice(map_type_list)
             print(f"Map type changed to: {self.map_type}")
 
-
+    def render_window(self):
+        self.clear_environment()
+        self.create_map()
+        start_spawn_area, target_spawn_area = self.initialize_map_parameters()
+        self.create_start_and_target_position(
+            start_spawn_area, target_spawn_area
+        )
 
 def main():
     pygame.init()
@@ -896,21 +903,16 @@ def main():
 
     env = Environment()
     
-    env.create_map()
-    start_spawn_area, target_spawn_area = env.initialize_map_parameters()
-    env.reset_window()  #! TODO: なんのためにあるのか明確にする。不要なら消す。object layer をmapに描画していたけどなんでここでしているのか不明。
+    env.render_window()
     print("Environment created with obstacles.")
+    
     running = True
-    env.create_start_and_target_position(start_spawn_area, target_spawn_area)
-    # self.robot_position, self.target_position = create_start_and_target_position(
-    #     env, start_spawn_area, target_spawn_area
-    # )
 
     print((env.map_center_x, env.map_center_y))
     while running:
         rclpy.spin_once(env, timeout_sec=0.01)
 
-        env.reset_window()  # Reset the environment window
+        env.clear_lidar_layer()  # Reset the environment window
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -920,35 +922,11 @@ def main():
                 if event.key == pygame.K_c:
                     # Change the map type
                     env.switch_map_type(switch_mode="cycle")
-
-                    env.reset_environment()
-                    env.create_map()
-                    start_spawn_area, target_spawn_area = env.initialize_map_parameters()
-                    env.create_start_and_target_position(
-                        start_spawn_area, target_spawn_area
-                    )
-                    # self.robot_position, self.target_position = (
-                    #     create_start_and_target_position(
-                    #         env, start_spawn_area, target_spawn_area
-                    #     )
-                    # )
+                    env.render_window()
                 if event.key == pygame.K_SPACE:
-                    env.reset_environment()  # Reset the environment
-                    env.create_map()
-                    start_spawn_area, target_spawn_area = env.initialize_map_parameters()
-                    env.create_start_and_target_position(
-                        start_spawn_area, target_spawn_area
-                    )
-                    # self.robot_position, self.target_position = (
-                    #     create_start_and_target_position(
-                    #         env, start_spawn_area, target_spawn_area
-                    #     )
-                    # )
+                    env.render_window()
 
-        env._operate_moving()  # Handle robot movement
-        # self.robot_position = _operate_moving(
-        #     self.robot_position, env
-        # )  # Handle robot movement
+        env._operate_moving()  # to handle robot movement
 
         sensor = sensors.LiDARSensor(
             env.lidar_range_pixels, env.map, uncertainty=(0, 0)
