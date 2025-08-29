@@ -169,4 +169,12 @@ class Env(gym.Env):
             self.clock = pygame.time.Clock()
 
         if self.render_mode == "human":
-            pass
+            pygame.event.pump() # to update the event state
+            pygame.display.update()
+            self.clock.tick(self.metadata["render_fps"])
+        elif self.render_mode == "rgb_array":
+            return np.transpose(
+                np.array(pygame.surfarray.pixels3d(self.window)), axes=(1, 0, 2)
+            )
+            
+            
