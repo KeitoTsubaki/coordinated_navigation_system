@@ -724,6 +724,15 @@ class Environment(Node):
                         return False
         return True
 
+    def check_reaching_target(self):
+        distance_to_target = math.sqrt(
+            (self.target_position[0] - self.robot_position[0]) ** 2
+            + (self.target_position[1] - self.robot_position[1]) ** 2
+        )
+        if distance_to_target < self.robot_radius_pixels / 10: # within 10% of robot radius
+            return True
+        else:
+            return False
 
     def _operate_moving(self):
         keys = pygame.key.get_pressed()
