@@ -5,6 +5,7 @@ from gymnasium import spaces
 import pygame
 import numpy as np
 import yaml
+import math
 
 from simulation_core import environment
 
@@ -12,29 +13,29 @@ class Env(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 30}
     def __init__(self, render_mode=None):
         super().__init__()
-        
-        config_path = "config/simulator_config.yaml"
-        with open(config_path, "r", encoding="utf-8") as f:
-            config = yaml.safe_load(f)
-        
+
+        # Resolve the config file path relative to this file
+        # This allows running this script without sourcing the ROS 2 workspace
+        config_path = os.path.join(
+            os.path.dirname(__file__), # rl_training/
+            '..', # coordinated_navigation_system/
+            'simulation_core', 'config', 'simulator_config.yaml'
+        )
+        self.env = environment.SimCoreEnvironment(config_path=config_path)
+
         # Define action and observation space
-        self.v_max = config["robot"]["v_max"]
-        self.omega_max = config["robot"]["omega_max"]
-        self.a_max = config["robot"]["a_max"]
-        self.alpha_max = config["robot"]["alpha_max"]
-        self.max_d = config["robot"]["max_d"]
-        self.max_theta = config["robot"]["max_theta"]
-        self.r_lidar = config["lidar"]["range_m"]
+        self.v_max = self.env.v_max
+        self.omega_max = self.env.omega_max
+        self.a_max = self.env.a_max
+        self.alpha_max = self.env.alpha_max
+        self.max_d = self.env.max_d
+        self.max_theta = self.env.max_theta
+        self.r_lidar = self.env.r_lidar
         self.n_l = 10
         self.n_e = 2
-        
+
         self.v_previous = 0.0
         self.omega_previous = 0.0
-        
-        
-        self.env = environment.SimCoreEnvironment()
-        
-        
 
         # DDPG allows continuous action space, and the action of differential-
         # driven robots includes the linear and angular velocity.
@@ -84,8 +85,10 @@ class Env(gym.Env):
     def step(self, action):
         # Execute one time step within the environment
         
+        dt = 1 / self.metadata["render_fps"]
         # Map the action to the executable action
-        v_e, omega_e = self._action_to_executable_action(action)
+        v_e, omega_e = self._action_to_executable_action(action, dt)
+        self.update_robot_position(v_e, omega_e, dt=dt)
         
         # An eppisode is done if the robot has reached the target or collided with an obstacle
         # Terminated: Reached the target or collided with an obstacle
@@ -124,10 +127,9 @@ class Env(gym.Env):
         reward = 0.0
         return reward
     
-    def _action_to_executable_action(self, action):
+    def _action_to_executable_action(self, action, dt):
         v_n, omega_n = action
 
-        dt = 0.1  # 仮の値
         v_kmin = max(0, self.v_previous - self.a_max * dt)
         v_kmax = min(self.v_max, self.v_previous + self.a_max * dt)
         omega_kmin = max(-self.omega_max, self.omega_previous - self.alpha_max * dt)
@@ -139,6 +141,39 @@ class Env(gym.Env):
         self.v_previous = v_e
         self.omega_previous = omega_e
         return v_e, omega_e
+    
+    def update_robot_position(self, v_e, omega_e, dt):
+        # ロボットの位置と向きを更新する関数
+        # robot_theta = 0: y軸負方向
+        # robot_theta = π/2: x軸正方向
+        # robot_theta = π: y軸正方向
+        # robot_theta = 3π/2 or -π/2: x軸負方向
+        # v_e は m/s, omega_e は rad/s
+        # 位置はピクセル単位で計算するため、v_eをピクセル/秒に変換
+        v_e_pps = v_e * self.env.pixels_per_meter
+        dx = v_e_pps * math.sin(self.env.robot_theta) * dt
+        dy = -v_e_pps * math.cos(self.env.robot_theta) * dt  # Pygameのy軸は下向きが正のため、符号を反転
+        dtheta = omega_e * dt
+        
+        
+        next_robot_position = (
+            self.env.robot_position[0] + dx,
+            self.env.robot_position[1] + dy,
+        )
+        
+        if 0 < next_robot_position[0] < self.env.map_w and 0 < next_robot_position[1] < self.env.map_h:
+            if not self.env.is_collision(next_robot_position):
+                self.env.robot_position = next_robot_position
+                
+        # self.env.robot_position[0] += dx
+        # self.env.robot_position[1] += dy
+        self.env.robot_theta += dtheta
+
+        # 角度を0から2πの範囲に正規化
+        if self.env.robot_theta > 2 * math.pi:
+            self.env.robot_theta -= 2 * math.pi
+        elif self.env.robot_theta < 0:
+            self.env.robot_theta += 2 * math.pi
     
     def _get_obs(self):
         observation = {
@@ -169,7 +204,7 @@ class Env(gym.Env):
             
             self.env.change_map_by_event()
 
-            self.env._operate_moving()  # to handle robot movement
+            # self.env._operate_moving()  # to handle robot movement
 
             sensor_data = self.env.lidar_scan()
             self.env.show_sensorData(sensor_data)
