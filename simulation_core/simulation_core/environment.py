@@ -24,7 +24,6 @@ import pygame
 import numpy as np
 from ament_index_python.packages import get_package_share_directory
 
-# import sensors
 from . import sensor
 
 
@@ -111,47 +110,7 @@ class SimCoreEnvironment:
             self.lidar_range_pixels, self.map, uncertainty=(0, 0)
         )
         self.running = True
-        
-        
-        # for ROS2 ================================================================
-        # self.publisher_ = self.create_publisher(PointCloud2, "pointcloud", 10)
-        # self.get_logger().info("PointCloud Publisher Node has been started.")
 
-        # self.subscription = self.create_subscription(
-        #     Twist,
-        #     "cmd_vel",  # 通常はcmd_velというトピック名
-        #     self._listener_callback,
-        #     10,  # QoS
-        # )
-        # self.tf_broadcaster = TransformBroadcaster(self)
-        # ========================================================================
-
-    # for ROS2 ================================================================
-    # def _listener_callback(self, msg: Twist):
-    #     self.get_logger().info(
-    #         f"Received Twist:\n"
-    #         f"  linear:  x={msg.linear.x:.2f}, y={msg.linear.y:.2f}, z={msg.linear.z:.2f}\n"
-    #         f"  angular: x={msg.angular.x:.2f}, y={msg.angular.y:.2f}, z={msg.angular.z:.2f}"
-    #     )
-    #     speed = 5
-    #     if (
-    #         self.robot_position[1] > self.robot_radius_pixels
-    #         and self.robot_position[1] < self.map_h - self.robot_radius_pixels
-    #     ):
-    #         next_position = (
-    #             self.robot_position[0]
-    #             + msg.linear.x * speed * math.sin(self.robot_theta),
-    #             self.robot_position[1]
-    #             - msg.linear.x * speed * math.cos(self.robot_theta),
-    #         )
-    #         if next_position[1] > 0:
-    #             if not self.is_collision(next_position):
-    #                 self.robot_position = next_position  # Move robot left
-    #                 self.clear_lidar_layer()
-    #     self.robot_theta += msg.angular.z  # Rotate robot clockwise
-    #     if self.robot_theta > 2 * math.pi:
-    #         self.robot_theta -= 2 * math.pi
-    # ========================================================================
 
     def _create_base_map(self):
         """Creates a base map with walls."""
@@ -637,28 +596,6 @@ class SimCoreEnvironment:
             (self.map_w, self.map_h), pygame.SRCALPHA
         )
     
-    # for ROS2 ================================================================
-    # def publish_tf(self):
-    #     t = TransformStamped()
-
-    #     t.header.stamp = self.get_clock().now().to_msg()
-    #     t.header.frame_id = "map"        # ワールド座標系
-    #     t.child_frame_id = "base_link"    # ロボットのフレーム
-
-    #     # 2Dの位置を3Dに拡張
-    #     t.transform.translation.x = -(self.robot_position[1] - self.map_center_y) / self.pixels_per_meter
-    #     t.transform.translation.y = -(self.robot_position[0] - self.map_center_x) / self.pixels_per_meter
-    #     t.transform.translation.z = 0.0
-
-    #     # 角度をクォータニオンに変換
-    #     angle = self.robot_theta + math.pi # 2Dの角度を調整
-    #     qz = math.cos(angle / 2.0)
-    #     qw = math.sin(angle / 2.0)
-    #     t.transform.rotation.z = qz
-    #     t.transform.rotation.w = qw
-
-    #     self.tf_broadcaster.sendTransform(t)
-    # ========================================================================
 
 
     def _hex_to_rgb(self, hex_color):
@@ -937,13 +874,12 @@ def main():
     pygame.init()
     # rclpy.init()
 
-    env = Environment()
+    env = SimCoreEnvironment()
     
     env.render_window()
 
     print((env.map_center_x, env.map_center_y))
     while env.running:
-        # rclpy.spin_once(env, timeout_sec=0.01)
 
         env.clear_lidar_layer()  # Reset the lidar line while remaining the map and obstacles
         
@@ -954,14 +890,6 @@ def main():
         sensor_data = env.lidar_scan()
         env.show_sensorData(sensor_data)
 
-        # point_cloud_msg = env.sensor.convert_to_pointcloud2(
-        #     sensor_data,
-        #     time_stamp=env.get_clock().now().to_msg(),
-        #     pixels_per_meter=env.pixels_per_meter,
-        # )
-        # env.publisher_.publish(point_cloud_msg)
-        
-        # env.publish_tf()
 
         pygame.display.update() # ウィンドウを更新
 
