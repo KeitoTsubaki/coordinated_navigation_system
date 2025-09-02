@@ -9,7 +9,6 @@ setup(
     data_files=[
         ("share/ament_index/resource_index/packages", ["resource/" + package_name]),
         ("share/" + package_name, ["package.xml"]),
-        ("share/" + package_name, ["matplotllib_2d_simulator/sensors.py"]),
         ("share/" + package_name + "/config", ["config/simulator_config.yaml"]),
     ],
     install_requires=["setuptools"],
@@ -22,7 +21,6 @@ setup(
     entry_points={
         "console_scripts": [
             "environment = matplotllib_2d_simulator.environment:main",
-            "sensors = matplotllib_2d_simulator.sensors:main",
         ],
     },
 )

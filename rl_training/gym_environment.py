@@ -6,7 +6,7 @@ import pygame
 import numpy as np
 import yaml
 
-import environment
+from simulation_core import environment
 
 class Env(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 30}
@@ -32,7 +32,7 @@ class Env(gym.Env):
         self.omega_previous = 0.0
         
         
-        self.env = environment.Environment()
+        self.env = environment.SimCoreEnvironment()
         
         
 

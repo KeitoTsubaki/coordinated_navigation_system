@@ -1,7 +1,8 @@
-# from gymnasium.envs.registration import register
-# from gym_environment import Env
+from gymnasium.envs.registration import register
+from .gym_environment import Env
 
-# register(
-#     id='matplotllib_2d_simulator-v0',
-#     entry_point='gym_environment:Env',
-# )
+register(
+    # Renamed for clarity
+    id='simulation_env-v0',
+    entry_point='rl_training.gym_environment:Env',
+)

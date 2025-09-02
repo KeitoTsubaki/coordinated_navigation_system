@@ -20,7 +20,7 @@ def uncertainty_add(distance, angle, sigma):
     return [distance, angle]
 
 
-class LiDARSensor(Node):
+class LiDARSensor():
 
     def __init__(
         self, Range, map, uncertainty
