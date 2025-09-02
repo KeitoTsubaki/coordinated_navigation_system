@@ -22,23 +22,24 @@ import os
 import yaml
 import pygame
 import numpy as np
-from ament_index_python.packages import get_package_share_directory
 
 from . import sensor
 
 
 class SimCoreEnvironment:
 
-    def __init__(self):
+    def __init__(self, config_path=None):
         self.window_name = "2D LiDAR Simulation"
         pygame.display.set_caption(self.window_name)
 
         # Set parameters
-        config_path = os.path.join(
-            get_package_share_directory("simulation_core"),
-            "config",
-            "simulator_config.yaml",
-        )
+        if config_path is None:
+            from ament_index_python.packages import get_package_share_directory
+            config_path = os.path.join(
+                get_package_share_directory("simulation_core"),
+                "config",
+                "simulator_config.yaml",
+            )
         with open(config_path, "r", encoding="utf-8") as f:
             config = yaml.safe_load(f)
             
@@ -64,6 +65,13 @@ class SimCoreEnvironment:
         self.min_obstacle_size_m = config["obstacles"]["min_size_m"]
         self.max_obstacle_size_m = config["obstacles"]["max_size_m"]
         self.obstacle_color = config["obstacles"]["color"]
+        self.v_max = config["robot"]["v_max"]
+        self.omega_max = config["robot"]["omega_max"]
+        self.a_max = config["robot"]["a_max"]
+        self.alpha_max = config["robot"]["alpha_max"]
+        self.max_d = config["robot"]["max_d"]
+        self.max_theta = config["robot"]["max_theta"]
+        self.r_lidar = config["lidar"]["range_m"]
 
         self.pixels_per_meter = self.map_w / (2 * self.lidar_range_m)
 
