@@ -16,12 +16,20 @@ class Env(gym.Env):
 
         # Resolve the config file path relative to this file
         # This allows running this script without sourcing the ROS 2 workspace
-        config_path = os.path.join(
+        simulator_config_path = os.path.join(
             os.path.dirname(__file__), # rl_training/
             '..', # coordinated_navigation_system/
             'simulation_core', 'config', 'simulator_config.yaml'
         )
-        self.env = environment.SimCoreEnvironment(config_path=config_path)
+        ddpg_config_path = os.path.join(
+            os.path.dirname(__file__), # rl_training/
+            'config', 'ddpg_config.yaml'
+        )
+        
+        with open(ddpg_config_path, "r", encoding="utf-8") as f:
+            self.ddpg_config = yaml.safe_load(f)
+        
+        self.env = environment.SimCoreEnvironment(config_path=simulator_config_path)
 
         # Define action and observation space
         self.v_max = self.env.v_max
@@ -34,8 +42,7 @@ class Env(gym.Env):
         self.n_l = 10
         self.n_e = 2
 
-        self.v_previous = 0.0
-        self.omega_previous = 0.0
+        
 
         # DDPG allows continuous action space, and the action of differential-
         # driven robots includes the linear and angular velocity.
@@ -81,6 +88,15 @@ class Env(gym.Env):
         self.window = None
         self.clock = None
         
+        self.previous_distance_to_taret = None
+        self.previous_angle_to_target = None
+        self.current_distance_to_target = None
+        self.current_angle_to_target = None
+        self.previous_distance_to_closest_obstacle = None
+        self.current_distance_to_closest_obstacle = None
+        self.current_v = None
+        self.current_omega = None
+        
         
     def step(self, action):
         # Execute one time step within the environment
@@ -89,19 +105,34 @@ class Env(gym.Env):
         # Map the action to the executable action
         v_e, omega_e = self._action_to_executable_action(action, dt)
         self.update_robot_position(v_e, omega_e, dt=dt)
-        print(f"Robot Info: {self.env.get_goal_info()}")
+        if self.render_mode == "human":
+            self._render_frame()
+        
+        if self.previous_distance_to_taret is None:
+            self.previous_distance_to_taret = self.env.get_goal_info()[0]
+            self.previous_angle_to_target = self.env.get_goal_info()[1]
+        else:
+            self.previous_distance_to_taret = self.current_distance_to_target
+            self.previous_angle_to_target = self.current_angle_to_target
+        self.current_distance_to_target, self.current_angle_to_target = self.env.get_goal_info()
+        
+        if self.previous_distance_to_closest_obstacle is None:
+            self.previous_distance_to_closest_obstacle = self.env.get_closest_obstacle_distance()
+        else:
+            self.previous_distance_to_closest_obstacle = self.current_distance_to_closest_obstacle
+        self.current_distance_to_closest_obstacle = self.env.get_closest_obstacle_distance()
+        
+        self.current_v = v_e
+        self.current_omega = omega_e
         
         # An eppisode is done if the robot has reached the target or collided with an obstacle
         # Terminated: Reached the target or collided with an obstacle
         # Truncated: Time limit exceeded
-        terminated = self.env.check_reaching_target()
+        terminated = self.env.is_target_reached()
         truncated = False
         observation = self._get_obs()
         info = self._get_info()
         reward = self._calculate_reward()
-        
-        if self.render_mode == "human":
-            self._render_frame()
         
         return observation, reward, terminated, truncated, info
 
@@ -124,7 +155,67 @@ class Env(gym.Env):
 
     def _calculate_reward(self):
         #! TODO: reward関数を作る
-        reward = 0.0
+        # r_s: spare reward corresponding to: robot reachs the target, collides with an obstacle
+        # r_d: dense reward to accelerate the training and seconadary tasks such as smoothness
+        r_safe = self.env.robot_radius_m # robot radius in meters
+        r_arrival = self.ddpg_config["reward"]["r_arrival"]
+        r_collision = self.ddpg_config["reward"]["r_collision"]
+        eta_r = self.ddpg_config["reward"]["eta_r"]
+        rho_0 = self.ddpg_config["reward"]["rho_0"]
+        rho_1 = self.ddpg_config["reward"]["rho_1"]
+        k_1 = self.ddpg_config["reward"]["k_1"]
+        k_2 = self.ddpg_config["reward"]["k_2"]
+        k_3 = self.ddpg_config["reward"]["k_3"]
+        k_4 = self.ddpg_config["reward"]["k_4"]
+        k_5 = self.ddpg_config["reward"]["k_5"]
+        k_6 = self.ddpg_config["reward"]["k_6"]
+        k_7 = self.ddpg_config["reward"]["k_7"]
+        k_8 = self.ddpg_config["reward"]["k_8"]
+        k_9 = self.ddpg_config["reward"]["k_9"]
+        
+        r_s = 0.0
+        r_d = 0.0
+        
+        r_g = 0.0
+        r_c = 0.0
+        r_v = 0.0
+        r_m = 0.0
+        
+        if self.env.is_target_reached():
+            r_s = r_arrival
+        elif self.env.is_collision(self.env.robot_position):
+            r_s = r_collision
+        
+        # The robot is awarded when it approaches the target and turns to the target
+        # The robot is punished according to the angle deviation to the target
+        r_g_d = k_1 * (self.previous_distance_to_taret - self.current_distance_to_target) / self.max_d
+        r_g_o1 = k_2 * (self.current_angle_to_target - self.previous_angle_to_target) / self.max_theta
+        r_g_o2 = -k_3 * abs(self.current_angle_to_target) / math.pi
+        r_g = r_g_d + r_g_o1 + r_g_o2
+        
+        # The robot is punished when it is aproaching and being close to the obstacles
+        # r_c_1: APF formulation. it becomes zero when the distance to the closest obstacle is larger than rho_0 (Fig.3a)
+        # r_c_2: the robot is awarded if leaving the obstacle, and punished if approaching the obstacle (Fig.3b)
+        r_c_1 = 0.0
+        if self.current_distance_to_closest_obstacle < rho_0:
+            r_c_1 = -k_4 * ((1/self.current_distance_to_closest_obstacle - 1/rho_0) / (1/r_safe - 1/rho_0)) ** eta_r
+        r_c_2 = 0.0
+        if self.current_distance_to_closest_obstacle < rho_1:
+            r_c_2 = -k_5 * (self.previous_distance_to_closest_obstacle - self.current_distance_to_closest_obstacle) / self.max_d
+        r_c = r_c_1 + r_c_2
+        
+        # r_v: the robot is encouraging the robot to move quickly and smoothly
+        # The robot is awarded when the linear velocity is large, and punished when the angular velocity is large
+        r_v_v = k_6 * (self.current_v / self.v_max)
+        r_v_omega = -k_7 * (abs(self.current_omega) / self.omega_max)
+        r_v = r_v_v + r_v_omega
+        
+        # r_m: minor penalty to encourage the robot to actively explore the environment and shorten the trajectory. penalty for time passage
+        r_m = -0.1
+        
+        r_d = r_g + r_c + r_v + r_m
+        
+        reward = r_s + r_d
         return reward
     
     def _action_to_executable_action(self, action, dt):
