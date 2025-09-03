@@ -180,3 +180,10 @@ class LiDARSensor():
         msg.is_dense = True
 
         return msg
+    
+    def get_closest_obstacle_distance(self, sensor_data):
+        if sensor_data:
+            distances = [data[0] for data in sensor_data]
+            return min(distances)
+        else:
+            return float('inf')
