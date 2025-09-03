@@ -10,7 +10,6 @@ from geometry_msgs.msg import Twist
 from sensor_msgs.msg import PointCloud2
 from tf2_ros import TransformBroadcaster
 from geometry_msgs.msg import TransformStamped
-from ament_index_python.packages import get_package_share_directory
 
 from simulation_core.environment import SimCoreEnvironment
 
