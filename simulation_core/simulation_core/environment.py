@@ -848,6 +848,18 @@ class SimCoreEnvironment:
                 if event.key == pygame.K_SPACE:
                     self.render_window()
                     
+    def get_goal_info(self):
+        distance_to_target = math.sqrt(
+            (self.target_position[0] - self.robot_position[0]) ** 2
+            + (self.target_position[1] - self.robot_position[1]) ** 2
+        )
+        angle_to_target = math.atan2(
+            self.target_position[0] - self.robot_position[0],
+            -(self.target_position[1] - self.robot_position[1]),
+        )
+        
+        return distance_to_target, angle_to_target
+                    
                     
 def main():
     pygame.init()

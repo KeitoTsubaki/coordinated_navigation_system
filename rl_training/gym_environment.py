@@ -89,6 +89,7 @@ class Env(gym.Env):
         # Map the action to the executable action
         v_e, omega_e = self._action_to_executable_action(action, dt)
         self.update_robot_position(v_e, omega_e, dt=dt)
+        print(f"Robot Info: {self.env.get_goal_info()}")
         
         # An eppisode is done if the robot has reached the target or collided with an obstacle
         # Terminated: Reached the target or collided with an obstacle
