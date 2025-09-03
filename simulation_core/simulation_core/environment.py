@@ -122,12 +122,6 @@ class SimCoreEnvironment:
             robot_radius_pixels=self.robot_radius_pixels,
             )
 
-    # Uses Distance and Angle from data[] in sensors.sensesObstacles() to obtain cartesian coordinates of walls for point cloud
-    def _AD2pos(self, distance, angle, robotPosition):
-        x = robotPosition[0] + distance * math.cos(angle)
-        y = robotPosition[1] + distance * math.sin(angle)
-        return (int(x), int(y))  # returns cartesian coordinates of walls.
-
     def visualize_search_point(self, position):
         num_surrounding_points = 5
         for i in range(-2, 3):
@@ -173,7 +167,7 @@ class SimCoreEnvironment:
     def show_sensorData(self, data=None):
         if data != False:  # if data exists, then start for loop
             for element in data:
-                point = self._AD2pos(
+                point = utils.AD2pos(
                     element[0], element[1], self.robot_position
                 )  # Input: data = [Distance, Angle, (x,y)]. Output: (x,y) coordinate of objects/walls.
                 pygame.draw.line(
