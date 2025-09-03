@@ -531,33 +531,3 @@ class SimCoreEnvironment:
         
         return distance_to_target, angle_to_target
                     
-                    
-def main():
-    pygame.init()
-    # rclpy.init()
-
-    env = SimCoreEnvironment()
-    
-    env.render_window()
-
-    print((env.map_center_x, env.map_center_y))
-    while env.running:
-
-        env.clear_lidar_layer()  # Reset the lidar line while remaining the map and obstacles
-        
-        env.change_map_by_event()
-
-        env._operate_moving()  # to handle robot movement
-
-        sensor_data = env.lidar_scan()
-        env.show_sensorData(sensor_data)
-
-
-        pygame.display.update() # ウィンドウを更新
-
-    # 4. 終了処理
-    pygame.quit()
-
-
-if __name__ == "__main__":
-    main()
