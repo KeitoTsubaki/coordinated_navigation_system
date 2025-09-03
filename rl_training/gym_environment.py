@@ -110,7 +110,6 @@ class Env(gym.Env):
         super().reset(seed=seed)
         pygame.init()
         pygame.display.init()
-        #! TODO: 正しい初期化に変更。この時点でランダムな値にする？
         
         self.env.np_random = self.np_random
         self.env.render_window()
