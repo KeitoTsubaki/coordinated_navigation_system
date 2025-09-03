@@ -112,7 +112,7 @@ class Env(gym.Env):
         pygame.display.init()
         
         self.env.np_random = self.np_random
-        self.env.render_window()
+        self.env.render_obstacles()
         
         observation = self._get_obs()
         info = self._get_info()
@@ -191,23 +191,13 @@ class Env(gym.Env):
         
     def _render_frame(self):
         if self.window is None and self.render_mode == "human":
-            
-            # env = environment.Environment()
-            
             self.window = self.env.map
             
         if self.clock is None and self.render_mode == "human":
             self.clock = pygame.time.Clock()
 
         if self.render_mode == "human":
-            self.env.clear_lidar_layer()  # Reset the lidar line while remaining the map and obstacles
-            
-            self.env.change_map_by_event()
-
-            # self.env._operate_moving()  # to handle robot movement
-
-            sensor_data = self.env.lidar_scan()
-            self.env.show_sensorData(sensor_data)
+            self.env.render_robot_and_lidar()
             
             pygame.event.pump() # to update the event state
             pygame.display.update()

@@ -467,14 +467,18 @@ class SimCoreEnvironment:
             self.map_type = self.np_random.choice(map_type_list)
             print(f"Map type changed to: {self.map_type}")
 
-    def render_window(self):
+    def render_obstacles(self):
         self.clear_environment()
         self.map_creator.create_map(self.map_type, self.obstacle_layer)
         start_spawn_area, target_spawn_area = self.initialize_map_parameters()
         self.create_start_and_target_position(
             start_spawn_area, target_spawn_area
         )
-        
+    def render_robot_and_lidar(self):
+        self.clear_lidar_layer()  # Reset the lidar line while remaining the map and obstacles
+        sensor_data = self.lidar_scan()
+        self.show_sensorData(sensor_data)
+    
     def lidar_scan(self):
         self.sensor.position = self.robot_position
         self.sensor.theta = self.robot_theta
@@ -494,9 +498,9 @@ class SimCoreEnvironment:
                 if event.key == pygame.K_c:
                     # Change the map type
                     self.switch_map_type(switch_mode="cycle")
-                    self.render_window()
+                    self.render_obstacles()
                 if event.key == pygame.K_SPACE:
-                    self.render_window()
+                    self.render_obstacles()
                     
     def get_goal_info(self):
         distance_to_target = math.sqrt(
