@@ -12,7 +12,7 @@ def hex_to_rgb(hex_color):
     return (r, g, b)
 
 # Uses Distance and Angle from data[] in sensors.sensesObstacles() to obtain cartesian coordinates of walls for point cloud
-def AD2pos(self, distance, angle, robotPosition):
+def AD2pos(distance, angle, robotPosition):
     x = robotPosition[0] + distance * math.cos(angle)
     y = robotPosition[1] + distance * math.sin(angle)
     return (int(x), int(y))  # returns cartesian coordinates of walls.
