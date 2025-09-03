@@ -1,4 +1,5 @@
 # Utility functions
+import math
 
 def hex_to_rgb(hex_color):
     hex_color = hex_color.lstrip("#")  # 先頭の # を削除
