@@ -23,7 +23,7 @@ import yaml
 import pygame
 import numpy as np
 
-from . import sensor
+from . import sensor, utils
 
 
 class SimCoreEnvironment:
@@ -435,22 +435,6 @@ class SimCoreEnvironment:
         y = robotPosition[1] + distance * math.sin(angle)
         return (int(x), int(y))  # returns cartesian coordinates of walls.
 
-    def dataStorage(
-        self, data
-    ):  # data = [Distance, Angle, (x,y)] --> This is the input. Storing data in point cloud.
-        # print(len(self.pointCloud))
-        self.pointCloud = []  # Reset point cloud for new data
-        if data != False:  # if data exists, then start for loop
-            for element in data:
-                point = self._AD2pos(
-                    element[0], element[1]  # , element[2]
-                )  # Input: data = [Distance, Angle, (x,y)]. Output: (x,y) coordinate of objects/walls.
-                if (
-                    point not in self.pointCloud
-                ):  # Note: Point cloud should ONLY be the WALLS (x,y). If the wall has not already been sensed, then add to pointcloud.
-                    self.pointCloud.append(point)  # [(x1,y1), (x2,y2), (x3,y3)]
-            self.last_robot_position = (int(data[0][2][0]), int(data[0][2][1]))
-
     def visualize_search_point(self, position):
         num_surrounding_points = 5
         for i in range(-2, 3):
@@ -603,19 +587,6 @@ class SimCoreEnvironment:
         self.lidar_sensor_layer = pygame.Surface(
             (self.map_w, self.map_h), pygame.SRCALPHA
         )
-    
-
-
-    def _hex_to_rgb(self, hex_color):
-        hex_color = hex_color.lstrip("#")  # 先頭の # を削除
-        # 6文字 (RRGGBB) でなければエラー
-        if len(hex_color) != 6:
-            raise ValueError("カラーコードは6桁の16進数で指定してください。")
-        r = int(hex_color[0:2], 16)
-        g = int(hex_color[2:4], 16)
-        b = int(hex_color[4:6], 16)
-        return (r, g, b)
-
 
     def is_collision(self, position):
         """Checks the surrounding colors of a position in the environment."""
@@ -662,7 +633,7 @@ class SimCoreEnvironment:
                             )
                         )
                     print(f"surrounding_color: {surrounding_color}")
-                    if surrounding_color == self._hex_to_rgb(self.obstacle_color):
+                    if surrounding_color == utils.hex_to_rgb(self.obstacle_color):
                         print("Collision detected!")
                         return True
         return False
