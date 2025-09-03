@@ -103,7 +103,7 @@ def main():
         env._operate_moving()  # to handle robot movement
 
         sensor_data = env.lidar_scan()
-        env.show_sensorData(sensor_data)
+        env.show_robot_and_lidar(sensor_data)
 
         if sensor_data:
             point_cloud_msg = env.sensor.convert_to_pointcloud2(

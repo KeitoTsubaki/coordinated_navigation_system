@@ -164,7 +164,7 @@ class SimCoreEnvironment:
                         1,
                     )
                     
-    def show_sensorData(self, data=None):
+    def show_robot_and_lidar(self, data=None):
         if data != False:  # if data exists, then start for loop
             for element in data:
                 point = utils.AD2pos(
@@ -477,7 +477,7 @@ class SimCoreEnvironment:
     def render_robot_and_lidar(self):
         self.clear_lidar_layer()  # Reset the lidar line while remaining the map and obstacles
         sensor_data = self.lidar_scan()
-        self.show_sensorData(sensor_data)
+        self.show_robot_and_lidar(sensor_data)
     
     def lidar_scan(self):
         self.sensor.position = self.robot_position
