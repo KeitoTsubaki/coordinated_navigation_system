@@ -23,28 +23,42 @@ class MapCreator:
         self.map_w, self.map_h = self.map_size
         self.map_center_x = self.map_w // 2
         self.map_center_y = self.map_h // 2
-
+        self.obstacle_layer = None
+        
+    def _draw_rect_obstacle(self, xmin, ymin, width, height):
+        pygame.draw.rect(
+            self.obstacle_layer,
+            self.obstacle_color,
+            (
+                xmin,
+                ymin,
+                width,
+                height,
+            ),
+            width=0,
+        )
     def create_map(self, map_type, obstacle_layer=None):
+        self.obstacle_layer = obstacle_layer
         """Creates the environment and initializes the map."""
         # map_size: (map_w, map_h)
         if map_type == "trap_shaped":
-            self._create_trap_shaped_map(obstacle_layer)
+            self._create_trap_shaped_map()
         elif map_type == "zigzag":
-            self._create_zigzag_map(obstacle_layer)
+            self._create_zigzag_map()
         elif map_type == "random":
-            self._create_random_map(obstacle_layer)
+            self._create_random_map()
         elif map_type == "empty":
-            self._create_empty_map(obstacle_layer)
+            self._create_empty_map()
 
 
-    def _create_base_map(self, obstacle_layer=None):
+    def _create_base_map(self):
         """Creates a base map with walls."""
         
         map_w, map_h = self.map_size
 
         wall_width = 1
         pygame.draw.polygon(
-            obstacle_layer,
+            self.obstacle_layer,
             self.obstacle_color,
             [
                 [0, 0],
@@ -60,7 +74,7 @@ class MapCreator:
             True,
             (0, 0, 0),
         )
-        obstacle_layer.blit(
+        self.obstacle_layer.blit(
             text,
             (
                 map_w - text.get_width() - 5,
@@ -68,16 +82,16 @@ class MapCreator:
             ),
         )
         
-    def _create_random_map(self, obstacle_layer=None):
+    def _create_random_map(self):
         """Creates a random map with obstacles"""
         # Draw walls
-        self._create_base_map(obstacle_layer)
+        self._create_base_map()
         
         # Define the area for obstacles
         obstacle_area_width = self.map_w // 15 * 13
         obstacle_area_height = self.map_h // 15 * 13
         pygame.draw.rect(
-            obstacle_layer,
+            self.obstacle_layer,
             (250, 250, 250),
             (
                 self.map_center_x - obstacle_area_width // 2,
@@ -139,23 +153,19 @@ class MapCreator:
                 else:
                     object_width = rectangular_l_pixels
                     object_height = rectangular_w_pixels
-                pygame.draw.rect(
-                    obstacle_layer,
-                    self.obstacle_color,
-                    (
-                        obstacle_cx - object_width // 2,
-                        obstacle_cy - object_height // 2,
-                        object_width,
-                        object_height,
-                    ),
-                    width=0,
+                
+                self._draw_rect_obstacle(
+                    obstacle_cx - object_width // 2,
+                    obstacle_cy - object_height // 2,
+                    object_width,
+                    object_height,
                 )
             elif shape_random == 1:
                 # Draw a circular obstacle
                 radius_m = 0.5 + self.np_random.uniform(0, 1)
                 radius_pixels = int(radius_m * self.pixels_per_meter)
                 pygame.draw.circle(
-                    obstacle_layer,
+                    self.obstacle_layer,
                     self.obstacle_color,
                     (obstacle_cx, obstacle_cy),
                     radius_pixels,
@@ -172,7 +182,7 @@ class MapCreator:
         #     obstacle_layer, (0, 0)
         # )  # Draw the obstacle layer onto the map
 
-    def _create_trap_shaped_map(self, obstacle_layer=None):
+    def _create_trap_shaped_map(self):
         """Creates a trap-shaped map with obstacles"""
         
         # Parameters
@@ -219,59 +229,44 @@ class MapCreator:
         ]
 
         # Draw walls
-        self._create_base_map(obstacle_layer)
+        self._create_base_map()
 
         # Define the area for obstacles
         for i, position in enumerate(positions_of_H_shaped_obstacles):
             H_shaped_obstacle_cx, H_shaped_obstacle_cy = position
 
             # Draw the horizontal walls
-            pygame.draw.rect(
-                obstacle_layer,
-                self.obstacle_color,
-                (
-                    H_shaped_obstacle_cx
-                    - (l_horizontal[i] / 2) * self.pixels_per_meter,
-                    H_shaped_obstacle_cy - (w_wall / 2) * self.pixels_per_meter,
-                    l_horizontal[i] * self.pixels_per_meter,
-                    w_wall * self.pixels_per_meter,
-                ),
-                width=0,
+            self._draw_rect_obstacle(
+                H_shaped_obstacle_cx
+                - (l_horizontal[i] / 2) * self.pixels_per_meter,
+                H_shaped_obstacle_cy - (w_wall / 2) * self.pixels_per_meter,
+                l_horizontal[i] * self.pixels_per_meter,
+                w_wall * self.pixels_per_meter,
             )
             # Draw the vertical walls (left side)
-            pygame.draw.rect(
-                obstacle_layer,
-                self.obstacle_color,
-                (
-                    H_shaped_obstacle_cx
-                    - (l_horizontal[i] / 2 + w_wall) * self.pixels_per_meter,
-                    H_shaped_obstacle_cy
-                    - (l_vertical[i][0] / 2) * self.pixels_per_meter,
-                    w_wall * self.pixels_per_meter,
-                    l_vertical[i][0] * self.pixels_per_meter,
-                ),
-                width=0,
+            self._draw_rect_obstacle(
+                H_shaped_obstacle_cx
+                - (l_horizontal[i] / 2 + w_wall) * self.pixels_per_meter,
+                H_shaped_obstacle_cy
+                - (l_vertical[i][0] / 2) * self.pixels_per_meter,
+                w_wall * self.pixels_per_meter,
+                l_vertical[i][0] * self.pixels_per_meter,
             )
             # Draw the vertical walls (right side)
-            pygame.draw.rect(
-                obstacle_layer,
-                self.obstacle_color,
-                (
-                    H_shaped_obstacle_cx
-                    + (l_horizontal[i] / 2) * self.pixels_per_meter
-                    - 1,  # add 1 to avoid gap between horizontal and vertical walls
-                    H_shaped_obstacle_cy
-                    - (l_vertical[i][1] / 2) * self.pixels_per_meter,
-                    w_wall * self.pixels_per_meter,
-                    l_vertical[i][1] * self.pixels_per_meter,
-                ),
-                width=0,
+            self._draw_rect_obstacle(
+                H_shaped_obstacle_cx
+                + (l_horizontal[i] / 2) * self.pixels_per_meter
+                - 1,  # add 1 to avoid gap between horizontal and vertical walls
+                H_shaped_obstacle_cy
+                - (l_vertical[i][1] / 2) * self.pixels_per_meter,
+                w_wall * self.pixels_per_meter,
+                l_vertical[i][1] * self.pixels_per_meter,
             )
         # map.blit(
         #     obstacle_layer, (0, 0)
         # )  # Draw the obstacle layer onto the map
 
-    def _create_zigzag_map(self, obstacle_layer=None):
+    def _create_zigzag_map(self):
         """Creates a zigzag-shaped map with obstacles"""
         
         # Parameters
@@ -285,12 +280,12 @@ class MapCreator:
         for _ in range(4):
             d_deviations.append(2.4 * self.np_random.uniform(0, 1) - 1.2)
 
-        self._create_base_map(obstacle_layer)
+        self._create_base_map()
 
         # Draw dotted lines
         for i in range(1, 5):
             pygame.draw.line(
-                obstacle_layer,
+                self.obstacle_layer,
                 (240, 240, 240),
                 (0, (self.divided_space_width * i)),
                 (
@@ -306,16 +301,11 @@ class MapCreator:
             self.map_center_x + (self.l_passage / 2) * self.pixels_per_meter,
         ]
         for x in side_wall_xs:
-            pygame.draw.rect(
-                obstacle_layer,
-                self.obstacle_color,
-                (
-                    x,
-                    0,
-                    w_wall * self.pixels_per_meter,
-                    self.map_h,
-                ),
-                width=0,
+            self._draw_rect_obstacle(
+                x,
+                0,
+                w_wall * self.pixels_per_meter,
+                self.map_h,
             )
 
         # Draw horizontal walls
@@ -330,26 +320,21 @@ class MapCreator:
                 horizontal_wall_xmin = (
                     self.map_center_x - (self.l_passage / 2) * self.pixels_per_meter
                 )
-            pygame.draw.rect(
-                obstacle_layer,
-                self.obstacle_color,
-                (
-                    horizontal_wall_xmin,
-                    self.divided_space_width * (i + 1)
-                    + d_deviations[i] * self.pixels_per_meter,
-                    (self.l_passage - w_openings[i]) * self.pixels_per_meter
-                    + 1,  # add 1 to avoid gap between horizontal and side walls
-                    w_wall * self.pixels_per_meter,
-                ),
-                width=0,
+            self._draw_rect_obstacle(
+                horizontal_wall_xmin,
+                self.divided_space_width * (i + 1)
+                + d_deviations[i] * self.pixels_per_meter,
+                (self.l_passage - w_openings[i]) * self.pixels_per_meter
+                + 1,  # add 1 to avoid gap between horizontal and side walls
+                w_wall * self.pixels_per_meter,
             )
         # self.map.blit(
         #     obstacle_layer, (0, 0)
         # )  # Draw the obstacle layer onto the map
 
-    def _create_empty_map(self, obstacle_layer):
+    def _create_empty_map(self):
         """Creates an empty map with no obstacles."""
-        self._create_base_map(obstacle_layer)
+        self._create_base_map()
     
     def _calculate_spawan_area_in_zigzag_map(self):
         """Calculates the spawn area for the robot in the zigzag map."""
