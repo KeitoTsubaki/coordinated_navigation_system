@@ -90,7 +90,7 @@ def main():
 
     env = Environment()
     
-    env.render_window()
+    env.render_obstacles()
 
     print((env.map_center_x, env.map_center_y))
     while env.running:

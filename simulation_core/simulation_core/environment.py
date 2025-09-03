@@ -121,48 +121,26 @@ class SimCoreEnvironment:
             divided_space_width=self.divided_space_width,
             robot_radius_pixels=self.robot_radius_pixels,
             )
+        
+        self.num_check_points = 16
 
-    def visualize_search_point(self, position):
-        num_surrounding_points = 5
-        for i in range(-2, 3):
-            for j in range(-2, 3):
-                if (
-                    int(
-                        position[0]
-                        + i / (num_surrounding_points - 1) * 2 * self.robot_radius_pixels
-                    )
-                    >= 0
-                    and int(
-                        position[1]
-                        + j / (num_surrounding_points - 1) * 2 * self.robot_radius_pixels
-                    )
-                    >= 0
-                    and int(
-                        position[0]
-                        + i / (num_surrounding_points - 1) * 2 * self.robot_radius_pixels
-                    )
-                    <= self.map_w
-                    and int(
-                        position[1]
-                        + j / (num_surrounding_points - 1) * 2 * self.robot_radius_pixels
-                    )
-                    <= self.map_h
-                ):
-                    pygame.draw.circle(
-                        self.lidar_sensor_layer,
-                        (255, 0, 0),
-                        (
-                            int(
-                                position[0]
-                                + i / (num_surrounding_points - 1) * 2 * self.robot_radius_pixels
-                            ),
-                            int(
-                                position[1]
-                                + j / (num_surrounding_points - 1) * 2 * self.robot_radius_pixels
-                            ),
-                        ),
-                        1,
-                    )
+    def visualize_search_point(self, position, color=(255, 0, 0)):
+        # The number of points to check around the robot's circumference.
+        # This should match the value in is_collision.
+        for i in range(self.num_check_points):
+            angle = 2 * math.pi * i / self.num_check_points
+            # Calculate the position of a point on the robot's circumference
+            check_x = int(position[0] + self.robot_radius_pixels * math.cos(angle))
+            check_y = int(position[1] + self.robot_radius_pixels * math.sin(angle))
+
+            # Ensure the check point is within the map boundaries before drawing
+            if 0 <= check_x < self.map_w and 0 <= check_y < self.map_h:
+                pygame.draw.circle(
+                    self.lidar_sensor_layer,
+                    color,  # Red color for visualization
+                    (check_x, check_y),
+                    1,  # radius of the visualized point
+                )
                     
     def show_robot_and_lidar(self, data=None):
         if data != False:  # if data exists, then start for loop
@@ -188,13 +166,14 @@ class SimCoreEnvironment:
             robot_radius = self.robot_radius_m * 0.8 * self.pixels_per_meter
 
             # Draw target position
-            pygame.draw.circle(
-                self.lidar_sensor_layer,
-                self.target_color,
-                self.target_position,
-                robot_frame_radius,
-                width=2,  # Draw a circle around the robot
-            )
+            # pygame.draw.circle(
+            #     self.lidar_sensor_layer,
+            #     self.target_color,
+            #     self.target_position,
+            #     robot_frame_radius,
+            #     width=2,  # Draw a circle around the robot
+            # )
+            self.visualize_search_point(self.target_position, self.target_color)
             pygame.draw.circle(
                 self.lidar_sensor_layer,
                 self.target_color,
@@ -225,13 +204,14 @@ class SimCoreEnvironment:
             # )
 
             # Draw the robot's position
-            pygame.draw.circle(
-                self.lidar_sensor_layer,
-                self.robot_color,
-                self.robot_position,
-                robot_frame_radius,
-                width=2,  # Draw a circle around the robot
-            )
+            # pygame.draw.circle(
+            #     self.lidar_sensor_layer,
+            #     self.robot_color,
+            #     self.robot_position,
+            #     robot_frame_radius,
+            #     width=2,  # Draw a circle around the robot
+            # )
+            self.visualize_search_point(self.robot_position, self.robot_color)
             pygame.draw.circle(
                 self.lidar_sensor_layer,
                 self.robot_color,
@@ -252,8 +232,8 @@ class SimCoreEnvironment:
                 2,  # Draw the robot's head
             )
             
-            self.visualize_search_point(self.robot_position)
-            self.visualize_search_point(self.target_position)
+            # self.visualize_search_point(self.robot_position)
+            # self.visualize_search_point(self.target_position)
             self.map.blit(
                 self.lidar_sensor_layer, (0, 0)
             )  # Overlay lidar sensor layer on the map
@@ -278,62 +258,40 @@ class SimCoreEnvironment:
     def is_collision(self, position):
         """Checks the surrounding colors of a position in the environment."""
         # Number of pixels to check in each direction (odd number)
-        num_surrounding_points = 5
-        for i in range(-2, 3):
-            for j in range(-2, 3):
-                if (
-                    int(
-                        position[0]
-                        + i / (num_surrounding_points - 1) * 2 * self.robot_radius_pixels
-                    )
-                    >= 0
-                    and int(
-                        position[1]
-                        + j / (num_surrounding_points - 1) * 2 * self.robot_radius_pixels
-                    )
-                    >= 0
-                    and int(
-                        position[0]
-                        + i / (num_surrounding_points - 1) * 2 * self.robot_radius_pixels
-                    )
-                    <= self.map_w
-                    and int(
-                        position[1]
-                        + j / (num_surrounding_points - 1) * 2 * self.robot_radius_pixels
-                    )
-                    <= self.map_h
-                ):
-                    surrounding_color = self.map.get_at(
-                            (
-                                int(
-                                    position[0]
-                                    + i
-                                    * 2 * self.robot_radius_pixels
-                                    / (num_surrounding_points - 1)
-                                ),
-                                int(
-                                    position[1]
-                                    + j
-                                    * 2 * self.robot_radius_pixels
-                                    / (num_surrounding_points - 1)
-                                ),
-                            )
-                        )
-                    print(f"surrounding_color: {surrounding_color}")
-                    if surrounding_color == utils.hex_to_rgb(self.obstacle_color):
-                        print("Collision detected!")
-                        return True
+        # The number of points to check around the robot's circumference.
+        # A higher number means more accurate collision detection.
+        
+        for i in range(self.num_check_points):
+            angle = 2 * math.pi * i / self.num_check_points
+            # Calculate the position of a point on the robot's circumference
+            check_x = int(position[0] + self.robot_radius_pixels * math.cos(angle))
+            check_y = int(position[1] + self.robot_radius_pixels * math.sin(angle))
+
+            # Ensure the check point is within the map boundaries
+            if not (0 <= check_x < self.map_w and 0 <= check_y < self.map_h):
+                # Part of the robot is outside the map, which is a collision
+                return True
+
+            # Get the color of the pixel at the check point
+            try:
+                pixel_color = self.obstacle_layer.get_at((check_x, check_y))
+            except IndexError:
+                # This can happen if the coordinates are somehow still out of bounds
+                return True
+
+            # Check if the pixel color matches the obstacle color.
+            # We check the alpha channel (pixel_color[3]) to see if it's a non-transparent pixel,
+            # which indicates an obstacle on the obstacle_layer.
+            if pixel_color[3] > 0:
+                return True
         return False
 
-    def check_reaching_target(self):
+    def is_target_reached(self):
         distance_to_target = math.sqrt(
             (self.target_position[0] - self.robot_position[0]) ** 2
             + (self.target_position[1] - self.robot_position[1]) ** 2
         )
-        if distance_to_target < self.robot_radius_pixels / 10: # within 10% of robot radius
-            return True
-        else:
-            return False
+        return distance_to_target < self.robot_radius_pixels
 
     def _operate_moving(self):
         keys = pygame.key.get_pressed()
