@@ -434,10 +434,18 @@ class SimCoreEnvironment:
         self.create_start_and_target_position(
             start_spawn_area, target_spawn_area
         )
-    def render_robot_and_lidar(self):
-        self.clear_lidar_layer()  # Reset the lidar line while remaining the map and obstacles
+        # ロボットの向きも初期化する
+        self.robot_theta = 0.0
+        self.target_theta = 0.0
+
+    def update_sensors(self):
+        """Performs a LiDAR scan and updates sensor-related state."""
         self.sensor_data = self.lidar_scan()
         self.closest_obstacle_info = self.sensor.get_closest_obstacle_info(self.sensor_data)
+
+    def render_robot_and_lidar(self):
+        """Draws the robot and the last sensor data to the screen."""
+        self.clear_lidar_layer()  # Reset the lidar line while remaining the map and obstacles
         self.show_robot_and_lidar(self.sensor_data)
     
     def lidar_scan(self):
