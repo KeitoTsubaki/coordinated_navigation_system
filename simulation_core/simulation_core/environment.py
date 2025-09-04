@@ -45,6 +45,8 @@ class SimCoreEnvironment:
         self.lidar_range_m = config["lidar"]["range_m"]
         self.lidar_line_color = config["lidar"]["line_color"]
         self.lidar_points_color = config["lidar"]["points_color"]
+        self.r_lidar = config["lidar"]["range_m"]
+        self.resolution = config["lidar"]["resolution"]
 
         self.T_do_m = config["obstacles"]["T_do_m"]
         self.n_obstacles = config["obstacles"]["count"]
@@ -57,7 +59,6 @@ class SimCoreEnvironment:
         self.alpha_max = config["robot"]["alpha_max"]
         self.max_d = config["robot"]["max_d"]
         self.max_theta = config["robot"]["max_theta"]
-        self.r_lidar = config["lidar"]["range_m"]
 
         self.pixels_per_meter = self.map_w / (2 * self.lidar_range_m)
 
@@ -103,6 +104,7 @@ class SimCoreEnvironment:
         self.sensor = sensor.LiDARSensor(
             self.lidar_range_pixels, self.map, uncertainty=(0, 0)
         )
+        self.sensor.num_scans = self.resolution
         self.running = True
         
         self.map_creator = mc.MapCreator(
