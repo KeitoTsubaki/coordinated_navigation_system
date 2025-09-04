@@ -38,7 +38,7 @@ class LiDARSensor():
         # self.map = map
         self.W, self.H = pygame.display.get_surface().get_size()
         self.sensedObstacles = []
-        self.num_scans = 180
+        self.num_scans = 450
         self.out_of_range_value = self.Range # lidar max range value or 0
 
     # Euclidean DISTANCE CALCULATOR
