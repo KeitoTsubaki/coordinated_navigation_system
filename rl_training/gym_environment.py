@@ -125,10 +125,10 @@ class Env(gym.Env):
         self.current_distance_to_target, self.current_angle_to_target = self.env.get_goal_info()
         
         if self.previous_distance_to_closest_obstacle is None:
-            self.previous_distance_to_closest_obstacle = self.env.get_closest_obstacle_distance()
+            self.previous_distance_to_closest_obstacle = self.env.get_closest_obstacle_info()[0]
         else:
             self.previous_distance_to_closest_obstacle = self.current_distance_to_closest_obstacle
-        self.current_distance_to_closest_obstacle = self.env.get_closest_obstacle_distance()
+        self.current_distance_to_closest_obstacle = self.env.get_closest_obstacle_info()[0]
         
         self.current_v = v_e
         self.current_omega = omega_e
@@ -256,8 +256,8 @@ class Env(gym.Env):
         # v_e は m/s, omega_e は rad/s
         # 位置はピクセル単位で計算するため、v_eをピクセル/秒に変換
         v_e_pps = v_e * self.env.pixels_per_meter
-        dx = v_e_pps * math.sin(self.env.robot_theta) * dt
-        dy = -v_e_pps * math.cos(self.env.robot_theta) * dt  # Pygameのy軸は下向きが正のため、符号を反転
+        dx = -v_e_pps * math.sin(self.env.robot_theta) * dt # 反時計回りを正とするためsinの符号を反転
+        dy = -v_e_pps * math.cos(self.env.robot_theta) * dt  # Pygameのy軸は下向きが正のため、符号を反転. cosは不変
         dtheta = omega_e * dt
         
         
@@ -274,11 +274,8 @@ class Env(gym.Env):
         # self.env.robot_position[1] += dy
         self.env.robot_theta += dtheta
 
-        # 角度を0から2πの範囲に正規化
-        if self.env.robot_theta > 2 * math.pi:
-            self.env.robot_theta -= 2 * math.pi
-        elif self.env.robot_theta < 0:
-            self.env.robot_theta += 2 * math.pi
+        # 角度を-πからπの範囲に正規化
+        self.env.robot_theta = (self.env.robot_theta + math.pi) % (2 * math.pi) - math.pi
     
     def _process_lidar_data(self, sensor_data):
         """LiDARスキャンデータの最初のn_e個の点を後ろにコピーし、n_l+n_e次元のベクトルに処理する"""
@@ -300,14 +297,25 @@ class Env(gym.Env):
         self.lidar_history.append(processed_lidar)
         
         obs_lidar = np.array(list(self.lidar_history), dtype=np.float32)
-        print("obs_lidar shape:", obs_lidar.shape)
+        # print("obs_lidar shape:", obs_lidar.shape)
         obs_goal = np.array(self.env.get_goal_info(), dtype=np.float32)
-        print("obs_goal shape:", obs_goal.shape)
-        print("obs_goal:", obs_goal)
+        # print("robot theta: ", self.env.robot_theta)
+        # print("obs_goal shape:", obs_goal.shape)
+        # print("obs_goal:", obs_goal)
+        obs_velocity = np.array([self.current_v, self.current_omega], dtype=np.float32)
+        # print("obs_velocity shape:", obs_velocity.shape)
+        # print("obs_velocity:", obs_velocity)
+        obs_closest_obstacle = np.array(self.env.get_closest_obstacle_info(), dtype=np.float32)
+
+        # --- Debug Print ---
+        print(f"Robot Theta: {self.env.robot_theta:.2f} rad")
+        print(f"Goal (Dist, Angle): ({obs_goal[0]:.2f} m, {obs_goal[1]:.2f} rad)")
+        print(f"Closest Obstacle (Dist, Angle): ({obs_closest_obstacle[0]:.2f} m, {obs_closest_obstacle[1]:.2f} rad)")
         
         observation = {
             "lidar": obs_lidar,
             "goal": obs_goal,
+            "velocity": obs_velocity,
         }
         # observation = None
         return observation
