@@ -473,6 +473,11 @@ class SimCoreEnvironment:
             -(self.target_position[1] - self.robot_position[1]),
         )
         
+
+        
+        # Normalize the angle to the range [-pi, pi]
+        angle_to_target = (angle_to_target + math.pi) % (2 * math.pi) - math.pi
+
         return distance_to_target, angle_to_target
 
     def get_closest_obstacle_distance(self):
