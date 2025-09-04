@@ -62,10 +62,16 @@ class LiDARSensor():
         x1, y1 = self.position[0], self.position[1]
         obstacle_color_rgb = self.hex_to_rgb(obstacle_color)
         
-        for angle in np.linspace(0, 2 * math.pi, self.num_scans, endpoint=False):
+        # ロボットの向き(self.theta)を、scan_angleと同じ数学座標系(X軸正方向=0)に変換する
+        # self.thetaは真上(Y軸負方向)が0 radなので、pi/2を引くとX軸正方向が0の基準に揃う
+        robot_global_angle = self.theta - math.pi / 2
+        
+        for scan_angle in np.linspace(0, 2 * math.pi, self.num_scans, endpoint=False):
+            # 基準を揃えたロボットの向きに、センサーのローカルなスキャン角度を加算する
+            global_angle = robot_global_angle + scan_angle
             x2, y2 = (
-                x1 + self.Range * math.cos(angle),
-                y1 + self.Range * math.sin(angle),
+                x1 + self.Range * math.cos(global_angle),
+                y1 + self.Range * math.sin(global_angle),
             )
 
             intersected = False
@@ -75,7 +81,10 @@ class LiDARSensor():
                 y = int(y1 + (y2 - y1) * u)
 
                 if not (0 <= x < self.W and 0 <= y < self.H):
-                    # Out of map bounds, treat as max range
+                    # 光線がマップの境界外に出た場合、その地点を障害物として扱う
+                    distance = self.distance((x, y))
+                    data.append([distance, global_angle])
+                    intersected = True
                     break
                 
                 color = map.get_at((x, y))
@@ -83,13 +92,13 @@ class LiDARSensor():
                     # Obstacle detected
                     distance = self.distance((x, y))
                     # output = uncertainty_add(distance, angle, self.sigma)
-                    data.append([distance, angle])
+                    data.append([distance, global_angle])
                     intersected = True
                     break
             
             if not intersected:
                 # No obstacle found, record max range
-                data.append([self.out_of_range_value, angle])
+                data.append([self.out_of_range_value, global_angle])
 
         return data if data else False
 
@@ -155,9 +164,21 @@ class LiDARSensor():
 
         return msg
     
-    def get_closest_obstacle_distance(self, sensor_data):
+    def get_closest_obstacle_info(self, sensor_data):
         if sensor_data:
             distances = [data[0] for data in sensor_data]
-            return min(distances)
+            closest_distance = min(distances)
+            closest_index = distances.index(closest_distance)
+            # センサーデータから得られる角度はグローバル座標系の角度
+            closest_global_angle = sensor_data[closest_index][1]
+
+            # ロボットの向きも同じ数学座標系(X軸正方向=0)に変換
+            robot_global_angle = self.theta - math.pi / 2
+
+            # ロボットの正面を0とする相対角度を計算
+            relative_angle = closest_global_angle - robot_global_angle
+            # 角度を-πからπの範囲に正規化
+            normalized_relative_angle = (relative_angle + math.pi) % (2 * math.pi) - math.pi
+            return closest_distance, normalized_relative_angle
         else:
-            return float('inf')
+            return float('inf'), 0.0
