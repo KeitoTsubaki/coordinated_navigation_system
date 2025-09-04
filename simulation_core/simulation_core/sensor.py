@@ -38,6 +38,8 @@ class LiDARSensor():
         # self.map = map
         self.W, self.H = pygame.display.get_surface().get_size()
         self.sensedObstacles = []
+        self.num_scans = 180
+        self.out_of_range_value = self.Range # lidar max range value or 0
 
     # Euclidean DISTANCE CALCULATOR
     def distance(self, obstaclePosition):
@@ -56,68 +58,40 @@ class LiDARSensor():
         return (r, g, b)
 
     def sense_obstacles(self, map, obstacle_color="#000000"):
-        data = []  # stores distance and angle of ONLY WALLS from bot's position
+        data = []
         x1, y1 = self.position[0], self.position[1]
-        obstacle_color_rgb = self.hex_to_rgb(obstacle_color)  # convert hex color to RGB
-        for angle in np.linspace(
-            0, 2 * math.pi, 180, False
-        ):  # scan from 0 to 2pi, 6 degree intervals (Resolution). For every angle, check if there is a wall
+        obstacle_color_rgb = self.hex_to_rgb(obstacle_color)
+        
+        for angle in np.linspace(0, 2 * math.pi, self.num_scans, endpoint=False):
             x2, y2 = (
                 x1 + self.Range * math.cos(angle),
                 y1 + self.Range * math.sin(angle),
-            )  # coordinate of end of line segment
+            )
 
-            
+            intersected = False
             for i in range(0, 100):  # If wall is within laser's path ...
                 u = i / 100  # Essentially a percentage
                 x = int(x1 + (x2 - x1) * u)
                 y = int(y1 + (y2 - y1) * u)
 
-                """
-                x = int(x2*u + x1*(1-u))
-                y = int(y2*u + y1*(1-u))
-                """
-
-                if (
-                    0 < x < self.W and 0 < y < self.H
-                ):  # if within the window/map. Reference point is pixel (0,0).
-                    color = map.get_at(
-                        (x, y)
-                    )  # extract RGB value on map at every point of iteration within laser's path and do the quick check below ...
-                    if (
-                        color[0],
-                        color[1],
-                        color[2],
-                    ) == obstacle_color_rgb:  # if color is black, aka the walls, calculate this distance from the robot
-                        distance = self.distance((x, y))  # References method above
-                        # print("distance: ", distance)
-                        # output = uncertainty_add(distance,angle, self.sigma) #add uncertainty to measurements
-                        output = [distance, angle]  # output is [Distance, Angle]
-                        output.append(
-                            self.position
-                        )  # add robot's position to list. Robot is always at (0,0) position though... ??? BUG
-                        data.append(
-                            output
-                        )  # [Distance, Angle, (x,y)] --> This is the return
-                        break
-                else:
-                    distance = self.distance((x, y))  # References method above
-                    # print("distance: ", distance)
-                    # output = uncertainty_add(distance,angle, self.sigma) #add uncertainty to measurements
-                    output = [distance, angle]  # output is [Distance, Angle]
-                    output.append(
-                        self.position
-                    )  # add robot's position to list. Robot is always at (0,0) position though... ??? BUG
-                    data.append(
-                        output
-                    )  # [Distance, Angle, (x,y)] --> This is the return
+                if not (0 <= x < self.W and 0 <= y < self.H):
+                    # Out of map bounds, treat as max range
                     break
+                
+                color = map.get_at((x, y))
+                if (color[0], color[1], color[2]) == obstacle_color_rgb:
+                    # Obstacle detected
+                    distance = self.distance((x, y))
+                    # output = uncertainty_add(distance, angle, self.sigma)
+                    data.append([distance, angle])
+                    intersected = True
+                    break
+            
+            if not intersected:
+                # No obstacle found, record max range
+                data.append([self.out_of_range_value, angle])
 
-        # when sensor completes a full turn, return the data to be drawn in the map ...which is the responsiblity of the buildEnvironment class in the env.py file
-        if len(data) > 0:
-            return data  # [Distance, Angle, (x,y)] --> This is the return
-        else:
-            return False
+        return data if data else False
 
     def convert_to_pointcloud2(
         self, sensor_data, time_stamp, pixels_per_meter, frame_id="base_link"
