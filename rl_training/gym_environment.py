@@ -53,8 +53,9 @@ class Env(gym.Env):
         # omega_n: -omega_max ~ omega_max
         # action = [v_n, omega_n]
         self.action_space = spaces.Box(
-            low=np.array([0, -self.omega_max]),
-            high=np.array([self.v_max, self.omega_max]),
+            # Normalize action space to [-1, 1] for better compatibility with RL algorithms.
+            low=np.array([-1.0, -1.0], dtype=np.float32),
+            high=np.array([1.0, 1.0], dtype=np.float32),
             dtype=np.float32,
         )
         # We design a robot-centric observation space to remove the dependency
@@ -64,22 +65,31 @@ class Env(gym.Env):
         # o_g:
         # o_v:
         # o_o:
+        # Define a reasonable maximum distance (e.g., map diagonal) instead of infinity
+        max_dist = math.sqrt(self.env.map_w**2 + self.env.map_h**2) / self.env.pixels_per_meter
+
         self.observation_space = spaces.Dict(
             {
                 "lidar": spaces.Box(
                     low=0,
-                    high=100 * self.r_lidar,
+                    high=self.r_lidar, # LiDAR values are already in meters
                     shape=(4, self.n_l + self.n_e),
                     dtype=np.float32,
                 ),
                 "goal": spaces.Box(
-                    low=np.array([0, -np.pi]), high=np.array([np.inf, np.pi]), dtype=np.float32
+                    low=np.array([0, -np.pi], dtype=np.float32),
+                    high=np.array([max_dist, np.pi], dtype=np.float32),
+                    dtype=np.float32,
                 ),
                 "velocity": spaces.Box(
-                    low=np.array([0, 0]), high=np.array([self.v_max, self.omega_max]), dtype=np.float32
+                    low=np.array([0, -self.omega_max], dtype=np.float32),
+                    high=np.array([self.v_max, self.omega_max], dtype=np.float32),
+                    dtype=np.float32,
                 ),
                 "closest_obstacle": spaces.Box(
-                    low=np.array([0, -np.pi]), high=np.array([np.inf, np.pi]), dtype=np.float32
+                    low=np.array([0, -np.pi], dtype=np.float32),
+                    high=np.array([max_dist, np.pi], dtype=np.float32),
+                    dtype=np.float32,
                 ),
             }
         )
@@ -112,22 +122,20 @@ class Env(gym.Env):
         dt = 1 / self.metadata["render_fps"]
         # Map the action to the executable action
         v_e, omega_e = self._action_to_executable_action(action, dt)
+        # Update robot position
         self.update_robot_position(v_e, omega_e, dt=dt)
+        # Get new sensor readings from the new position
+        self.env.update_sensors()
+
         if self.render_mode == "human":
             self._render_frame()
         
-        if self.previous_distance_to_taret is None:
-            self.previous_distance_to_taret = self.env.get_goal_info()[0]
-            self.previous_angle_to_target = self.env.get_goal_info()[1]
-        else:
-            self.previous_distance_to_taret = self.current_distance_to_target
-            self.previous_angle_to_target = self.current_angle_to_target
+        # 報酬計算のために、現在の値を前の値として保存
+        self.previous_distance_to_taret = self.current_distance_to_target
+        self.previous_angle_to_target = self.current_angle_to_target
+        self.previous_distance_to_closest_obstacle = self.current_distance_to_closest_obstacle
+        # 新しい現在の値を取得
         self.current_distance_to_target, self.current_angle_to_target = self.env.get_goal_info()
-        
-        if self.previous_distance_to_closest_obstacle is None:
-            self.previous_distance_to_closest_obstacle = self.env.get_closest_obstacle_info()[0]
-        else:
-            self.previous_distance_to_closest_obstacle = self.current_distance_to_closest_obstacle
         self.current_distance_to_closest_obstacle = self.env.get_closest_obstacle_info()[0]
         
         self.current_v = v_e
@@ -153,14 +161,32 @@ class Env(gym.Env):
         self.env.np_random = self.np_random
 
         self.env.render_obstacles()
+        # Perform an initial sensor scan to populate observation data
+        self.env.update_sensors()
         
         if self.render_mode == "human":
             self._render_frame()
         
         # 最初の観測でLiDAR履歴を初期化
+        self.lidar_history.clear()
         initial_lidar_obs = self._process_lidar_data(self.env.sensor_data)
         for _ in range(4):
             self.lidar_history.append(initial_lidar_obs)
+            
+        # 速度情報を初期化
+        self.current_v = 0.0
+        self.current_omega = 0.0
+        self.previous_v = 0.0
+        self.previous_omega = 0.0
+        
+        # 報酬計算用の変数を初期化
+        initial_dist_to_target, initial_angle_to_target = self.env.get_goal_info()
+        self.previous_distance_to_taret = initial_dist_to_target
+        self.current_distance_to_target = initial_dist_to_target
+        self.previous_angle_to_target = initial_angle_to_target
+        self.current_angle_to_target = initial_angle_to_target
+        self.previous_distance_to_closest_obstacle = self.env.get_closest_obstacle_info()[0]
+        self.current_distance_to_closest_obstacle = self.env.get_closest_obstacle_info()[0]
             
         observation = self._get_obs()
         info = self._get_info()
@@ -233,7 +259,12 @@ class Env(gym.Env):
         return reward
     
     def _action_to_executable_action(self, action, dt):
-        v_n, omega_n = action
+        # De-normalize the action from [-1, 1] to the robot's physical limits.
+        # Linear velocity: maps [-1, 1] to [0, v_max]
+        # Note: action[0] is used. A value of -1 maps to 0, and 1 maps to v_max.
+        v_n = (action[0] + 1.0) / 2.0 * self.v_max
+        # Angular velocity: maps [-1, 1] to [-omega_max, omega_max]
+        omega_n = action[1] * self.omega_max
 
         v_kmin = max(0, self.previous_v - self.a_max * dt)
         v_kmax = min(self.v_max, self.previous_v + self.a_max * dt)
@@ -290,7 +321,10 @@ class Env(gym.Env):
         # print("sensor_data_distance length:", len(sensor_data_distance))
         # print("processed_lidar length:", len(processed_lidar))
         
-        return np.array(processed_lidar, dtype=np.float32) / self.env.pixels_per_meter
+        # The sensor data is in pixels, convert to meters
+        lidar_in_meters = np.array(processed_lidar, dtype=np.float32) / self.env.pixels_per_meter
+        # Clip values to the defined observation space range
+        return np.clip(lidar_in_meters, 0, self.r_lidar)
 
     def _get_obs(self):
         processed_lidar = self._process_lidar_data(self.env.sensor_data)
@@ -324,18 +358,18 @@ class Env(gym.Env):
         return observation
 
     def _get_info(self):
-        info = None
-        return info
+        return {}
     
     def render(self):
         if self.render_mode == "rgb_array":
             return self._render_frame()
         
     def _render_frame(self):
-        if self.window is None and self.render_mode == "human":
+        # self.window (PygameのSurface) が未初期化の場合、初期化する
+        if self.window is None:
             self.window = self.env.map
             
-        if self.clock is None and self.render_mode == "human":
+        if self.clock is None:
             self.clock = pygame.time.Clock()
 
         if self.render_mode == "human":
@@ -346,6 +380,9 @@ class Env(gym.Env):
             self.clock.tick(self.metadata["render_fps"])
             
         elif self.render_mode == "rgb_array":
+            # rgb_arrayモードでも、配列に変換する前に描画内容を更新する必要がある
+            self.env.render_robot_and_lidar()
+            
             return np.transpose(
                 np.array(pygame.surfarray.pixels3d(self.window)), axes=(1, 0, 2)
             )
