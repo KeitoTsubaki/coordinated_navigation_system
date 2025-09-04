@@ -14,3 +14,8 @@ reward:
   k_8: 2400
   k_9: 2400
 
+lidar:
+  n_l: 450         # Number of LiDAR points
+  n_e: 10           # Number of extention points
+  lidar_history_len: 4  # Number of previous LiDAR scans to stack
+
