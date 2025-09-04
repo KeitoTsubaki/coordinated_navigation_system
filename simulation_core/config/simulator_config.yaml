@@ -33,7 +33,7 @@ lidar:
   noise: 1.0           # ノイズの強さ（標準偏差）
   angle_start: 0       # 開始角（ラジアン）
   angle_end: 6.28318   # 終了角（2πラジアン）
-  line_color: "#45E0D1"
+  line_color: "#D2E0DF"
   points_color: "#04C4CD"  # スキャン点の色
 
 map:
