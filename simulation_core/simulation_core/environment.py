@@ -473,7 +473,7 @@ class SimCoreEnvironment:
         dx = self.target_position[0] - self.robot_position[0]
         dy = -(self.target_position[1] - self.robot_position[1]) # Y軸を数学座標系(上向きが正)に合わせる
         global_angle_to_target = math.atan2(dy, dx) # 数学座標系での角度
-        print("global_angle_to_target:", global_angle_to_target)
+        # print("global_angle_to_target:", global_angle_to_target)
 
         # 2. ロボットの向きをatan2の座標系に変換
         #    - self.robot_theta の基準: Y軸負方向(上) = 0 rad, 反時計回りが正

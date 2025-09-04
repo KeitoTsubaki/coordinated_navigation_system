@@ -287,8 +287,8 @@ class Env(gym.Env):
         processed_lidar = list(sensor_data_distance)
         processed_lidar += sensor_data_distance[:self.n_e]
 
-        print("sensor_data_distance length:", len(sensor_data_distance))
-        print("processed_lidar length:", len(processed_lidar))
+        # print("sensor_data_distance length:", len(sensor_data_distance))
+        # print("processed_lidar length:", len(processed_lidar))
         
         return np.array(processed_lidar, dtype=np.float32) / self.env.pixels_per_meter
 
@@ -308,14 +308,17 @@ class Env(gym.Env):
         obs_closest_obstacle = np.array(self.env.get_closest_obstacle_info(), dtype=np.float32)
 
         # --- Debug Print ---
-        print(f"Robot Theta: {self.env.robot_theta:.2f} rad")
-        print(f"Goal (Dist, Angle): ({obs_goal[0]:.2f} m, {obs_goal[1]:.2f} rad)")
-        print(f"Closest Obstacle (Dist, Angle): ({obs_closest_obstacle[0]:.2f} m, {obs_closest_obstacle[1]:.2f} rad)")
+        print(f"Robot Theta: {self.env.robot_theta:.2f} rad (0:UP)")
+        print(f"LiDAR shape: {obs_lidar.shape}")
+        print(f"Goal (Dist, Angle(relative to robot)): ({obs_goal[0]:.2f} m, {obs_goal[1]:.2f} rad)")
+        print(f"Velocity (v, omega): ({obs_velocity[0]:.2f} m/s, {obs_velocity[1]:.2f} rad/s)")
+        print(f"Closest Obstacle (Dist, Angle(relative to robot)): ({obs_closest_obstacle[0]:.2f} m, {obs_closest_obstacle[1]:.2f} rad)")
         
         observation = {
             "lidar": obs_lidar,
             "goal": obs_goal,
             "velocity": obs_velocity,
+            "closest_obstacle": obs_closest_obstacle,
         }
         # observation = None
         return observation
