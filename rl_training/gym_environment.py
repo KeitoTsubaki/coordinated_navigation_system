@@ -6,6 +6,7 @@ import pygame
 import numpy as np
 import yaml
 import math
+from collections import deque
 
 from simulation_core import environment
 
@@ -39,8 +40,10 @@ class Env(gym.Env):
         self.max_d = self.env.max_d
         self.max_theta = self.env.max_theta
         self.r_lidar = self.env.r_lidar
-        self.n_l = 10
-        self.n_e = 2
+        self.n_l = self.ddpg_config["lidar"]["n_l"]
+        self.n_e = self.ddpg_config["lidar"]["n_e"]
+        self.lidar_history_len = self.ddpg_config["lidar"]["lidar_history_len"]
+
 
         
 
@@ -88,6 +91,9 @@ class Env(gym.Env):
         self.window = None
         self.clock = None
         
+        # 4フレーム分のLiDARデータを保持するためのdeque
+        self.lidar_history = deque(maxlen=self.lidar_history_len)
+        
         self.previous_distance_to_taret = None
         self.previous_angle_to_target = None
         self.current_distance_to_target = None
@@ -96,6 +102,8 @@ class Env(gym.Env):
         self.current_distance_to_closest_obstacle = None
         self.current_v = None
         self.current_omega = None
+        self.previous_v = 0.0
+        self.previous_omega = 0.0
         
         
     def step(self, action):
@@ -143,13 +151,19 @@ class Env(gym.Env):
         pygame.display.init()
         
         self.env.np_random = self.np_random
+
         self.env.render_obstacles()
-        
-        observation = self._get_obs()
-        info = self._get_info()
         
         if self.render_mode == "human":
             self._render_frame()
+        
+        # 最初の観測でLiDAR履歴を初期化
+        initial_lidar_obs = self._process_lidar_data(self.env.sensor_data)
+        for _ in range(4):
+            self.lidar_history.append(initial_lidar_obs)
+            
+        observation = self._get_obs()
+        info = self._get_info()
         
         return observation, info
 
@@ -221,16 +235,16 @@ class Env(gym.Env):
     def _action_to_executable_action(self, action, dt):
         v_n, omega_n = action
 
-        v_kmin = max(0, self.v_previous - self.a_max * dt)
-        v_kmax = min(self.v_max, self.v_previous + self.a_max * dt)
-        omega_kmin = max(-self.omega_max, self.omega_previous - self.alpha_max * dt)
-        omega_kmax = min(self.omega_max, self.omega_previous + self.alpha_max * dt)
+        v_kmin = max(0, self.previous_v - self.a_max * dt)
+        v_kmax = min(self.v_max, self.previous_v + self.a_max * dt)
+        omega_kmin = max(-self.omega_max, self.previous_omega - self.alpha_max * dt)
+        omega_kmax = min(self.omega_max, self.previous_omega + self.alpha_max * dt)
         
         v_e = np.clip(v_n, v_kmin, v_kmax)
         omega_e = np.clip(omega_n, omega_kmin, omega_kmax)
         
-        self.v_previous = v_e
-        self.omega_previous = omega_e
+        self.previous_v = v_e
+        self.previous_omega = omega_e
         return v_e, omega_e
     
     def update_robot_position(self, v_e, omega_e, dt):
@@ -266,10 +280,32 @@ class Env(gym.Env):
         elif self.env.robot_theta < 0:
             self.env.robot_theta += 2 * math.pi
     
+    def _process_lidar_data(self, sensor_data):
+        """LiDARスキャンデータの最初のn_e個の点を後ろにコピーし、n_l+n_e次元のベクトルに処理する"""
+        if not sensor_data:
+            # センサーデータがない場合は、最大距離で埋める
+            return np.full(self.n_l + self.n_e, self.r_lidar, dtype=np.float32)
+
+        print()
+        processed_lidar = list(sensor_data)
+        processed_lidar += sensor_data[:self.n_e]
+
+        print("sensor_data length:", len(sensor_data))
+        print("processed_lidar length:", len(processed_lidar))
+        
+        return np.array(processed_lidar, dtype=np.float32) / self.env.pixels_per_meter
+
     def _get_obs(self):
+        processed_lidar = self._process_lidar_data(self.env.sensor_data)
+        self.lidar_history.append(processed_lidar)
+        
+        obs_lidar = np.array(list(self.lidar_history), dtype=np.float32)
+        print("obs_lidar shape:", obs_lidar.shape)
+        
         observation = {
-                "lidar", "goal", "velocity", "closest_obstacle"
-            }
+            "lidar": obs_lidar
+        }
+        # observation = None
         return observation
 
     def _get_info(self):
