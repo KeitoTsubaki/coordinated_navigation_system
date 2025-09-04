@@ -74,7 +74,7 @@ class SimCoreEnvironment:
         self.lidar_sensor_layer = pygame.Surface(
             (self.map_w, self.map_h), pygame.SRCALPHA
         )
-        self.robot_layer = pygame.Surface((self.map_w, self.map_h))
+        self.robot_layer = pygame.Surface((self.map_w, self.map_h), pygame.SRCALPHA)
         # Robot's orientation in radians
         # 0 radians is facing up (north), and increases clockwise
         self.robot_position = (self.map_center_x, self.map_center_y)
@@ -123,7 +123,7 @@ class SimCoreEnvironment:
             )
         
         self.num_check_points = 16
-        self.closest_obstacle_distance = 0.0
+        self.closest_obstacle_info = None
         self.sensor_data = None
 
     def visualize_search_point(self, position, color=(255, 0, 0)):
@@ -222,9 +222,9 @@ class SimCoreEnvironment:
             )
             robot_head_position = (
                 self.robot_position[0]
-                + robot_frame_radius * math.sin(self.robot_theta),
+                - robot_frame_radius * math.sin(self.robot_theta), # 反時計回りを正とするため符号を反転
                 self.robot_position[1]
-                - robot_frame_radius * math.cos(self.robot_theta),
+                - robot_frame_radius * math.cos(self.robot_theta), # Y軸は不変
             )
             pygame.draw.line(
                 self.lidar_sensor_layer,
@@ -300,7 +300,7 @@ class SimCoreEnvironment:
         step_size = 5  # Move by 10 pixels per key press
         if keys[pygame.K_w] and self.robot_position[1] > self.robot_radius_pixels:
             next_position = (
-                self.robot_position[0] + step_size * math.sin(self.robot_theta),
+                self.robot_position[0] - step_size * math.sin(self.robot_theta),
                 self.robot_position[1] - step_size * math.cos(self.robot_theta),
             )
             if next_position[1] > 0:
@@ -309,7 +309,7 @@ class SimCoreEnvironment:
                     self.clear_lidar_layer()
         if keys[pygame.K_s] and self.robot_position[1] < self.map_h - self.robot_radius_pixels:
             next_position = (
-                self.robot_position[0] - step_size * math.sin(self.robot_theta),
+                self.robot_position[0] + step_size * math.sin(self.robot_theta),
                 self.robot_position[1] + step_size * math.cos(self.robot_theta),
             )
             if next_position[1] < self.map_h:
@@ -317,13 +317,11 @@ class SimCoreEnvironment:
                     self.robot_position = next_position  # Move robot left
                     self.clear_lidar_layer()
         if keys[pygame.K_e]:
-            self.robot_theta += 0.1  # Rotate robot clockwise
-            if self.robot_theta > 2 * math.pi:
-                self.robot_theta -= 2 * math.pi
+            self.robot_theta -= 0.1  # Rotate robot clockwise (negative omega)
+            self.robot_theta = (self.robot_theta + math.pi) % (2 * math.pi) - math.pi
         if keys[pygame.K_q]:
-            self.robot_theta -= 0.1  # Rotate robot counterclockwise
-            if self.robot_theta < 0:
-                self.robot_theta += 2 * math.pi
+            self.robot_theta += 0.1  # Rotate robot counterclockwise (positive omega)
+            self.robot_theta = (self.robot_theta + math.pi) % (2 * math.pi) - math.pi
 
 
     def randomize_position(self, spawn_area):
@@ -437,7 +435,7 @@ class SimCoreEnvironment:
     def render_robot_and_lidar(self):
         self.clear_lidar_layer()  # Reset the lidar line while remaining the map and obstacles
         self.sensor_data = self.lidar_scan()
-        self.closest_obstacle_distance = self.sensor.get_closest_obstacle_distance(self.sensor_data)
+        self.closest_obstacle_info = self.sensor.get_closest_obstacle_info(self.sensor_data)
         self.show_robot_and_lidar(self.sensor_data)
     
     def lidar_scan(self):
@@ -468,18 +466,38 @@ class SimCoreEnvironment:
             (self.target_position[0] - self.robot_position[0]) ** 2
             + (self.target_position[1] - self.robot_position[1]) ** 2
         )
-        angle_to_target = math.atan2(
-            self.target_position[0] - self.robot_position[0],
-            -(self.target_position[1] - self.robot_position[1]),
-        )
-        
 
-        
-        # Normalize the angle to the range [-pi, pi]
+        # 1. グローバル座標系でのターゲットへの角度を計算
+        #    Pygame座標系(Y軸下向き)なので、yの差はそのまま使用
+        #    math.atan2(y, x) はX軸正方向(右)を0 radとし、反時計回りを正とする。
+        dx = self.target_position[0] - self.robot_position[0]
+        dy = -(self.target_position[1] - self.robot_position[1]) # Y軸を数学座標系(上向きが正)に合わせる
+        global_angle_to_target = math.atan2(dy, dx) # 数学座標系での角度
+        print("global_angle_to_target:", global_angle_to_target)
+
+        # 2. ロボットの向きをatan2の座標系に変換
+        #    - self.robot_theta の基準: Y軸負方向(上) = 0 rad, 反時計回りが正
+        #    - 数学座標系の基準      : X軸正方向(右) = 0 rad, 反時計回りが正
+        #    ロボットの向き(上=0)は、数学座標系では +pi/2 rad に相当する。
+        #    したがって、ロボットの向きの基準を数学座標系に合わせるには、
+        #    現在の角度に +pi/2 を加える必要がある。
+        robot_global_angle = self.robot_theta + math.pi/2
+
+        # 3. ロボットから見たターゲットへの相対角度を計算
+        #    両方とも数学座標系に揃えたので、単純な引き算で相対角度が求まる。
+        #    結果は反時計回りが正となる。
+        angle_to_target = global_angle_to_target - robot_global_angle
+
+        # 4. 角度を-πからπの範囲に正規化
         angle_to_target = (angle_to_target + math.pi) % (2 * math.pi) - math.pi
 
-        return distance_to_target, angle_to_target
+        distance_to_target_in_m = distance_to_target / self.pixels_per_meter
+        
+        return distance_to_target_in_m, angle_to_target
 
-    def get_closest_obstacle_distance(self):
+    def get_closest_obstacle_info(self):
         # return closest obstacle distance in meters
-        return self.closest_obstacle_distance / self.pixels_per_meter
+        if self.closest_obstacle_info is None:
+            return float('inf'), 0.0
+        closest_obstacle_info = [self.closest_obstacle_info[0] / self.pixels_per_meter, self.closest_obstacle_info[1]]
+        return closest_obstacle_info
