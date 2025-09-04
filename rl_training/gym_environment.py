@@ -286,11 +286,11 @@ class Env(gym.Env):
             # センサーデータがない場合は、最大距離で埋める
             return np.full(self.n_l + self.n_e, self.r_lidar, dtype=np.float32)
 
-        print()
-        processed_lidar = list(sensor_data)
-        processed_lidar += sensor_data[:self.n_e]
+        sensor_data_distance = [data[0] for data in sensor_data]
+        processed_lidar = list(sensor_data_distance)
+        processed_lidar += sensor_data_distance[:self.n_e]
 
-        print("sensor_data length:", len(sensor_data))
+        print("sensor_data_distance length:", len(sensor_data_distance))
         print("processed_lidar length:", len(processed_lidar))
         
         return np.array(processed_lidar, dtype=np.float32) / self.env.pixels_per_meter
