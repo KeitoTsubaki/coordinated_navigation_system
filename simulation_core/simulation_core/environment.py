@@ -144,12 +144,12 @@ class SimCoreEnvironment:
                     1,  # radius of the visualized point
                 )
                     
-    def show_robot_and_lidar(self, data=None):
-        if data != False:  # if data exists, then start for loop
-            for element in data:
+    def show_robot_and_lidar(self, sensor_data=None):
+        if sensor_data != False:  # if sensor_data exists, then start for loop
+            for element in sensor_data:
                 point = utils.AD2pos(
                     element[0], element[1], self.robot_position
-                )  # Input: data = [Distance, Angle, (x,y)]. Output: (x,y) coordinate of objects/walls.
+                )  # Input: sensor_data = [Distance, Angle, (x,y)]. Output: (x,y) coordinate of objects/walls.
                 pygame.draw.line(
                     self.lidar_sensor_layer,
                     self.lidar_line_color,
