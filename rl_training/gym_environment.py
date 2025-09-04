@@ -301,9 +301,13 @@ class Env(gym.Env):
         
         obs_lidar = np.array(list(self.lidar_history), dtype=np.float32)
         print("obs_lidar shape:", obs_lidar.shape)
+        obs_goal = np.array(self.env.get_goal_info(), dtype=np.float32)
+        print("obs_goal shape:", obs_goal.shape)
+        print("obs_goal:", obs_goal)
         
         observation = {
-            "lidar": obs_lidar
+            "lidar": obs_lidar,
+            "goal": obs_goal,
         }
         # observation = None
         return observation
