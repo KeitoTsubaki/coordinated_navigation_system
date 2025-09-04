@@ -124,6 +124,7 @@ class SimCoreEnvironment:
         
         self.num_check_points = 16
         self.closest_obstacle_distance = 0.0
+        self.sensor_data = None
 
     def visualize_search_point(self, position, color=(255, 0, 0)):
         # The number of points to check around the robot's circumference.
@@ -435,9 +436,9 @@ class SimCoreEnvironment:
         )
     def render_robot_and_lidar(self):
         self.clear_lidar_layer()  # Reset the lidar line while remaining the map and obstacles
-        sensor_data = self.lidar_scan()
-        self.closest_obstacle_distance = self.sensor.get_closest_obstacle_distance(sensor_data)
-        self.show_robot_and_lidar(sensor_data)
+        self.sensor_data = self.lidar_scan()
+        self.closest_obstacle_distance = self.sensor.get_closest_obstacle_distance(self.sensor_data)
+        self.show_robot_and_lidar(self.sensor_data)
     
     def lidar_scan(self):
         self.sensor.position = self.robot_position
