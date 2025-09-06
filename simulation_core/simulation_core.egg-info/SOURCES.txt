@@ -1,6 +1,10 @@
+package.xml
 setup.py
+config/simulator_config.yaml
+resource/simulation_core
 simulation_core/__init__.py
 simulation_core/environment.py
+simulation_core/map_creator.py
 simulation_core/sensor.py
 simulation_core/utils.py
 simulation_core.egg-info/PKG-INFO

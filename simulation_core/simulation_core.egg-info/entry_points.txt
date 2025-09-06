@@ -1,3 +1,2 @@
 [console_scripts]
 environment = simulation_core.environment:main
-

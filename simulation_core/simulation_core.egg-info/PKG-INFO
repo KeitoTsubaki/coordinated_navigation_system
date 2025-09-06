@@ -1,12 +1,16 @@
-Metadata-Version: 2.1
-Name: simulation-core
+Metadata-Version: 2.4
+Name: simulation_core
 Version: 0.0.0
 Summary: Core simulation logic for the coordinated navigation system.
-Home-page: UNKNOWN
 Maintainer: tsubaki
 Maintainer-email: tsubaki.fs@tut.ac.jp
 License: TODO: License declaration
-Platform: UNKNOWN
-
-UNKNOWN
-
+Requires-Dist: setuptools
+Requires-Dist: pygame
+Requires-Dist: numpy
+Requires-Dist: pyyaml
+Dynamic: license
+Dynamic: maintainer
+Dynamic: maintainer-email
+Dynamic: requires-dist
+Dynamic: summary
