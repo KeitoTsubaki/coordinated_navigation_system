@@ -55,7 +55,15 @@ coordinated_navigation_system\
 ```
 
 ## Getting Started
+- PyTorchのインストール
+- 必要パッケージのインストール
+```
+uv init
+uv sync
 
+cd simulation_core
+uv pip install .
+```
 ### Prerequisistes
 - Ubuntu 22.04
 - ROS2 Humble
