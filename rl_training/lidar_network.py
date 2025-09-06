@@ -11,6 +11,7 @@ class LiDARNetwork(nn.Module):
         self.maxpool = nn.MaxPool1d(kernel_size=3, stride=2)
         self.leaky_relu = nn.LeakyReLU(0.01)
         
+        # TODO: インプットの次元数が合わないかも
         self.static_fc = nn.Linear(1216, 40)
         self.dynamic_fc = nn.Linear(1216, 20)
 
