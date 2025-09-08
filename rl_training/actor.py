@@ -19,24 +19,25 @@ class CustomActor(nn.Module):
         self.sigmoid = nn.Sigmoid()
         
     def forward(self, observation):
-        # state shape: (batch_size, state_dim)
-        # lidar_data shape: (batch_size, 4, 460)
+        # observation is a dictionary from the environment
+        # We assume the features are already processed and concatenated
+        # observation shape: (batch_size, state_dim)
         
-        x = torch.cat(
-            observation["lidar"],
-            observation["goal"],
-            observation["velocity"],
-            observation["closest_obstacle"],
-        )
-                
+        x = observation
+        
         x = self.leaky_relu(self.fc1(x))
         x = self.leaky_relu(self.fc2(x))
-        x = self.leaky_relu(self.fc3(x))
+        actions = self.fc3(x)
         
-        v_n = self.sigmoid(x)  # Output in range [-1, 1]
-        omega_n = self.tanh(x)  # Output in range [0, 1]
+        # The action space is normalized to [-1, 1] for both v and omega.
+        # v_n should be in [0, v_max], omega_n in [-omega_max, omega_max].
+        # The policy should output actions in [-1, 1] range.
+        # Let's assume action[0] is for linear velocity and action[1] for angular.
+        v_out = self.sigmoid(actions[:, 0:1]) # Range [0, 1]
+        omega_out = self.tanh(actions[:, 1:2]) # Range [-1, 1]
         
-        output_v_n = v_n * self.v_max
-        output_omega_n = omega_n * self.omega_max
+        # Scale to the actual action range
+        output_v = v_out * self.v_max
+        output_omega = omega_out * self.omega_max
         
-        return output_v_n, output_omega_n
+        return output_v, output_omega

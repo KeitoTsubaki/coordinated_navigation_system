@@ -19,15 +19,12 @@ class CustomCritic(nn.Module):
         self.leaky_relu = nn.LeakyReLU(0.01)
             
     def forward(self, observation, action):
+        # observation is a dictionary from the environment
+        # We assume the features are already processed and concatenated
+        # observation shape: (batch_size, state_dim)
         # action: [v_n, omega_n]
         
-        state_x = torch.cat(
-            observation["lidar"],
-            observation["goal"],
-            observation["velocity"],
-            observation["closest_obstacle"],
-        )
-        
+        state_x = observation
         state_x = self.leaky_relu(self.state_fc1(state_x))
         state_x = self.leaky_relu(self.state_fc2(state_x))
         
