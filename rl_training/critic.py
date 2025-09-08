@@ -4,9 +4,10 @@ from torch import nn
 from lidar_network import LiDARNetwork
 
 
-class Critic(nn.Module):
+class CustomCritic(nn.Module):
     def __init__(self, state_dim, action_dim):
-        super(Critic, self).__init__()
+        super(CustomCritic, self).__init__()
+        
         self.state_fc1 = nn.Linear(state_dim + 60, 256)  # 60 is the output size of LiDARNetwork
         self.state_fc2 = nn.Linear(256, 128)
         
@@ -16,14 +17,17 @@ class Critic(nn.Module):
         self.combined_fc2 = nn.Linear(128, 1)
         
         self.leaky_relu = nn.LeakyReLU(0.01)
-        
-        self.lidar_network = LiDARNetwork()
-    
-    def forward(self, state, lidar_data, action):
+            
+    def forward(self, observation, action):
         # action: [v_n, omega_n]
-        lidar_feature = self.lidar_network(lidar_data)
         
-        state_x = torch.cat([lidar_feature, state], dim=1)  # (batch_size, 60 + state_dim)
+        state_x = torch.cat(
+            observation["lidar"],
+            observation["goal"],
+            observation["velocity"],
+            observation["closest_obstacle"],
+        )
+        
         state_x = self.leaky_relu(self.state_fc1(state_x))
         state_x = self.leaky_relu(self.state_fc2(state_x))
         
