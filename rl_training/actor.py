@@ -8,7 +8,7 @@ class CustomActor(nn.Module):
     def __init__(self, state_dim, action_dim, v_max, omega_max):
         super(CustomActor, self).__init__()
         
-        self.fc1 = nn.Linear(state_dim + 60, 256)  # 60 is the output size of LiDARNetwork
+        self.fc1 = nn.Linear(state_dim, 256)  # 60 is the output size of LiDARNetwork
         self.fc2 = nn.Linear(256, 128)
         self.fc3 = nn.Linear(128, action_dim)
         

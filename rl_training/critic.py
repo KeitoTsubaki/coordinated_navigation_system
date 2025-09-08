@@ -8,7 +8,7 @@ class CustomCritic(nn.Module):
     def __init__(self, state_dim, action_dim):
         super(CustomCritic, self).__init__()
         
-        self.state_fc1 = nn.Linear(state_dim + 60, 256)  # 60 is the output size of LiDARNetwork
+        self.state_fc1 = nn.Linear(state_dim, 256)  # 60 is the output size of LiDARNetwork
         self.state_fc2 = nn.Linear(256, 128)
         
         self.action_fc1 = nn.Linear(action_dim, 128)
