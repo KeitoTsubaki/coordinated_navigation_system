@@ -4,9 +4,9 @@ from torch import nn
 from lidar_network import LiDARNetwork
 
 
-class Actor(nn.Module):
+class CustomActor(nn.Module):
     def __init__(self, state_dim, action_dim, v_max, omega_max):
-        super(Actor, self).__init__()
+        super(CustomActor, self).__init__()
         
         self.fc1 = nn.Linear(state_dim + 60, 256)  # 60 is the output size of LiDARNetwork
         self.fc2 = nn.Linear(256, 128)
@@ -18,17 +18,17 @@ class Actor(nn.Module):
         self.tanh = nn.Tanh()
         self.sigmoid = nn.Sigmoid()
         
-        self.lidar_network = LiDARNetwork()
-    
-
-
-    def forward(self, state, lidar_data):
+    def forward(self, observation):
         # state shape: (batch_size, state_dim)
         # lidar_data shape: (batch_size, 4, 460)
-        lidar_feature = self.lidar_network(lidar_data)
         
-        x = torch.cat([lidar_feature, state], dim=1)  # (batch_size, 60 + state_dim)
-        
+        x = torch.cat(
+            observation["lidar"],
+            observation["goal"],
+            observation["velocity"],
+            observation["closest_obstacle"],
+        )
+                
         x = self.leaky_relu(self.fc1(x))
         x = self.leaky_relu(self.fc2(x))
         x = self.leaky_relu(self.fc3(x))
