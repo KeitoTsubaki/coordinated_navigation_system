@@ -45,15 +45,16 @@ class CustomDDPGPolicy(BasePolicy):
         action_space,
         lr_schedule: Schedule,
         net_arch: Optional[List[int]] = None,
+        # v_max と omega_max を kwargs から受け取る
         v_max: float = 1.2,
         omega_max: float = 4.71,
         **kwargs,
     ):
         super().__init__(observation_space, action_space, **kwargs, features_extractor_class=CustomCombinedExtractor)
         
-        state_dim = self.features_dim
+        state_dim = self.features_extractor.features_dim
         action_dim = action_space.shape[-1]
-
+        
         self.actor = CustomActor(state_dim, action_dim, v_max, omega_max)
         self.actor_target = CustomActor(state_dim, action_dim, v_max, omega_max)
         self.critic = CustomCritic(state_dim, action_dim)

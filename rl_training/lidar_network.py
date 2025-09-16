@@ -20,9 +20,7 @@ class LiDARNetwork(nn.Module):
         
         # Calculate the flattened size dynamically
         with torch.no_grad():
-            dummy_input = torch.zeros(1, 1, 640) # Assuming n_l + n_e = 640
-            cnn_output_dim = self._get_conv_output_dim(dummy_input)
-
+            cnn_output_dim = self._get_conv_output_dim(torch.zeros(1, 1, 640)) # 仮の入力サイズ
         self.static_fc = nn.Linear(cnn_output_dim, 40)
         self.dynamic_fc = nn.Linear(cnn_output_dim, 20)
 
@@ -38,15 +36,15 @@ class LiDARNetwork(nn.Module):
         # x shape: (batch_size, channels, sequence_length)
         # e.g., (32, 4, 640)
         static_x = x[:, -1:, :]  # Last channel for static data (shape: (batch_size, 1, 640))
-        
-        static_output = self.static_net(static_x)  # (shape: (1, 40))
-        dynamic_output = self.dynamic_net(x)
-        
+
+        static_output = self._forward_static(static_x)
+        dynamic_output = self._forward_dynamic(x)
+
         lidar_feature = torch.cat((static_output, dynamic_output), dim=1)  # (shape: (1, 60))
         
         return lidar_feature
     
-    def static_net(self, static_x):
+    def _forward_static(self, static_x):
         # static_x shape: (batch_size, 1, sequence_length)
         static_x = self.leaky_relu(self.static_conv1(static_x))
         static_x = self.leaky_relu(self.static_conv2(static_x))
@@ -56,7 +54,7 @@ class LiDARNetwork(nn.Module):
         static_output = self.leaky_relu(self.static_fc(static_x_flatten)) 
         return static_output
     
-    def dynamic_net(self, dynamic_x):
+    def _forward_dynamic(self, dynamic_x):
         # dynamic_x shape: (batch_size, 4, sequence_length)
         dynamic_x = self.leaky_relu(self.dynamic_conv1(dynamic_x))
         dynamic_x = self.leaky_relu(self.dynamic_conv2(dynamic_x))
