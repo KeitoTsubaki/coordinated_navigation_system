@@ -3,10 +3,6 @@
 import math
 import pygame
 import numpy as np
-import rclpy
-from rclpy.node import Node
-from sensor_msgs.msg import PointCloud2, PointField
-from std_msgs.msg import Header
 
 
 def uncertainty_add(distance, angle, sigma):
@@ -102,68 +98,6 @@ class LiDARSensor():
 
         return data if data else False
 
-    def convert_to_pointcloud2(
-        self, sensor_data, time_stamp, pixels_per_meter, frame_id="base_link"
-    ):
-        header = Header()
-        header.stamp = time_stamp
-        header.frame_id = frame_id
-
-        points = []
-        # sensor_data: [[(distance, angle(radian), (robot_x, robot_y)], ...]
-        # print("sensor_data:", sensor_data)
-        for point_data in sensor_data:
-            # print(point_data)
-            distance = point_data[0]
-            angle = point_data[1]
-            angle -= self.theta  # add robot's orientation to angle
-            # x_distance = (
-            #     point_data[2][0] + distance * math.cos(angle)
-            # ) / pixels_per_meter
-            # y_distance = (
-            #     point_data[2][1] + distance * math.sin(angle)
-            # ) / pixels_per_meter
-            # robot centoroid
-            # x_distance = (distance * math.cos(angle)) / pixels_per_meter
-            # y_distance = (distance * math.sin(angle)) / pixels_per_meter
-            y_distance = -(distance * math.cos(angle)) / pixels_per_meter
-            x_distance = -(distance * math.sin(angle)) / pixels_per_meter
-            
-            
-            # print("x_distance, y_distance: ", x_distance, y_distance)
-            # x_distance = point_data[0]
-            # y_distance = point_data[1]
-            points.append([x_distance, y_distance, 0.0])  # 2Dデータのためz=0
-            # points.append([-y_distance, -x_distance, 0.0])  # 2Dデータのためz=0
-
-        # PointCloud2のフィールドを定義
-        fields = [
-            PointField(name="x", offset=0, datatype=PointField.FLOAT32, count=1),
-            PointField(name="y", offset=4, datatype=PointField.FLOAT32, count=1),
-            PointField(name="z", offset=8, datatype=PointField.FLOAT32, count=1),
-        ]
-
-        # Python listをNumPy arrayに変換
-        points_array = np.array(points, dtype=np.float32)
-
-        # NumPy配列をバイトデータに変換
-        # tobytes()はPython 3で推奨される方法
-        bytes_data = points_array.tobytes()
-
-        # PointCloud2メッセージの作成
-        msg = PointCloud2()
-        msg.header = header
-        msg.height = 1
-        msg.width = len(points)
-        msg.fields = fields
-        msg.is_bigendian = False
-        msg.point_step = 12  # 3 fields * 4 bytes/field
-        msg.row_step = 12 * len(points)
-        msg.data = bytes_data
-        msg.is_dense = True
-
-        return msg
-    
     def get_closest_obstacle_info(self, sensor_data):
         if sensor_data:
             distances = [data[0] for data in sensor_data]
