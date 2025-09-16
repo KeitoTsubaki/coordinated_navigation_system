@@ -341,12 +341,12 @@ class Env(gym.Env):
         # print("obs_velocity:", obs_velocity)
         obs_closest_obstacle = np.array(self.env.get_closest_obstacle_info(), dtype=np.float32)
 
-        # --- Debug Print ---
-        print(f"Robot Theta: {self.env.robot_theta:.2f} rad (0:UP)")
-        print(f"LiDAR shape: {obs_lidar.shape}")
-        print(f"Goal (Dist, Angle(relative to robot)): ({obs_goal[0]:.2f} m, {obs_goal[1]:.2f} rad)")
-        print(f"Velocity (v, omega): ({obs_velocity[0]:.2f} m/s, {obs_velocity[1]:.2f} rad/s)")
-        print(f"Closest Obstacle (Dist, Angle(relative to robot)): ({obs_closest_obstacle[0]:.2f} m, {obs_closest_obstacle[1]:.2f} rad)")
+        # # --- Debug Print ---
+        # print(f"Robot Theta: {self.env.robot_theta:.2f} rad (0:UP)")
+        # print(f"LiDAR shape: {obs_lidar.shape}")
+        # print(f"Goal (Dist, Angle(relative to robot)): ({obs_goal[0]:.2f} m, {obs_goal[1]:.2f} rad)")
+        # print(f"Velocity (v, omega): ({obs_velocity[0]:.2f} m/s, {obs_velocity[1]:.2f} rad/s)")
+        # print(f"Closest Obstacle (Dist, Angle(relative to robot)): ({obs_closest_obstacle[0]:.2f} m, {obs_closest_obstacle[1]:.2f} rad)")
         
         observation = {
             "lidar": obs_lidar,
