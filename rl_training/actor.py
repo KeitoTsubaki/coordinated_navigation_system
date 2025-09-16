@@ -40,4 +40,4 @@ class CustomActor(nn.Module):
         output_v = v_out * self.v_max
         output_omega = omega_out * self.omega_max
         
-        return output_v, output_omega
+        return torch.cat([output_v, output_omega], dim=1)
