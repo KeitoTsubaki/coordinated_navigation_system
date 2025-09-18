@@ -47,5 +47,5 @@ class CustomCritic(BasePolicy):
         
         return q
     
-    def _prefict(self, observation, deterministic = True):
+    def _predict(self, observation, deterministic = True):
         raise NotImplementedError("Critic does not support _predict method.")
