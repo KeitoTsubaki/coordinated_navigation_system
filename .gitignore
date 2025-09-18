@@ -2,5 +2,5 @@ ros2_ws/build/
 ros2_ws/install/
 ros2_ws/log/
 **/__pycache__/
-simulation_core/build/
-simulation_core/simulation_core.egg-info/*
+**simulation_core/build/
+**simulation_core/simulation_core.egg-info/
