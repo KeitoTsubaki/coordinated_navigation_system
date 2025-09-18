@@ -8,7 +8,7 @@ from utils import split_obs
 
 
 class CustomActor(BasePolicy):
-    def __init__(self, observation_space, action_space, shared_lidar_network, lr_schedule, v_max, omega_max):
+    def __init__(self, observation_space, action_space, shared_lidar_network, lr_schedule, v_max=1.2, omega_max=4.71):
         super().__init__(observation_space, action_space, lr_schedule, squash_output=False)
         # squash_output=False: 自動的にActionがtanhで正規化されるのを防ぐ。今回の場合はtanhとsigmoidを使用するため。
         
