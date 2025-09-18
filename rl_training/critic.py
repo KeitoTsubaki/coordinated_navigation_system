@@ -17,7 +17,7 @@ class CustomCritic(BasePolicy):
             nn.LeakyReLU(0.01)
         )
         self.action_net = nn.Sequential(
-            nn.Linear(act_dim, 128),
+            nn.Linear(action_space.shape[-1] , 128),
             nn.LeakyReLU(0.01)
         )
         self.combined_net = nn.Sequential(
