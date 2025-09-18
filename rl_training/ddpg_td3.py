@@ -7,8 +7,18 @@ from critic import CustomCritic
 
 class CustomDDPGPolicy(TD3Policy):
     def __init__(self, *args, **kwargs):
-        self.shared_lidar_network = LiDARNetwork()
+        self.shared_lidar_network = None
+        self._custom_lr_schedule = None
         super().__init__(*args, **kwargs)
+        
+    def _get_shared_lidar_network(self):
+        if self.shared_lidar_network is None:
+            self.shared_lidar_network = LiDARNetwork()
+        return self.shared_lidar_network
+    
+    def _build(self, lr_schedule):
+        self._custom_lr_schedule = lr_schedule
+        super()._build(lr_schedule)
         
         
         # --- actor/criticを作り直す ---
@@ -26,10 +36,10 @@ class CustomDDPGPolicy(TD3Policy):
     自動でやってくれるらしい
     """
     def make_actor(self, features_extractor = None):
-        actor = CustomActor(self.observation_space, self.action_space, self.shared_lidar_network,)
+        actor = CustomActor(self.observation_space, self.action_space, self._get_shared_lidar_network(), self._custom_lr_schedule)
         return actor
     
     def make_critic(self, features_extractor = None):
-        critic = CustomCritic(self.shared_lidar_network, self.action_space.shape[-1]) 
+        critic = CustomCritic(self.observation_space, self.action_space, self._get_shared_lidar_network(), self._custom_lr_schedule)
         return critic
         
