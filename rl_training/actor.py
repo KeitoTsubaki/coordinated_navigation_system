@@ -1,14 +1,16 @@
 import torch
 from torch import nn
+from stable_baselines3.common.policies import BasePolicy
 
 from lidar_network import LiDARNetwork
 from utils import split_obs
 
 
 
-class CustomActor(nn.Module):
-    def __init__(self, shared_lidar_network, act_dim=2):
-        super(CustomActor, self).__init__()
+class CustomActor(BasePolicy):
+    def __init__(self, observation_space, action_space, shared_lidar_network, lr_schedule, v_max, omega_max):
+        super().__init__(observation_space, action_space, lr_schedule, squash_output=False)
+        # squash_output=False: 自動的にActionがtanhで正規化されるのを防ぐ。今回の場合はtanhとsigmoidを使用するため。
         
         self.lidar_network = shared_lidar_network
         
@@ -20,11 +22,11 @@ class CustomActor(nn.Module):
         )
         self.head_v = nn.Linear(128, 1)  # Linear velocity output
         self.head_omega = nn.Linear(128, 1)  # Angular velocity output
-        
-        # self.v_max = v_max
-        # self.omega_max = omega_max
         self.tanh = nn.Tanh()
         self.sigmoid = nn.Sigmoid()
+        self.v_max = v_max
+        self.omega_max = omega_max
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=lr_schedule(1))
         
     def forward(self, obs_dict):
         # observation is a dictionary from the environment
@@ -41,8 +43,8 @@ class CustomActor(nn.Module):
         # The action space is normalized to [-1, 1] for both v and omega.
         # v_n should be in [0, v_max], omega_n in [-omega_max, omega_max].
         # The policy should output actions in [-1, 1] range.
-        v_out = self.sigmoid(v) # Range [0, 1]
-        omega_out = self.tanh(omega) # Range [-1, 1]
+        v_out = self.sigmoid(v) * self.v_max # Range [0, 1] * v_max = [0, v_max]
+        omega_out = self.tanh(omega) * self.omega_max # Range [-1, 1] * omega_max = [-omega_max, omega_max]
         
         # Scale to the actual action range
         # output_v = v_out * self.v_max
@@ -50,6 +52,6 @@ class CustomActor(nn.Module):
         
         return torch.cat([v_out, omega_out], dim=1)
     
-    def set_training_mode(self, mode):
-        self.train(mode)
-        return self
+    def _predict(self, observation, deterministic = True):
+        # deterministic: Falseにすると、探索ノイズが入る。学習中や行動サンプリング時に使われる。Trueはノイズが入らず、予測時に使われる。
+        return self.forward(observation)

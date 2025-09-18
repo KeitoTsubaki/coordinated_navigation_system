@@ -1,12 +1,13 @@
 import torch
 from torch import nn
+from stable_baselines3.common.policies import BasePolicy
 
 from lidar_network import LiDARNetwork
 from utils import split_obs
 
-class CustomCritic(nn.Module):
-    def __init__(self, shared_lidar_network, act_dim=2):
-        super(CustomCritic, self).__init__()
+class CustomCritic(BasePolicy):
+    def __init__(self, observation_space, action_space, shared_lidar_network, lr_schedule):
+        super().__init__(observation_space, action_space, lr_schedule, squash_output=False)
         
         self.lidar_network = shared_lidar_network
         self.state_net = nn.Sequential(
@@ -24,6 +25,7 @@ class CustomCritic(nn.Module):
             nn.LeakyReLU(0.01),
             nn.Linear(128, 1)
         )
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=lr_schedule(1))
             
     def forward(self, obs_dict, action):
         # observation is a dictionary from the environment
@@ -45,6 +47,5 @@ class CustomCritic(nn.Module):
         
         return q
     
-    def set_training_mode(self, mode):
-        self.train(mode)
-        return self
+    def _prefict(self, observation, deterministic = True):
+        raise NotImplementedError("Critic does not support _predict method.")
