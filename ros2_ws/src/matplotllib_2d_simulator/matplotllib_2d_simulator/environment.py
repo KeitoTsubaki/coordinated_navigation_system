@@ -112,6 +112,7 @@ def main():
         if sensor_data:
             point_cloud_msg = convert_to_pointcloud2(
                 sensor_data,
+                env.robot_theta,
                 time_stamp=env.get_clock().now().to_msg(),
                 pixels_per_meter=env.pixels_per_meter,
             )
@@ -127,7 +128,7 @@ def main():
     
 
 def convert_to_pointcloud2(
-    self, sensor_data, time_stamp, pixels_per_meter, frame_id="base_link"
+    sensor_data, robot_theta, time_stamp, pixels_per_meter, frame_id="base_link"
 ):
     header = Header()
     header.stamp = time_stamp
@@ -140,7 +141,7 @@ def convert_to_pointcloud2(
         # print(point_data)
         distance = point_data[0]
         angle = point_data[1]
-        angle -= self.theta  # add robot's orientation to angle
+        angle -= robot_theta  # add robot's orientation to angle
         # x_distance = (
         #     point_data[2][0] + distance * math.cos(angle)
         # ) / pixels_per_meter
