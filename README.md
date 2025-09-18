@@ -59,6 +59,9 @@ coordinated_navigation_system\
 - 必要パッケージのインストール
 ```
 uv init
+
+uv pip install torch --torch-backend=auto (NVIDIA DriverさえあればOK)
+
 uv sync
 
 cd simulation_core
