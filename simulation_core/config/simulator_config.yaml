@@ -29,7 +29,7 @@ robot:
 
 lidar:
   range_m: 10           # 最大距離（m）
-  resolution: 450       # スキャン点の数（例：360°で60点 → 6度ごと）
+  resolution: 629       # スキャン点の数（例：360°で60点 → 6度ごと）
   noise: 1.0           # ノイズの強さ（標準偏差）
   angle_start: 0       # 開始角（ラジアン）
   angle_end: 6.28318   # 終了角（2πラジアン）
