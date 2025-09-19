@@ -102,8 +102,9 @@ class SimCoreEnvironment:
         )  # width of the divided space in the zigzag-shaped map
       
         self.sensor = sensor.LiDARSensor(
-            self.lidar_range_pixels, self.map, uncertainty=(0, 0)
+            self.lidar_range_m, self.map, uncertainty=(0, 0)
         )
+        self.sensor.pixels_per_meter = self.pixels_per_meter
         self.sensor.num_scans = self.resolution
         self.running = True
         
@@ -150,8 +151,8 @@ class SimCoreEnvironment:
         if sensor_data != False:  # if sensor_data exists, then start for loop
             for element in sensor_data:
                 point = utils.AD2pos(
-                    element[0], element[1], self.robot_position
-                )  # Input: sensor_data = [Distance, Angle, (x,y)]. Output: (x,y) coordinate of objects/walls.
+                    element[0], element[1], self.robot_position, self.pixels_per_meter
+                )  # Input: sensor_data = [Distance, Angle]. Output: (x,y) coordinate of objects/walls.
                 pygame.draw.line(
                     self.lidar_sensor_layer,
                     self.lidar_line_color,
@@ -261,10 +262,6 @@ class SimCoreEnvironment:
 
     def is_collision(self, position):
         """Checks the surrounding colors of a position in the environment."""
-        # Number of pixels to check in each direction (odd number)
-        # The number of points to check around the robot's circumference.
-        # A higher number means more accurate collision detection.
-        
         for i in range(self.num_check_points):
             angle = 2 * math.pi * i / self.num_check_points
             # Calculate the position of a point on the robot's circumference
@@ -279,6 +276,7 @@ class SimCoreEnvironment:
             # Get the color of the pixel at the check point
             try:
                 pixel_color = self.obstacle_layer.get_at((check_x, check_y))
+                # print("pixel_color:", pixel_color)
             except IndexError:
                 # This can happen if the coordinates are somehow still out of bounds
                 return True
@@ -289,6 +287,9 @@ class SimCoreEnvironment:
             if pixel_color[3] > 0:
                 return True
         return False
+    
+        """Check collision by checking closest lidar point is in the robot's safe radius."""
+        # if min(self.sensor_data) < self.robot_radius_m
 
     def is_target_reached(self):
         distance_to_target = math.sqrt(

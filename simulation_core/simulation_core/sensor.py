@@ -23,7 +23,7 @@ class LiDARSensor():
     def __init__(
         self, Range, map, uncertainty
     ):  # uncertainty is an array with 2 values [sigma1,sigma2]
-        self.Range = Range
+        self.Range_m = Range
         self.speed = 0.5  # rotations per second #IS NOT USED THROUGHOUT THIS SCRIPT
         self.sigma = np.array([uncertainty[0], uncertainty[1]])
         self.position = (
@@ -35,13 +35,15 @@ class LiDARSensor():
         self.W, self.H = pygame.display.get_surface().get_size()
         self.sensedObstacles = []
         self.num_scans = None
-        self.out_of_range_value = self.Range # lidar max range value or 0
+        self.out_of_range_value = self.Range_m # lidar max range value or 0
+        self.pixels_per_meter = 1
 
     # Euclidean DISTANCE CALCULATOR
     def distance(self, obstaclePosition):
         px = (obstaclePosition[0] - self.position[0]) ** 2
         py = (obstaclePosition[1] - self.position[1]) ** 2
-        return math.sqrt(px + py)
+        distance = math.sqrt(px + py) / self.pixels_per_meter
+        return distance
 
     def hex_to_rgb(self, hex_color):
         hex_color = hex_color.lstrip("#")  # 先頭の # を削除
@@ -66,8 +68,8 @@ class LiDARSensor():
             # 基準を揃えたロボットの向きに、センサーのローカルなスキャン角度を加算する
             global_angle = robot_global_angle + scan_angle
             x2, y2 = (
-                x1 + self.Range * math.cos(global_angle),
-                y1 + self.Range * math.sin(global_angle),
+                x1 + self.Range_m * self.pixels_per_meter * math.cos(global_angle),
+                y1 + self.Range_m * self.pixels_per_meter * math.sin(global_angle),
             )
 
             intersected = False
