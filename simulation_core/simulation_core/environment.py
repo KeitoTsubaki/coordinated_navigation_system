@@ -220,7 +220,7 @@ class SimCoreEnvironment:
                 self.lidar_sensor_layer, (0, 0)
             )  # Overlay lidar sensor layer on the map
 
-    def clear_environment(self):
+    def clear_layers(self):
         """Resets the environment by clearing the point cloud and reinitializing the map."""
         self.screen.fill(self.background_color)  # Clear the map
         self.obstacle_layer = pygame.Surface((self.screen_w, self.screen_h), pygame.SRCALPHA)
@@ -414,7 +414,7 @@ class SimCoreEnvironment:
             print(f"Map type changed to: {self.map_type}")
 
     def render_obstacles(self):
-        self.clear_environment()
+        self.clear_layers()
         self.map_creator.create_map(self.map_type, self.obstacle_layer)
         start_spawn_area, target_spawn_area = self.initialize_map_parameters()
         self.create_start_and_target_position(
