@@ -271,6 +271,7 @@ class SimCoreEnvironment:
             # Ensure the check point is within the map boundaries
             if not (0 <= check_x < self.map_w and 0 <= check_y < self.map_h):
                 # Part of the robot is outside the map, which is a collision
+                print("Collision with wall detected: out of bounds")
                 return True
 
             # Get the color of the pixel at the check point
@@ -279,16 +280,17 @@ class SimCoreEnvironment:
                 # print("pixel_color:", pixel_color)
             except IndexError:
                 # This can happen if the coordinates are somehow still out of bounds
+                print("Collision with wall detected: index error")
                 return True
 
             # Check if the pixel color matches the obstacle color.
-            # We check the alpha channel (pixel_color[3]) to see if it's a non-transparent pixel,
-            # which indicates an obstacle on the obstacle_layer.
-            if pixel_color[3] > 0:
+            obstacle_color_rgb = utils.hex_to_rgb(self.obstacle_color)
+            if (pixel_color[0], pixel_color[1], pixel_color[2]) == obstacle_color_rgb:
+                print("Collision with obstacle detected")
                 return True
         return False
     
-        """Check collision by checking closest lidar point is in the robot's safe radius."""
+        """Check collision by checking if the closest lidar point is in the robot's safe radius."""
         # remain bugs
         # closest_point, _ = self.sensor.get_closest_obstacle_info(self.sensor_data)
         # if closest_point is not float('inf') and closest_point < self.robot_radius_m:
