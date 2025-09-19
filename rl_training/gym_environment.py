@@ -144,7 +144,7 @@ class Env(gym.Env):
         # An eppisode is done if the robot has reached the target or collided with an obstacle
         # Terminated: Reached the target or collided with an obstacle
         # Truncated: Time limit exceeded
-        terminated = self.env.is_target_reached()
+        terminated = self.env.is_target_reached() or self.env.is_collision(self.env.robot_position)
         truncated = False
         observation = self._get_obs()
         info = self._get_info()
@@ -160,6 +160,7 @@ class Env(gym.Env):
         
         self.env.np_random = self.np_random
 
+        # render map and initialize robot ant target positions
         self.env.render_obstacles()
         # Perform an initial sensor scan to populate observation data
         self.env.update_sensors()
@@ -194,7 +195,6 @@ class Env(gym.Env):
         return observation, info
 
     def _calculate_reward(self):
-        #! TODO: reward関数を作る
         # r_s: spare reward corresponding to: robot reachs the target, collides with an obstacle
         # r_d: dense reward to accelerate the training and seconadary tasks such as smoothness
         r_safe = self.env.robot_radius_m # robot radius in meters
