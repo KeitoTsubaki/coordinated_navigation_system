@@ -289,7 +289,13 @@ class SimCoreEnvironment:
         return False
     
         """Check collision by checking closest lidar point is in the robot's safe radius."""
-        # if min(self.sensor_data) < self.robot_radius_m
+        # remain bugs
+        # closest_point, _ = self.sensor.get_closest_obstacle_info(self.sensor_data)
+        # if closest_point is not float('inf') and closest_point < self.robot_radius_m:
+        #     print("collision detected!")
+        #     return True
+        # else:
+        #     return False
 
     def is_target_reached(self):
         distance_to_target = math.sqrt(
