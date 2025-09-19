@@ -94,13 +94,13 @@ def main():
 
     env = Environment()
     
-    env.render_obstacles()
+    env.render_obstacle_and_robots()
 
     print((env.screen_center_x, env.screen_center_y))
     while env.running:
         rclpy.spin_once(env, timeout_sec=0.01)
 
-        env.clear_lidar_layer()
+        env.clear_robot_and_lidar_layer()
         
         env.change_map_by_event()
 
