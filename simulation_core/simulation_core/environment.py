@@ -244,6 +244,12 @@ class SimCoreEnvironment:
         self.show_robot_and_lidar(self.sensor_data)
 
     # ===== Reset functions =====
+    
+    def reset(self, map_type="empty"):
+        self.map_type = map_type
+        
+        self.clear_all_layers()
+        self.render_obstacle_and_robots() # Draw obstacles, robot, and target
 
     def clear_all_layers(self):
         """Clear the entire layers including main screen, obstacle layer, and lidar sensor layer."""
