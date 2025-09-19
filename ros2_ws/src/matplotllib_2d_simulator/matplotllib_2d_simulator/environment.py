@@ -56,7 +56,7 @@ class Environment(SimCoreEnvironment, Node):
         )
 
         # Boundary and collision checks
-        if 0 < next_position[0] < self.map_w and 0 < next_position[1] < self.map_h:
+        if 0 < next_position[0] < self.screen_w and 0 < next_position[1] < self.screen_h:
             if not self.is_collision(next_position):
                 self.robot_position = next_position
 
@@ -74,8 +74,8 @@ class Environment(SimCoreEnvironment, Node):
         t.child_frame_id = "base_link"    # ロボットのフレーム
 
         # 2Dの位置を3Dに拡張
-        t.transform.translation.x = -(self.robot_position[1] - self.map_center_y) / self.pixels_per_meter
-        t.transform.translation.y = -(self.robot_position[0] - self.map_center_x) / self.pixels_per_meter
+        t.transform.translation.x = -(self.robot_position[1] - self.screen_center_y) / self.pixels_per_meter
+        t.transform.translation.y = -(self.robot_position[0] - self.screen_center_x) / self.pixels_per_meter
         t.transform.translation.z = 0.0
 
         # 角度をクォータニオンに変換
@@ -96,7 +96,7 @@ def main():
     
     env.render_obstacles()
 
-    print((env.map_center_x, env.map_center_y))
+    print((env.screen_center_x, env.screen_center_y))
     while env.running:
         rclpy.spin_once(env, timeout_sec=0.01)
 
