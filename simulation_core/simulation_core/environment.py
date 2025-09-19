@@ -131,6 +131,8 @@ class SimCoreEnvironment:
         self.closest_obstacle_info = None
         self.sensor_data = None
 
+    # ===== Visualization functions =====
+    
     def visualize_search_point(self, position, color=(255, 0, 0)):
         # The number of points to check around the robot's circumference.
         # This should match the value in is_collision.
@@ -219,6 +221,24 @@ class SimCoreEnvironment:
             self.screen.blit(
                 self.lidar_sensor_layer, (0, 0)
             )  # Overlay lidar sensor layer on the map
+    
+    def render_obstacles(self):
+        self.clear_all_layers()
+        self.map_creator.create_map(self.map_type, self.obstacle_layer)
+        start_spawn_area, target_spawn_area = self.initialize_map_parameters()
+        self.create_start_and_target_position(
+            start_spawn_area, target_spawn_area
+        )
+        # ロボットの向きも初期化する
+        self.robot_theta = 0.0
+        self.target_theta = 0.0
+        
+    def render_robot_and_lidar(self):
+        """Draws the robot and the last sensor data to the screen."""
+        self.clear_lidar_layer()  # Reset the lidar line while remaining the map and obstacles
+        self.show_robot_and_lidar(self.sensor_data)
+
+    # ===== Reset functions =====
 
     def clear_all_layers(self):
         """Clear the entire layers including main screen, obstacle layer, and lidar sensor layer."""
@@ -236,6 +256,93 @@ class SimCoreEnvironment:
         self.lidar_sensor_layer = pygame.Surface(
             (self.screen_w, self.screen_h), pygame.SRCALPHA
         )
+        
+    def randomize_position(self, spawn_area):
+        """Generates a random position within the environment.
+        area: [xmin, xmax, ymin, ymax] defines the area where the robot can be placed.
+        """
+        if spawn_area is None:
+            spawn_area_xmin = self.screen_center_x - self.screen_w // 2 + self.robot_radius_pixels
+            spawn_area_xmax = self.screen_center_x + self.screen_w // 2 - self.robot_radius_pixels
+            spawn_area_ymin = self.screen_center_y - self.screen_h // 2 + self.robot_radius_pixels
+            spawn_area_ymax = self.screen_center_y + self.screen_h // 2 - self.robot_radius_pixels
+        else:
+            spawn_area_xmin, spawn_area_xmax, spawn_area_ymin, spawn_area_ymax = spawn_area
+
+        while True:
+            buffer = 10
+            x = self.np_random.integers(
+                spawn_area_xmin + buffer,
+                spawn_area_xmax - buffer,
+            )
+            y = self.np_random.integers(
+                spawn_area_ymin + buffer,
+                spawn_area_ymax - buffer,
+            )
+            if not self.is_collision((x, y)):
+                return (x, y)  # Return the random position
+            
+    def create_start_and_target_position(self, start_spawn_area, target_spawn_area):
+        """Creates random start and target positions for the robot."""
+        if self.map_type == "trap_shaped":
+            T_dt_m = self.T_dt_m_trap_shaped
+        elif self.map_type == "zigzag":
+            T_dt_m = self.T_dt_m_zigzag
+        elif self.map_type == "random":
+            T_dt_m = self.T_dt_m_random
+        elif self.map_type == "empty":
+            T_dt_m = self.T_dt_m_empty
+        while True:
+            self.robot_position = self.randomize_position(start_spawn_area)
+            self.target_position = self.randomize_position(target_spawn_area)
+            distance_btwn_robot_and_target = math.sqrt(
+                (self.target_position[0] - self.robot_position[0]) ** 2
+                + (self.target_position[1] - self.robot_position[1]) ** 2
+            )
+            if distance_btwn_robot_and_target > T_dt_m * self.pixels_per_meter:
+                print(
+                    f"Distance between robot and target: {distance_btwn_robot_and_target // self.pixels_per_meter} m"
+                )
+                break
+            
+    def initialize_map_parameters(self):
+        start_spawn_area = None  # [xmin, xmax, ymin, ymax]
+        target_spawn_area = None  # [xmin, xmax, ymin, ymax]
+
+        if self.map_type == "trap_shaped":
+            start_spawn_area = [
+                self.screen_center_x - int(self.screen_w * 0.4) + self.robot_radius_pixels,
+                self.screen_center_x + int(self.screen_w * 0.4) - self.robot_radius_pixels,
+                self.screen_center_y + int(self.screen_h * 0.35) + self.robot_radius_pixels,
+                self.screen_center_y + int(self.screen_h * 0.5) - self.robot_radius_pixels,
+            ]
+            target_spawn_area = [
+                self.screen_center_x - int(self.screen_w * 0.4) + self.robot_radius_pixels,
+                self.screen_center_x + int(self.screen_w * 0.4) - self.robot_radius_pixels,
+                self.screen_center_y - int(self.screen_h * 0.5) + self.robot_radius_pixels,
+                self.screen_center_y - int(self.screen_h * 0.35) - self.robot_radius_pixels,
+            ]
+        elif self.map_type == "zigzag":
+            start_spawn_area, target_spawn_area = self.map_creator._calculate_spawan_area_in_zigzag_map()
+        elif self.map_type == "random":
+            start_spawn_area = [
+                self.screen_center_x - self.screen_w // 2 + self.robot_radius_pixels,
+                self.screen_center_x + self.screen_w // 2 - self.robot_radius_pixels,
+                self.screen_center_y - self.screen_h // 2 + self.robot_radius_pixels,
+                self.screen_center_y + self.screen_h // 2 - self.robot_radius_pixels,
+            ]
+            target_spawn_area = start_spawn_area
+        elif self.map_type == "empty":
+            start_spawn_area = [
+                self.screen_center_x - self.screen_w // 2 + self.robot_radius_pixels,
+                self.screen_center_x + self.screen_w // 2 - self.robot_radius_pixels,
+                self.screen_center_y - self.screen_h // 2 + self.robot_radius_pixels,
+                self.screen_center_y + self.screen_h // 2 - self.robot_radius_pixels,
+            ]
+            target_spawn_area = start_spawn_area
+        return start_spawn_area, target_spawn_area
+    
+    # ===== Detection functions =====
 
     def is_collision(self, position):
         """Checks the surrounding colors of a position in the environment."""
@@ -283,156 +390,12 @@ class SimCoreEnvironment:
         )
         return distance_to_target < self.robot_radius_pixels
 
-    def _operate_moving(self):
-        keys = pygame.key.get_pressed()
-        step_size = 5  # Move by 10 pixels per key press
-        if keys[pygame.K_w] and self.robot_position[1] > self.robot_radius_pixels:
-            next_position = (
-                self.robot_position[0] - step_size * math.sin(self.robot_theta),
-                self.robot_position[1] - step_size * math.cos(self.robot_theta),
-            )
-            if next_position[1] > 0:
-                if not self.is_collision(next_position):
-                    self.robot_position = next_position  # Move robot left
-                    self.clear_lidar_layer()
-        if keys[pygame.K_s] and self.robot_position[1] < self.screen_h - self.robot_radius_pixels:
-            next_position = (
-                self.robot_position[0] + step_size * math.sin(self.robot_theta),
-                self.robot_position[1] + step_size * math.cos(self.robot_theta),
-            )
-            if next_position[1] < self.screen_h:
-                if not self.is_collision(next_position):
-                    self.robot_position = next_position  # Move robot left
-                    self.clear_lidar_layer()
-        if keys[pygame.K_e]:
-            self.robot_theta -= 0.1  # Rotate robot clockwise (negative omega)
-            self.robot_theta = (self.robot_theta + math.pi) % (2 * math.pi) - math.pi
-        if keys[pygame.K_q]:
-            self.robot_theta += 0.1  # Rotate robot counterclockwise (positive omega)
-            self.robot_theta = (self.robot_theta + math.pi) % (2 * math.pi) - math.pi
-
-
-    def randomize_position(self, spawn_area):
-        """Generates a random position within the environment.
-        area: [xmin, xmax, ymin, ymax] defines the area where the robot can be placed.
-        """
-        if spawn_area is None:
-            spawn_area_xmin = self.screen_center_x - self.screen_w // 2 + self.robot_radius_pixels
-            spawn_area_xmax = self.screen_center_x + self.screen_w // 2 - self.robot_radius_pixels
-            spawn_area_ymin = self.screen_center_y - self.screen_h // 2 + self.robot_radius_pixels
-            spawn_area_ymax = self.screen_center_y + self.screen_h // 2 - self.robot_radius_pixels
-        else:
-            spawn_area_xmin, spawn_area_xmax, spawn_area_ymin, spawn_area_ymax = spawn_area
-
-        while True:
-            buffer = 10
-            x = self.np_random.integers(
-                spawn_area_xmin + buffer,
-                spawn_area_xmax - buffer,
-            )
-            y = self.np_random.integers(
-                spawn_area_ymin + buffer,
-                spawn_area_ymax - buffer,
-            )
-            if not self.is_collision((x, y)):
-                return (x, y)  # Return the random position
-
-
-    def create_start_and_target_position(self, start_spawn_area, target_spawn_area):
-        """Creates random start and target positions for the robot."""
-        if self.map_type == "trap_shaped":
-            T_dt_m = self.T_dt_m_trap_shaped
-        elif self.map_type == "zigzag":
-            T_dt_m = self.T_dt_m_zigzag
-        elif self.map_type == "random":
-            T_dt_m = self.T_dt_m_random
-        elif self.map_type == "empty":
-            T_dt_m = self.T_dt_m_empty
-        while True:
-            self.robot_position = self.randomize_position(start_spawn_area)
-            self.target_position = self.randomize_position(target_spawn_area)
-            distance_btwn_robot_and_target = math.sqrt(
-                (self.target_position[0] - self.robot_position[0]) ** 2
-                + (self.target_position[1] - self.robot_position[1]) ** 2
-            )
-            if distance_btwn_robot_and_target > T_dt_m * self.pixels_per_meter:
-                print(
-                    f"Distance between robot and target: {distance_btwn_robot_and_target // self.pixels_per_meter} m"
-                )
-                break
-
-    def initialize_map_parameters(self):
-        start_spawn_area = None  # [xmin, xmax, ymin, ymax]
-        target_spawn_area = None  # [xmin, xmax, ymin, ymax]
-
-        if self.map_type == "trap_shaped":
-            start_spawn_area = [
-                self.screen_center_x - int(self.screen_w * 0.4) + self.robot_radius_pixels,
-                self.screen_center_x + int(self.screen_w * 0.4) - self.robot_radius_pixels,
-                self.screen_center_y + int(self.screen_h * 0.35) + self.robot_radius_pixels,
-                self.screen_center_y + int(self.screen_h * 0.5) - self.robot_radius_pixels,
-            ]
-            target_spawn_area = [
-                self.screen_center_x - int(self.screen_w * 0.4) + self.robot_radius_pixels,
-                self.screen_center_x + int(self.screen_w * 0.4) - self.robot_radius_pixels,
-                self.screen_center_y - int(self.screen_h * 0.5) + self.robot_radius_pixels,
-                self.screen_center_y - int(self.screen_h * 0.35) - self.robot_radius_pixels,
-            ]
-        elif self.map_type == "zigzag":
-            start_spawn_area, target_spawn_area = self.map_creator._calculate_spawan_area_in_zigzag_map()
-        elif self.map_type == "random":
-            start_spawn_area = [
-                self.screen_center_x - self.screen_w // 2 + self.robot_radius_pixels,
-                self.screen_center_x + self.screen_w // 2 - self.robot_radius_pixels,
-                self.screen_center_y - self.screen_h // 2 + self.robot_radius_pixels,
-                self.screen_center_y + self.screen_h // 2 - self.robot_radius_pixels,
-            ]
-            target_spawn_area = start_spawn_area
-        elif self.map_type == "empty":
-            start_spawn_area = [
-                self.screen_center_x - self.screen_w // 2 + self.robot_radius_pixels,
-                self.screen_center_x + self.screen_w // 2 - self.robot_radius_pixels,
-                self.screen_center_y - self.screen_h // 2 + self.robot_radius_pixels,
-                self.screen_center_y + self.screen_h // 2 - self.robot_radius_pixels,
-            ]
-            target_spawn_area = start_spawn_area
-        return start_spawn_area, target_spawn_area
-
-    
-    def switch_map_type(self, switch_mode="cycle"):
-        # switch_mode: "cycle", "random"
-        map_type_list = ["trap_shaped", "zigzag", "random", "empty"]
-        
-        if switch_mode == "cycle":
-            map_type_index = map_type_list.index(self.map_type)
-            self.map_type = map_type_list[
-                (map_type_index + 1) % len(map_type_list)
-            ]
-            print(f"Map type changed to: {self.map_type}")
-        elif switch_mode == "random":
-            self.map_type = self.np_random.choice(map_type_list)
-            print(f"Map type changed to: {self.map_type}")
-
-    def render_obstacles(self):
-        self.clear_all_layers()
-        self.map_creator.create_map(self.map_type, self.obstacle_layer)
-        start_spawn_area, target_spawn_area = self.initialize_map_parameters()
-        self.create_start_and_target_position(
-            start_spawn_area, target_spawn_area
-        )
-        # ロボットの向きも初期化する
-        self.robot_theta = 0.0
-        self.target_theta = 0.0
+    # ===== Data functions =====
 
     def update_sensors(self):
         """Performs a LiDAR scan and updates sensor-related state."""
         self.sensor_data = self.lidar_scan()
         self.closest_obstacle_info = self.sensor.get_closest_obstacle_info(self.sensor_data)
-
-    def render_robot_and_lidar(self):
-        """Draws the robot and the last sensor data to the screen."""
-        self.clear_lidar_layer()  # Reset the lidar line while remaining the map and obstacles
-        self.show_robot_and_lidar(self.sensor_data)
     
     def lidar_scan(self):
         self.sensor.position = self.robot_position
@@ -441,22 +404,7 @@ class SimCoreEnvironment:
             self.screen, self.obstacle_color
         )
         return sensor_data
-        
-    
-    def change_map_by_event(self):
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                self.running = False
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    self.running = False
-                if event.key == pygame.K_c:
-                    # Change the map type
-                    self.switch_map_type(switch_mode="cycle")
-                    self.render_obstacles()
-                if event.key == pygame.K_SPACE:
-                    self.render_obstacles()
-                    
+                            
     def get_goal_info(self):
         distance_to_target = math.sqrt(
             (self.target_position[0] - self.robot_position[0]) ** 2
@@ -497,3 +445,61 @@ class SimCoreEnvironment:
             return float('inf'), 0.0
         closest_obstacle_info = [self.closest_obstacle_info[0] / self.pixels_per_meter, self.closest_obstacle_info[1]]
         return closest_obstacle_info
+    
+    # ===== Other functions =====
+    
+    def _operate_moving(self):
+        keys = pygame.key.get_pressed()
+        step_size = 5  # Move by 10 pixels per key press
+        if keys[pygame.K_w] and self.robot_position[1] > self.robot_radius_pixels:
+            next_position = (
+                self.robot_position[0] - step_size * math.sin(self.robot_theta),
+                self.robot_position[1] - step_size * math.cos(self.robot_theta),
+            )
+            if next_position[1] > 0:
+                if not self.is_collision(next_position):
+                    self.robot_position = next_position  # Move robot left
+                    self.clear_lidar_layer()
+        if keys[pygame.K_s] and self.robot_position[1] < self.screen_h - self.robot_radius_pixels:
+            next_position = (
+                self.robot_position[0] + step_size * math.sin(self.robot_theta),
+                self.robot_position[1] + step_size * math.cos(self.robot_theta),
+            )
+            if next_position[1] < self.screen_h:
+                if not self.is_collision(next_position):
+                    self.robot_position = next_position  # Move robot left
+                    self.clear_lidar_layer()
+        if keys[pygame.K_e]:
+            self.robot_theta -= 0.1  # Rotate robot clockwise (negative omega)
+            self.robot_theta = (self.robot_theta + math.pi) % (2 * math.pi) - math.pi
+        if keys[pygame.K_q]:
+            self.robot_theta += 0.1  # Rotate robot counterclockwise (positive omega)
+            self.robot_theta = (self.robot_theta + math.pi) % (2 * math.pi) - math.pi
+
+    def switch_map_type(self, switch_mode="cycle"):
+        # switch_mode: "cycle", "random"
+        map_type_list = ["trap_shaped", "zigzag", "random", "empty"]
+        
+        if switch_mode == "cycle":
+            map_type_index = map_type_list.index(self.map_type)
+            self.map_type = map_type_list[
+                (map_type_index + 1) % len(map_type_list)
+            ]
+            print(f"Map type changed to: {self.map_type}")
+        elif switch_mode == "random":
+            self.map_type = self.np_random.choice(map_type_list)
+            print(f"Map type changed to: {self.map_type}")
+            
+    def change_map_by_event(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.running = False
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    self.running = False
+                if event.key == pygame.K_c:
+                    # Change the map type
+                    self.switch_map_type(switch_mode="cycle")
+                    self.render_obstacles()
+                if event.key == pygame.K_SPACE:
+                    self.render_obstacles()
