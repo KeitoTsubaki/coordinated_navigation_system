@@ -221,7 +221,7 @@ class SimCoreEnvironment:
             )  # Overlay lidar sensor layer on the map
 
     def clear_layers(self):
-        """Resets the environment by clearing the point cloud and reinitializing the map."""
+        """Clear the entire layers including main screen, obstacle layer, and lidar sensor layer."""
         self.screen.fill(self.background_color)  # Clear the map
         self.obstacle_layer = pygame.Surface((self.screen_w, self.screen_h), pygame.SRCALPHA)
         self.lidar_sensor_layer = pygame.Surface(
