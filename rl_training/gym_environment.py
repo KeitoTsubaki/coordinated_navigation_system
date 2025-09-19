@@ -96,6 +96,7 @@ class Env(gym.Env):
         
         assert render_mode is None or render_mode in self.metadata["render_modes"]
         self.render_mode = render_mode
+        self.env.render_mode = self.render_mode
         
         # for human-rendering
         self.window = None
