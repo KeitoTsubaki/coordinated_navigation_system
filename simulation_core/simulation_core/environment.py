@@ -33,7 +33,7 @@ class SimCoreEnvironment:
         self.np_random = np.random.default_rng(0) # random number generator with seed 0
 
         self.background_color = config["map"]["background_color"]
-        self.map_w, self.map_h = config["map"]["size"], config["map"]["size"]
+        self.screen_w, self.screen_h = config["map"]["size"], config["map"]["size"]
 
         self.robot_radius_m = config["robot"]["radius_m"]
         self.robot_color = config["robot"]["robot_color"]
@@ -61,26 +61,27 @@ class SimCoreEnvironment:
         self.max_d = config["robot"]["max_d"]
         self.max_theta = config["robot"]["max_theta"]
 
-        self.pixels_per_meter = self.map_w / (2 * self.lidar_range_m)
+        self.pixels_per_meter = self.screen_w / (2 * self.lidar_range_m)
 
         self.robot_radius_pixels = self.robot_radius_m * self.pixels_per_meter
         self.lidar_range_pixels = self.lidar_range_m * self.pixels_per_meter
 
-        self.map = pygame.display.set_mode((self.map_w, self.map_h))
-        self.map.fill(self.background_color)
+        # TODO: self.screen はrender mode でdisplay か Surfaceを切り替える
+        self.screen = pygame.display.set_mode((self.screen_w, self.screen_h))
+        self.screen.fill(self.background_color)
 
-        self.map_center_x = self.map_w // 2
-        self.map_center_y = self.map_h // 2
+        self.screen_center_x = self.screen_w // 2
+        self.screen_center_y = self.screen_h // 2
 
-        self.obstacle_layer = pygame.Surface((self.map_w, self.map_h), pygame.SRCALPHA)
+        self.obstacle_layer = pygame.Surface((self.screen_w, self.screen_h), pygame.SRCALPHA)
         self.lidar_sensor_layer = pygame.Surface(
-            (self.map_w, self.map_h), pygame.SRCALPHA
+            (self.screen_w, self.screen_h), pygame.SRCALPHA
         )
-        self.robot_layer = pygame.Surface((self.map_w, self.map_h), pygame.SRCALPHA)
+        self.robot_layer = pygame.Surface((self.screen_w, self.screen_h), pygame.SRCALPHA)
         # Robot's orientation in radians
         # 0 radians is facing up (north), and increases clockwise
-        self.robot_position = (self.map_center_x, self.map_center_y)
-        self.target_position = (self.map_center_x, self.map_center_y)
+        self.robot_position = (self.screen_center_x, self.screen_center_y)
+        self.target_position = (self.screen_center_x, self.screen_center_y)
         self.robot_theta = 0.0
         self.target_theta = 0.0
 
@@ -99,19 +100,19 @@ class SimCoreEnvironment:
         self.k9 = config["simulation"]["k9"]
         self.l_passage = 0  # length of the passage in the zigzag-shaped map
         self.divided_space_width = (
-            self.map_h // 5
+            self.screen_h // 5
         )  # width of the divided space in the zigzag-shaped map
       
         self.sensor = sensor.LiDARSensor(
-            self.lidar_range_m, self.map, uncertainty=(0, 0)
+            self.lidar_range_m, self.screen, uncertainty=(0, 0)
         )
         self.sensor.pixels_per_meter = self.pixels_per_meter
         self.sensor.num_scans = self.resolution
         self.running = True
         
         self.map_creator = mc.MapCreator(
-            map=self.map,
-            map_size=(self.map_w, self.map_h),
+            map=self.screen,
+            map_size=(self.screen_w, self.screen_h),
             obstacle_color=self.obstacle_color,
             n_obstacles=self.n_obstacles,
             pixels_per_meter=self.pixels_per_meter,
@@ -140,7 +141,7 @@ class SimCoreEnvironment:
             check_y = int(position[1] + self.robot_radius_pixels * math.sin(angle))
 
             # Ensure the check point is within the map boundaries before drawing
-            if 0 <= check_x < self.map_w and 0 <= check_y < self.map_h:
+            if 0 <= check_x < self.screen_w and 0 <= check_y < self.screen_h:
                 pygame.draw.circle(
                     self.lidar_sensor_layer,
                     color,  # Red color for visualization
@@ -215,25 +216,25 @@ class SimCoreEnvironment:
             
             # self.visualize_search_point(self.robot_position)
             # self.visualize_search_point(self.target_position)
-            self.map.blit(
+            self.screen.blit(
                 self.lidar_sensor_layer, (0, 0)
             )  # Overlay lidar sensor layer on the map
 
     def clear_environment(self):
         """Resets the environment by clearing the point cloud and reinitializing the map."""
-        self.map.fill(self.background_color)  # Clear the map
-        self.obstacle_layer = pygame.Surface((self.map_w, self.map_h), pygame.SRCALPHA)
+        self.screen.fill(self.background_color)  # Clear the map
+        self.obstacle_layer = pygame.Surface((self.screen_w, self.screen_h), pygame.SRCALPHA)
         self.lidar_sensor_layer = pygame.Surface(
-            (self.map_w, self.map_h), pygame.SRCALPHA
+            (self.screen_w, self.screen_h), pygame.SRCALPHA
         )
 
     def clear_lidar_layer(self):
-        self.map.fill(self.background_color)
-        self.map.blit(
+        self.screen.fill(self.background_color)
+        self.screen.blit(
             self.obstacle_layer, (0, 0)
         )  # Draw the obstacle layer onto the map
         self.lidar_sensor_layer = pygame.Surface(
-            (self.map_w, self.map_h), pygame.SRCALPHA
+            (self.screen_w, self.screen_h), pygame.SRCALPHA
         )
 
     def is_collision(self, position):
@@ -245,7 +246,7 @@ class SimCoreEnvironment:
             check_y = int(position[1] + self.robot_radius_pixels * math.sin(angle))
 
             # Ensure the check point is within the map boundaries
-            if not (0 <= check_x < self.map_w and 0 <= check_y < self.map_h):
+            if not (0 <= check_x < self.screen_w and 0 <= check_y < self.screen_h):
                 # Part of the robot is outside the map, which is a collision
                 print("Collision with wall detected: out of bounds")
                 return True
@@ -294,12 +295,12 @@ class SimCoreEnvironment:
                 if not self.is_collision(next_position):
                     self.robot_position = next_position  # Move robot left
                     self.clear_lidar_layer()
-        if keys[pygame.K_s] and self.robot_position[1] < self.map_h - self.robot_radius_pixels:
+        if keys[pygame.K_s] and self.robot_position[1] < self.screen_h - self.robot_radius_pixels:
             next_position = (
                 self.robot_position[0] + step_size * math.sin(self.robot_theta),
                 self.robot_position[1] + step_size * math.cos(self.robot_theta),
             )
-            if next_position[1] < self.map_h:
+            if next_position[1] < self.screen_h:
                 if not self.is_collision(next_position):
                     self.robot_position = next_position  # Move robot left
                     self.clear_lidar_layer()
@@ -316,10 +317,10 @@ class SimCoreEnvironment:
         area: [xmin, xmax, ymin, ymax] defines the area where the robot can be placed.
         """
         if spawn_area is None:
-            spawn_area_xmin = self.map_center_x - self.map_w // 2 + self.robot_radius_pixels
-            spawn_area_xmax = self.map_center_x + self.map_w // 2 - self.robot_radius_pixels
-            spawn_area_ymin = self.map_center_y - self.map_h // 2 + self.robot_radius_pixels
-            spawn_area_ymax = self.map_center_y + self.map_h // 2 - self.robot_radius_pixels
+            spawn_area_xmin = self.screen_center_x - self.screen_w // 2 + self.robot_radius_pixels
+            spawn_area_xmax = self.screen_center_x + self.screen_w // 2 - self.robot_radius_pixels
+            spawn_area_ymin = self.screen_center_y - self.screen_h // 2 + self.robot_radius_pixels
+            spawn_area_ymax = self.screen_center_y + self.screen_h // 2 - self.robot_radius_pixels
         else:
             spawn_area_xmin, spawn_area_xmax, spawn_area_ymin, spawn_area_ymax = spawn_area
 
@@ -366,33 +367,33 @@ class SimCoreEnvironment:
 
         if self.map_type == "trap_shaped":
             start_spawn_area = [
-                self.map_center_x - int(self.map_w * 0.4) + self.robot_radius_pixels,
-                self.map_center_x + int(self.map_w * 0.4) - self.robot_radius_pixels,
-                self.map_center_y + int(self.map_h * 0.35) + self.robot_radius_pixels,
-                self.map_center_y + int(self.map_h * 0.5) - self.robot_radius_pixels,
+                self.screen_center_x - int(self.screen_w * 0.4) + self.robot_radius_pixels,
+                self.screen_center_x + int(self.screen_w * 0.4) - self.robot_radius_pixels,
+                self.screen_center_y + int(self.screen_h * 0.35) + self.robot_radius_pixels,
+                self.screen_center_y + int(self.screen_h * 0.5) - self.robot_radius_pixels,
             ]
             target_spawn_area = [
-                self.map_center_x - int(self.map_w * 0.4) + self.robot_radius_pixels,
-                self.map_center_x + int(self.map_w * 0.4) - self.robot_radius_pixels,
-                self.map_center_y - int(self.map_h * 0.5) + self.robot_radius_pixels,
-                self.map_center_y - int(self.map_h * 0.35) - self.robot_radius_pixels,
+                self.screen_center_x - int(self.screen_w * 0.4) + self.robot_radius_pixels,
+                self.screen_center_x + int(self.screen_w * 0.4) - self.robot_radius_pixels,
+                self.screen_center_y - int(self.screen_h * 0.5) + self.robot_radius_pixels,
+                self.screen_center_y - int(self.screen_h * 0.35) - self.robot_radius_pixels,
             ]
         elif self.map_type == "zigzag":
             start_spawn_area, target_spawn_area = self.map_creator._calculate_spawan_area_in_zigzag_map()
         elif self.map_type == "random":
             start_spawn_area = [
-                self.map_center_x - self.map_w // 2 + self.robot_radius_pixels,
-                self.map_center_x + self.map_w // 2 - self.robot_radius_pixels,
-                self.map_center_y - self.map_h // 2 + self.robot_radius_pixels,
-                self.map_center_y + self.map_h // 2 - self.robot_radius_pixels,
+                self.screen_center_x - self.screen_w // 2 + self.robot_radius_pixels,
+                self.screen_center_x + self.screen_w // 2 - self.robot_radius_pixels,
+                self.screen_center_y - self.screen_h // 2 + self.robot_radius_pixels,
+                self.screen_center_y + self.screen_h // 2 - self.robot_radius_pixels,
             ]
             target_spawn_area = start_spawn_area
         elif self.map_type == "empty":
             start_spawn_area = [
-                self.map_center_x - self.map_w // 2 + self.robot_radius_pixels,
-                self.map_center_x + self.map_w // 2 - self.robot_radius_pixels,
-                self.map_center_y - self.map_h // 2 + self.robot_radius_pixels,
-                self.map_center_y + self.map_h // 2 - self.robot_radius_pixels,
+                self.screen_center_x - self.screen_w // 2 + self.robot_radius_pixels,
+                self.screen_center_x + self.screen_w // 2 - self.robot_radius_pixels,
+                self.screen_center_y - self.screen_h // 2 + self.robot_radius_pixels,
+                self.screen_center_y + self.screen_h // 2 - self.robot_radius_pixels,
             ]
             target_spawn_area = start_spawn_area
         return start_spawn_area, target_spawn_area
@@ -437,7 +438,7 @@ class SimCoreEnvironment:
         self.sensor.position = self.robot_position
         self.sensor.theta = self.robot_theta
         sensor_data = self.sensor.sense_obstacles(
-            self.map, self.obstacle_color
+            self.screen, self.obstacle_color
         )
         return sensor_data
         
