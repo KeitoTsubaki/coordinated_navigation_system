@@ -117,6 +117,7 @@ def main():
                 pixels_per_meter=env.pixels_per_meter,
             )
             env.publisher_.publish(point_cloud_msg)
+        env.is_collision(env.robot_position)
         
         env.publish_tf()
 
