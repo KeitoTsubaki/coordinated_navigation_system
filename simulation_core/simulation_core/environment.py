@@ -228,8 +228,7 @@ class SimCoreEnvironment:
                 self.robot_and_lidar_layer, (0, 0)
             )  # Overlay lidar sensor layer on the map
     
-    def render_obstacles(self):
-        self.clear_all_layers()
+    def render_obstacle_and_robots(self):
         self.map_creator.create_map(self.map_type, self.obstacle_layer)
         start_spawn_area, target_spawn_area = self.initialize_map_parameters()
         self.create_start_and_target_position(
@@ -508,6 +507,8 @@ class SimCoreEnvironment:
                 if event.key == pygame.K_c:
                     # Change the map type
                     self.switch_map_type(switch_mode="cycle")
-                    self.render_obstacles()
+                    self.clear_all_layers()
+                    self.render_obstacle_and_robots()
                 if event.key == pygame.K_SPACE:
-                    self.render_obstacles()
+                    self.clear_all_layers()
+                    self.render_obstacle_and_robots()
