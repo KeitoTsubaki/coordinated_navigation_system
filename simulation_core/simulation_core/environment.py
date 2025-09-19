@@ -256,7 +256,7 @@ class SimCoreEnvironment:
         )
 
     def clear_robot_and_lidar_layer(self):
-        # Clear only the lidar sensor layer while remaining the obstacles
+        """Clear only the robot and lidar sensor layer while remaining the obstacles to update robot position and lidar scan data."""
         self.screen.fill(self.background_color)
         self.screen.blit(
             self.obstacle_layer, (0, 0)
