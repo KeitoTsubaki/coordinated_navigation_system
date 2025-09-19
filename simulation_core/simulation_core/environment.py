@@ -1,4 +1,5 @@
 # Main simulation environment code
+# It uses pygame library to render windows and handle user inputs.
 
 import math
 import random
@@ -170,14 +171,7 @@ class SimCoreEnvironment:
             robot_frame_radius = self.robot_radius_m * self.pixels_per_meter
             robot_radius = self.robot_radius_m * 0.8 * self.pixels_per_meter
 
-            # Draw target position
-            # pygame.draw.circle(
-            #     self.lidar_sensor_layer,
-            #     self.target_color,
-            #     self.target_position,
-            #     robot_frame_radius,
-            #     width=2,  # Draw a circle around the robot
-            # )
+
             self.visualize_search_point(self.target_position, self.target_color)
             pygame.draw.circle(
                 self.lidar_sensor_layer,
@@ -198,24 +192,6 @@ class SimCoreEnvironment:
                 target_head_position,
                 2,  # Draw the target's head
             )
-            # font = pygame.font.SysFont("arial", 16)
-            # text = font.render("Target", True, (0, 0, 0))
-            # self.lidar_sensor_layer.blit(
-            #     text,
-            #     (
-            #         self.target_position[0],
-            #         self.target_position[1] + text.get_height() // 2,
-            #     ),
-            # )
-
-            # Draw the robot's position
-            # pygame.draw.circle(
-            #     self.lidar_sensor_layer,
-            #     self.robot_color,
-            #     self.robot_position,
-            #     robot_frame_radius,
-            #     width=2,  # Draw a circle around the robot
-            # )
             self.visualize_search_point(self.robot_position, self.robot_color)
             pygame.draw.circle(
                 self.lidar_sensor_layer,
