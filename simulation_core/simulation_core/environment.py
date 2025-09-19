@@ -228,11 +228,13 @@ class SimCoreEnvironment:
                 self.robot_and_lidar_layer, (0, 0)
             )  # Overlay lidar sensor layer on the map
     
-    def render_obstacle_and_robots(self):
-        self.map_creator.create_map(self.map_type, self.obstacle_layer)
-        start_spawn_area, target_spawn_area = self.initialize_map_parameters()
+    def render_obstacle_and_robots(self, map_type="empty"):
+        screen_center_xy = (self.screen_center_x, self.screen_center_y)
+        screen_size_wh = (self.screen_w, self.screen_h)
+        self.map_creator.create_map(map_type, self.obstacle_layer)
+        start_spawn_area, target_spawn_area = self.map_creator.initialize_map_parameters(map_type, screen_center_xy, screen_size_wh, self.robot_radius_pixels)
         self.create_start_and_target_position(
-            start_spawn_area, target_spawn_area
+            map_type, start_spawn_area, target_spawn_area
         )
         # ロボットの向きも初期化する
         self.robot_theta = 0.0
@@ -249,7 +251,7 @@ class SimCoreEnvironment:
         self.map_type = map_type
         
         self.clear_all_layers()
-        self.render_obstacle_and_robots() # Draw obstacles, robot, and target
+        self.render_obstacle_and_robots(map_type) # Draw obstacles, robot, and target
 
     def clear_all_layers(self):
         """Clear the entire layers including main screen, obstacle layer, and lidar sensor layer."""
@@ -295,15 +297,15 @@ class SimCoreEnvironment:
             if not self.is_collision((x, y)):
                 return (x, y)  # Return the random position
             
-    def create_start_and_target_position(self, start_spawn_area, target_spawn_area):
+    def create_start_and_target_position(self, map_type, start_spawn_area, target_spawn_area):
         """Creates random start and target positions for the robot."""
-        if self.map_type == "trap_shaped":
+        if map_type == "trap_shaped":
             T_dt_m = self.T_dt_m_trap_shaped
-        elif self.map_type == "zigzag":
+        elif map_type == "zigzag":
             T_dt_m = self.T_dt_m_zigzag
-        elif self.map_type == "random":
+        elif map_type == "random":
             T_dt_m = self.T_dt_m_random
-        elif self.map_type == "empty":
+        elif map_type == "empty":
             T_dt_m = self.T_dt_m_empty
         while True:
             self.robot_position = self.randomize_position(start_spawn_area)
@@ -318,42 +320,6 @@ class SimCoreEnvironment:
                 )
                 break
             
-    def initialize_map_parameters(self):
-        start_spawn_area = None  # [xmin, xmax, ymin, ymax]
-        target_spawn_area = None  # [xmin, xmax, ymin, ymax]
-
-        if self.map_type == "trap_shaped":
-            start_spawn_area = [
-                self.screen_center_x - int(self.screen_w * 0.4) + self.robot_radius_pixels,
-                self.screen_center_x + int(self.screen_w * 0.4) - self.robot_radius_pixels,
-                self.screen_center_y + int(self.screen_h * 0.35) + self.robot_radius_pixels,
-                self.screen_center_y + int(self.screen_h * 0.5) - self.robot_radius_pixels,
-            ]
-            target_spawn_area = [
-                self.screen_center_x - int(self.screen_w * 0.4) + self.robot_radius_pixels,
-                self.screen_center_x + int(self.screen_w * 0.4) - self.robot_radius_pixels,
-                self.screen_center_y - int(self.screen_h * 0.5) + self.robot_radius_pixels,
-                self.screen_center_y - int(self.screen_h * 0.35) - self.robot_radius_pixels,
-            ]
-        elif self.map_type == "zigzag":
-            start_spawn_area, target_spawn_area = self.map_creator._calculate_spawan_area_in_zigzag_map()
-        elif self.map_type == "random":
-            start_spawn_area = [
-                self.screen_center_x - self.screen_w // 2 + self.robot_radius_pixels,
-                self.screen_center_x + self.screen_w // 2 - self.robot_radius_pixels,
-                self.screen_center_y - self.screen_h // 2 + self.robot_radius_pixels,
-                self.screen_center_y + self.screen_h // 2 - self.robot_radius_pixels,
-            ]
-            target_spawn_area = start_spawn_area
-        elif self.map_type == "empty":
-            start_spawn_area = [
-                self.screen_center_x - self.screen_w // 2 + self.robot_radius_pixels,
-                self.screen_center_x + self.screen_w // 2 - self.robot_radius_pixels,
-                self.screen_center_y - self.screen_h // 2 + self.robot_radius_pixels,
-                self.screen_center_y + self.screen_h // 2 - self.robot_radius_pixels,
-            ]
-            target_spawn_area = start_spawn_area
-        return start_spawn_area, target_spawn_area
     
     # ===== Detection functions =====
 
@@ -488,20 +454,6 @@ class SimCoreEnvironment:
         if keys[pygame.K_q]:
             self.robot_theta += 0.1  # Rotate robot counterclockwise (positive omega)
             self.robot_theta = (self.robot_theta + math.pi) % (2 * math.pi) - math.pi
-
-    def switch_map_type(self, switch_mode="cycle"):
-        # switch_mode: "cycle", "random"
-        map_type_list = ["trap_shaped", "zigzag", "random", "empty"]
-        
-        if switch_mode == "cycle":
-            map_type_index = map_type_list.index(self.map_type)
-            self.map_type = map_type_list[
-                (map_type_index + 1) % len(map_type_list)
-            ]
-            print(f"Map type changed to: {self.map_type}")
-        elif switch_mode == "random":
-            self.map_type = self.np_random.choice(map_type_list)
-            print(f"Map type changed to: {self.map_type}")
             
     def change_map_by_event(self):
         for event in pygame.event.get():
@@ -512,9 +464,8 @@ class SimCoreEnvironment:
                     self.running = False
                 if event.key == pygame.K_c:
                     # Change the map type
-                    self.switch_map_type(switch_mode="cycle")
-                    self.clear_all_layers()
-                    self.render_obstacle_and_robots()
+                    next_map_type = utils.switch_map_type(self.map_type, self.np_random, switch_mode="cycle")
+                    self.map_type = next_map_type
+                    self.reset(map_type=next_map_type)
                 if event.key == pygame.K_SPACE:
-                    self.clear_all_layers()
-                    self.render_obstacle_and_robots()
+                    self.reset(map_type=self.map_type)
