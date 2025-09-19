@@ -360,3 +360,42 @@ class MapCreator:
             0 + int(self.divided_space_width * 0.85) - self.robot_radius_pixels,
         ]
         return start_spawn_area, target_spawn_area
+    
+    def initialize_map_parameters(self, map_type, screen_center_xy, screen_size_wh, robot_radius_pixels):
+        start_spawn_area = None  # [xmin, xmax, ymin, ymax]
+        target_spawn_area = None  # [xmin, xmax, ymin, ymax]
+        screen_center_x, screen_center_y = screen_center_xy
+        screen_w, screen_h = screen_size_wh
+
+        if map_type == "trap_shaped":
+            start_spawn_area = [
+                screen_center_x - int(screen_w * 0.4) + robot_radius_pixels,
+                screen_center_x + int(screen_w * 0.4) - robot_radius_pixels,
+                screen_center_y + int(screen_h * 0.35) + robot_radius_pixels,
+                screen_center_y + int(screen_h * 0.5) - robot_radius_pixels,
+            ]
+            target_spawn_area = [
+                screen_center_x - int(screen_w * 0.4) + robot_radius_pixels,
+                screen_center_x + int(screen_w * 0.4) - robot_radius_pixels,
+                screen_center_y - int(screen_h * 0.5) + robot_radius_pixels,
+                screen_center_y - int(screen_h * 0.35) - robot_radius_pixels,
+            ]
+        elif map_type == "zigzag":
+            start_spawn_area, target_spawn_area = self._calculate_spawan_area_in_zigzag_map()
+        elif map_type == "random":
+            start_spawn_area = [
+                screen_center_x - screen_w // 2 + robot_radius_pixels,
+                screen_center_x + screen_w // 2 - robot_radius_pixels,
+                screen_center_y - screen_h // 2 + robot_radius_pixels,
+                screen_center_y + screen_h // 2 - robot_radius_pixels,
+            ]
+            target_spawn_area = start_spawn_area
+        elif map_type == "empty":
+            start_spawn_area = [
+                screen_center_x - screen_w // 2 + robot_radius_pixels,
+                screen_center_x + screen_w // 2 - robot_radius_pixels,
+                screen_center_y - screen_h // 2 + robot_radius_pixels,
+                screen_center_y + screen_h // 2 - robot_radius_pixels,
+            ]
+            target_spawn_area = start_spawn_area
+        return start_spawn_area, target_spawn_area
