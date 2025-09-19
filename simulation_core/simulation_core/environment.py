@@ -17,7 +17,7 @@ class SimCoreEnvironment:
 
     def __init__(self, config_path=None):
         self.window_name = "2D LiDAR Simulation"
-        pygame.display.set_caption(self.window_name)
+        
 
         # Set parameters
         if config_path is None:
@@ -66,15 +66,21 @@ class SimCoreEnvironment:
         self.robot_radius_pixels = self.robot_radius_m * self.pixels_per_meter
         self.lidar_range_pixels = self.lidar_range_m * self.pixels_per_meter
 
+        self.render_mode = "human"
+        
         # TODO: self.screen はrender mode でdisplay か Surfaceを切り替える
-        self.screen = pygame.display.set_mode((self.screen_w, self.screen_h))
+        if self.render_mode == "human":
+            pygame.display.set_caption(self.window_name)
+            self.screen = pygame.display.set_mode((self.screen_w, self.screen_h))
+        else:
+           self.screen = pygame.Surface((self.screen_w, self.screen_h))
         self.screen.fill(self.background_color)
 
         self.screen_center_x = self.screen_w // 2
         self.screen_center_y = self.screen_h // 2
 
         self.obstacle_layer = pygame.Surface((self.screen_w, self.screen_h), pygame.SRCALPHA)
-        self.lidar_sensor_layer = pygame.Surface(
+        self.robot_and_lidar_layer = pygame.Surface(
             (self.screen_w, self.screen_h), pygame.SRCALPHA
         )
         self.robot_layer = pygame.Surface((self.screen_w, self.screen_h), pygame.SRCALPHA)
@@ -145,7 +151,7 @@ class SimCoreEnvironment:
             # Ensure the check point is within the map boundaries before drawing
             if 0 <= check_x < self.screen_w and 0 <= check_y < self.screen_h:
                 pygame.draw.circle(
-                    self.lidar_sensor_layer,
+                    self.robot_and_lidar_layer,
                     color,  # Red color for visualization
                     (check_x, check_y),
                     1,  # radius of the visualized point
@@ -158,14 +164,14 @@ class SimCoreEnvironment:
                     element[0], element[1], self.robot_position, self.pixels_per_meter
                 )  # Input: sensor_data = [Distance, Angle]. Output: (x,y) coordinate of objects/walls.
                 pygame.draw.line(
-                    self.lidar_sensor_layer,
+                    self.robot_and_lidar_layer,
                     self.lidar_line_color,
                     (int(self.robot_position[0]), int(self.robot_position[1])),
                     (int(point[0]), int(point[1])),
                     1,
                 )
                 pygame.draw.circle(
-                    self.lidar_sensor_layer,
+                    self.robot_and_lidar_layer,
                     self.lidar_points_color,
                     (int(point[0]), int(point[1])),
                     2,
@@ -177,7 +183,7 @@ class SimCoreEnvironment:
 
             self.visualize_search_point(self.target_position, self.target_color)
             pygame.draw.circle(
-                self.lidar_sensor_layer,
+                self.robot_and_lidar_layer,
                 self.target_color,
                 self.target_position,
                 robot_radius,
@@ -189,7 +195,7 @@ class SimCoreEnvironment:
                 - robot_frame_radius * math.cos(self.target_theta),
             )
             pygame.draw.line(
-                self.lidar_sensor_layer,
+                self.robot_and_lidar_layer,
                 (255, 0, 0),  # Red color for the target's head
                 self.target_position,
                 target_head_position,
@@ -197,7 +203,7 @@ class SimCoreEnvironment:
             )
             self.visualize_search_point(self.robot_position, self.robot_color)
             pygame.draw.circle(
-                self.lidar_sensor_layer,
+                self.robot_and_lidar_layer,
                 self.robot_color,
                 self.robot_position,
                 robot_radius,
@@ -209,7 +215,7 @@ class SimCoreEnvironment:
                 - robot_frame_radius * math.cos(self.robot_theta), # Y軸は不変
             )
             pygame.draw.line(
-                self.lidar_sensor_layer,
+                self.robot_and_lidar_layer,
                 (255, 0, 0),  # Red color for the robot's head
                 self.robot_position,
                 robot_head_position,
@@ -219,7 +225,7 @@ class SimCoreEnvironment:
             # self.visualize_search_point(self.robot_position)
             # self.visualize_search_point(self.target_position)
             self.screen.blit(
-                self.lidar_sensor_layer, (0, 0)
+                self.robot_and_lidar_layer, (0, 0)
             )  # Overlay lidar sensor layer on the map
     
     def render_obstacles(self):
@@ -235,7 +241,7 @@ class SimCoreEnvironment:
         
     def render_robot_and_lidar(self):
         """Draws the robot and the last sensor data to the screen."""
-        self.clear_lidar_layer()  # Reset the lidar line while remaining the map and obstacles
+        self.clear_robot_and_lidar_layer()  # Reset the lidar line while remaining the map and obstacles
         self.show_robot_and_lidar(self.sensor_data)
 
     # ===== Reset functions =====
@@ -243,17 +249,19 @@ class SimCoreEnvironment:
     def clear_all_layers(self):
         """Clear the entire layers including main screen, obstacle layer, and lidar sensor layer."""
         self.screen.fill(self.background_color)  # Clear the map
+        # Surfaces are created in RGBA mode to see all layers.
         self.obstacle_layer = pygame.Surface((self.screen_w, self.screen_h), pygame.SRCALPHA)
-        self.lidar_sensor_layer = pygame.Surface(
+        self.robot_and_lidar_layer = pygame.Surface(
             (self.screen_w, self.screen_h), pygame.SRCALPHA
         )
 
-    def clear_lidar_layer(self):
+    def clear_robot_and_lidar_layer(self):
+        # Clear only the lidar sensor layer while remaining the obstacles
         self.screen.fill(self.background_color)
         self.screen.blit(
             self.obstacle_layer, (0, 0)
         )  # Draw the obstacle layer onto the map
-        self.lidar_sensor_layer = pygame.Surface(
+        self.robot_and_lidar_layer = pygame.Surface(
             (self.screen_w, self.screen_h), pygame.SRCALPHA
         )
         
@@ -459,7 +467,7 @@ class SimCoreEnvironment:
             if next_position[1] > 0:
                 if not self.is_collision(next_position):
                     self.robot_position = next_position  # Move robot left
-                    self.clear_lidar_layer()
+                    self.clear_robot_and_lidar_layer()
         if keys[pygame.K_s] and self.robot_position[1] < self.screen_h - self.robot_radius_pixels:
             next_position = (
                 self.robot_position[0] + step_size * math.sin(self.robot_theta),
@@ -468,7 +476,7 @@ class SimCoreEnvironment:
             if next_position[1] < self.screen_h:
                 if not self.is_collision(next_position):
                     self.robot_position = next_position  # Move robot left
-                    self.clear_lidar_layer()
+                    self.clear_robot_and_lidar_layer()
         if keys[pygame.K_e]:
             self.robot_theta -= 0.1  # Rotate robot clockwise (negative omega)
             self.robot_theta = (self.robot_theta + math.pi) % (2 * math.pi) - math.pi
