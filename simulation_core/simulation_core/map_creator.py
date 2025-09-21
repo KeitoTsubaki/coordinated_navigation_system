@@ -3,7 +3,7 @@ import math
 
 class MapCreator:
 
-    def __init__(self, map, map_size, obstacle_color, n_obstacles, pixels_per_meter, np_random, T_do_m, s_t, k8, s_z, k9, l_passage, divided_space_width, robot_radius_pixels):
+    def __init__(self, map, map_size, obstacle_color, n_obstacles, pixels_per_meter, np_random, T_do_m, s_t, k8, s_z, k9, l_passage, robot_radius_pixels):
         self.map = map
         self.map_size = map_size
         self.obstacle_color = obstacle_color
@@ -18,11 +18,11 @@ class MapCreator:
         self.s_z = s_z
         self.k9 = k9
         self.l_passage = l_passage
-        self.divided_space_width = divided_space_width
         
         self.map_w, self.map_h = self.map_size
         self.map_center_x = self.map_w // 2
         self.map_center_y = self.map_h // 2
+        self.divided_space_width = self.map_h // 5 # width of the divided space in the zigzag-shaped map
         self.obstacle_layer = None
         
     def _draw_rect_obstacle(self, xmin, ymin, width, height):
