@@ -96,6 +96,7 @@ class LiDARSensor():
             
             if not intersected:
                 # No obstacle found, record max range
+                # 本当ならここは+infにしたいけど、そうすると前処理が増えてしまう。今は余裕がないので、max rangeにしておく
                 data.append([self.out_of_range_value, global_angle])
 
         return data if data else False
