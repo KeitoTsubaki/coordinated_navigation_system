@@ -67,7 +67,6 @@ class Env(gym.Env):
         # o_o:
         # Define a reasonable maximum distance (e.g., map diagonal) instead of infinity
         max_dist = math.sqrt(self.env.map_w**2 + self.env.map_h**2) / self.env.pixels_per_meter
-
         self.observation_space = spaces.Dict(
             {
                 "lidar": spaces.Box(
@@ -99,7 +98,7 @@ class Env(gym.Env):
         self.env.render_mode = self.render_mode
         
         # for human-rendering
-        self.window = None
+        self.screen = None
         self.clock = None
         
         # 4フレーム分のLiDARデータを保持するためのdeque
@@ -154,7 +153,7 @@ class Env(gym.Env):
         return observation, reward, terminated, truncated, info
 
     def reset(self, seed=None, options=None):
-        # Reset the state of the environment to an initial state
+        """ Reset the state of the environment, and then render screen."""
         super().reset(seed=seed)
         pygame.init()
         pygame.display.init()
@@ -366,9 +365,9 @@ class Env(gym.Env):
             return self._render_frame()
         
     def _render_frame(self):
-        # self.window (PygameのSurface) が未初期化の場合、初期化する
-        if self.window is None:
-            self.window = self.env.map
+        # self.screen (PygameのSurface) が未初期化の場合、初期化する
+        if self.screen is None:
+            self.screen = self.env.map
             
         if self.clock is None:
             self.clock = pygame.time.Clock()
@@ -385,10 +384,10 @@ class Env(gym.Env):
             self.env.render_robot_and_lidar()
             
             return np.transpose(
-                np.array(pygame.surfarray.pixels3d(self.window)), axes=(1, 0, 2)
+                np.array(pygame.surfarray.pixels3d(self.screen)), axes=(1, 0, 2)
             )
     def close(self):
-        if self.window is not None:
+        if self.screen is not None:
             pygame.display.quit()
             pygame.quit()
             
