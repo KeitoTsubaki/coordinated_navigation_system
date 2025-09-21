@@ -6,6 +6,7 @@ import pygame
 import numpy as np
 import yaml
 import math
+import importlib.resources
 from collections import deque
 
 from simulation_core import environment
@@ -15,13 +16,8 @@ class Env(gym.Env):
     def __init__(self, render_mode=None):
         super().__init__()
 
-        # Resolve the config file path relative to this file
-        # This allows running this script without sourcing the ROS 2 workspace
-        simulator_config_path = os.path.join(
-            os.path.dirname(__file__), # rl_training/
-            '..', # coordinated_navigation_system/
-            'simulation_core', 'config', 'simulator_config.yaml'
-        )
+        # ===== Initialize and load config files =====
+        simulator_config_path = importlib.resources.files('simulation_core').joinpath('config', 'simulator_config.yaml')
         ddpg_config_path = os.path.join(
             os.path.dirname(__file__), # rl_training/
             'config', 'ddpg_config.yaml'
@@ -30,30 +26,31 @@ class Env(gym.Env):
         with open(ddpg_config_path, "r", encoding="utf-8") as f:
             self.ddpg_config = yaml.safe_load(f)
         
+        # ===== Initialize render mode =====
         assert render_mode is None or render_mode in self.metadata["render_modes"]
         self.render_mode = render_mode
         
         self.env = environment.SimCoreEnvironment(render_mode=self.render_mode, config_path=simulator_config_path)
 
         # Define action and observation space
-        self.v_max = self.env.v_max
-        self.omega_max = self.env.omega_max
-        self.a_max = self.env.a_max
-        self.alpha_max = self.env.alpha_max
-        self.max_d = self.env.max_d
-        self.max_theta = self.env.max_theta
-        self.r_lidar = self.env.r_lidar
+        self.V_MAX = self.env.V_MAX
+        self.OMEGA_MAX = self.env.OMEGA_MAX
+        self.A_MAX = self.env.A_MAX
+        self.ALPHA_MAX = self.env.ALPHA_MAX
+        self.MAX_D = self.env.MAX_D
+        self.MAX_THETA = self.env.MAX_THETA
+        self.LIDAR_RANGE_M = self.env.LIDAR_RANGE_M
         self.n_l = self.ddpg_config["lidar"]["n_l"]
         self.n_e = self.ddpg_config["lidar"]["n_e"]
-        self.lidar_history_len = self.ddpg_config["lidar"]["lidar_history_len"]
+        self.LIDAR_HISTORY_LEN = self.ddpg_config["lidar"]["lidar_history_len"]
 
 
         
 
         # DDPG allows continuous action space, and the action of differential-
         # driven robots includes the linear and angular velocity.
-        # v_n: 0 ~ v_max
-        # omega_n: -omega_max ~ omega_max
+        # v_n: 0 ~ V_MAX
+        # omega_n: -OMEGA_MAX ~ OMEGA_MAX
         # action = [v_n, omega_n]
         self.action_space = spaces.Box(
             # Normalize action space to [-1, 1] for better compatibility with RL algorithms.
@@ -69,12 +66,12 @@ class Env(gym.Env):
         # o_v:
         # o_o:
         # Define a reasonable maximum distance (e.g., map diagonal) instead of infinity
-        max_dist = math.sqrt(self.env.screen_w**2 + self.env.screen_h**2) / self.env.pixels_per_meter
+        max_dist = math.sqrt(self.env.SCREEN_W**2 + self.env.SCREEN_H**2) / self.env.PIXELS_PER_METER
         self.observation_space = spaces.Dict(
             {
                 "lidar": spaces.Box(
                     low=0,
-                    high=self.r_lidar, # LiDAR values are already in meters
+                    high=self.LIDAR_RANGE_M, # LiDAR values are already in meters
                     shape=(4, self.n_l + self.n_e),
                     dtype=np.float32,
                 ),
@@ -84,8 +81,8 @@ class Env(gym.Env):
                     dtype=np.float32,
                 ),
                 "velocity": spaces.Box(
-                    low=np.array([0, -self.omega_max], dtype=np.float32),
-                    high=np.array([self.v_max, self.omega_max], dtype=np.float32),
+                    low=np.array([0, -self.OMEGA_MAX], dtype=np.float32),
+                    high=np.array([self.V_MAX, self.OMEGA_MAX], dtype=np.float32),
                     dtype=np.float32,
                 ),
                 "closest_obstacle": spaces.Box(
@@ -99,7 +96,7 @@ class Env(gym.Env):
         self.clock = None
         
         # 4フレーム分のLiDARデータを保持するためのdeque
-        self.lidar_history = deque(maxlen=self.lidar_history_len)
+        self.lidar_history = deque(maxlen=self.LIDAR_HISTORY_LEN)
         
         self.previous_distance_to_taret = None
         self.previous_angle_to_target = None
@@ -216,7 +213,7 @@ class Env(gym.Env):
     def _calculate_reward(self):
         # r_s: spare reward corresponding to: robot reachs the target, collides with an obstacle
         # r_d: dense reward to accelerate the training and seconadary tasks such as smoothness
-        r_safe = self.env.robot_radius_m # robot radius in meters
+        r_safe = self.env.ROBOT_RADIUS_M # robot radius in meters
         r_arrival = self.ddpg_config["reward"]["r_arrival"]
         r_collision = self.ddpg_config["reward"]["r_collision"]
         eta_r = self.ddpg_config["reward"]["eta_r"]
@@ -247,8 +244,8 @@ class Env(gym.Env):
         
         # The robot is awarded when it approaches the target and turns to the target
         # The robot is punished according to the angle deviation to the target
-        r_g_d = k_1 * (self.previous_distance_to_taret - self.current_distance_to_target) / self.max_d
-        r_g_o1 = k_2 * (self.current_angle_to_target - self.previous_angle_to_target) / self.max_theta
+        r_g_d = k_1 * (self.previous_distance_to_taret - self.current_distance_to_target) / self.MAX_D
+        r_g_o1 = k_2 * (self.current_angle_to_target - self.previous_angle_to_target) / self.MAX_THETA
         r_g_o2 = -k_3 * abs(self.current_angle_to_target) / math.pi
         r_g = r_g_d + r_g_o1 + r_g_o2
         
@@ -260,13 +257,13 @@ class Env(gym.Env):
             r_c_1 = -k_4 * ((1/self.current_distance_to_closest_obstacle - 1/rho_0) / (1/r_safe - 1/rho_0)) ** eta_r
         r_c_2 = 0.0
         if self.current_distance_to_closest_obstacle < rho_1:
-            r_c_2 = -k_5 * (self.previous_distance_to_closest_obstacle - self.current_distance_to_closest_obstacle) / self.max_d
+            r_c_2 = -k_5 * (self.previous_distance_to_closest_obstacle - self.current_distance_to_closest_obstacle) / self.MAX_D
         r_c = r_c_1 + r_c_2
         
         # r_v: the robot is encouraging the robot to move quickly and smoothly
         # The robot is awarded when the linear velocity is large, and punished when the angular velocity is large
-        r_v_v = k_6 * (self.current_v / self.v_max)
-        r_v_omega = -k_7 * (abs(self.current_omega) / self.omega_max)
+        r_v_v = k_6 * (self.current_v / self.V_MAX)
+        r_v_omega = -k_7 * (abs(self.current_omega) / self.OMEGA_MAX)
         r_v = r_v_v + r_v_omega
         
         # r_m: minor penalty to encourage the robot to actively explore the environment and shorten the trajectory. penalty for time passage
@@ -279,16 +276,16 @@ class Env(gym.Env):
     
     def _action_to_executable_action(self, action, dt):
         # De-normalize the action from [-1, 1] to the robot's physical limits.
-        # Linear velocity: maps [-1, 1] to [0, v_max]
-        # Note: action[0] is used. A value of -1 maps to 0, and 1 maps to v_max.
-        v_n = (action[0] + 1.0) / 2.0 * self.v_max
-        # Angular velocity: maps [-1, 1] to [-omega_max, omega_max]
-        omega_n = action[1] * self.omega_max
+        # Linear velocity: maps [-1, 1] to [0, V_MAX]
+        # Note: action[0] is used. A value of -1 maps to 0, and 1 maps to V_MAX.
+        v_n = (action[0] + 1.0) / 2.0 * self.V_MAX
+        # Angular velocity: maps [-1, 1] to [-OMEGA_MAX, OMEGA_MAX]
+        omega_n = action[1] * self.OMEGA_MAX
 
-        v_kmin = max(0, self.previous_v - self.a_max * dt)
-        v_kmax = min(self.v_max, self.previous_v + self.a_max * dt)
-        omega_kmin = max(-self.omega_max, self.previous_omega - self.alpha_max * dt)
-        omega_kmax = min(self.omega_max, self.previous_omega + self.alpha_max * dt)
+        v_kmin = max(0, self.previous_v - self.A_MAX * dt)
+        v_kmax = min(self.V_MAX, self.previous_v + self.A_MAX * dt)
+        omega_kmin = max(-self.OMEGA_MAX, self.previous_omega - self.ALPHA_MAX * dt)
+        omega_kmax = min(self.OMEGA_MAX, self.previous_omega + self.ALPHA_MAX * dt)
         
         v_e = np.clip(v_n, v_kmin, v_kmax)
         omega_e = np.clip(omega_n, omega_kmin, omega_kmax)
@@ -305,7 +302,7 @@ class Env(gym.Env):
         # robot_theta = 3π/2 or -π/2: x軸負方向
         # v_e は m/s, omega_e は rad/s
         # 位置はピクセル単位で計算するため、v_eをピクセル/秒に変換
-        v_e_pps = v_e * self.env.pixels_per_meter
+        v_e_pps = v_e * self.env.PIXELS_PER_METER
         dx = -v_e_pps * math.sin(self.env.robot_theta) * dt # 反時計回りを正とするためsinの符号を反転
         dy = -v_e_pps * math.cos(self.env.robot_theta) * dt  # Pygameのy軸は下向きが正のため、符号を反転. cosは不変
         dtheta = omega_e * dt
@@ -316,7 +313,7 @@ class Env(gym.Env):
             self.env.robot_position[1] + dy,
         )
         
-        if 0 < next_robot_position[0] < self.env.screen_w and 0 < next_robot_position[1] < self.env.screen_h:
+        if 0 < next_robot_position[0] < self.env.SCREEN_W and 0 < next_robot_position[1] < self.env.SCREEN_H:
             if not self.env.is_collision(next_robot_position):
                 self.env.robot_position = next_robot_position
                 
@@ -331,7 +328,7 @@ class Env(gym.Env):
         """LiDARスキャンデータの最初のn_e個の点を後ろにコピーし、n_l+n_e次元のベクトルに処理する"""
         if not sensor_data:
             # センサーデータがない場合は、最大距離で埋める
-            return np.full(self.n_l + self.n_e, self.r_lidar, dtype=np.float32)
+            return np.full(self.n_l + self.n_e, self.LIDAR_RANGE_M, dtype=np.float32)
 
         sensor_data_distance = [data[0] for data in sensor_data]
         processed_lidar = list(sensor_data_distance)
@@ -341,9 +338,9 @@ class Env(gym.Env):
         # print("processed_lidar length:", len(processed_lidar))
         
         # The sensor data is in pixels, convert to meters
-        lidar_in_meters = np.array(processed_lidar, dtype=np.float32) / self.env.pixels_per_meter
+        lidar_in_meters = np.array(processed_lidar, dtype=np.float32) / self.env.PIXELS_PER_METER
         # Clip values to the defined observation space range
-        return np.clip(lidar_in_meters, 0, self.r_lidar)
+        return np.clip(lidar_in_meters, 0, self.LIDAR_RANGE_M)
 
     def _get_obs(self):
         processed_lidar = self._process_lidar_data(self.env.sensor_data)

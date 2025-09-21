@@ -21,22 +21,21 @@ def uncertainty_add(distance, angle, sigma):
 class LiDARSensor():
 
     def __init__(
-        self, Range, map, uncertainty
+        self, Range, uncertainty, pixels_per_meter, lidar_resolution, screen_w, screen_h
     ):  # uncertainty is an array with 2 values [sigma1,sigma2]
-        self.Range_m = Range
-        self.speed = 0.5  # rotations per second #IS NOT USED THROUGHOUT THIS SCRIPT
+        self.LIDAR_RANGE_M = Range
+        # self.ROTATION_SPEED = 0.5  # rotations per second #IS NOT USED THROUGHOUT THIS SCRIPT
         self.sigma = np.array([uncertainty[0], uncertainty[1]])
         self.position = (
             0,
             0,
         )  # <<< self.position should update to cursor's position!!!! BUG NEEDS TO BE FIXED
         self.theta = 0
-        # self.map = map
-        self.screen_w, self.screen_h = 0, 0
+        self.SCREEN_W, self.SCREEN_H = screen_w, screen_h
+        self.NUM_SCANS = lidar_resolution
+        self.pixels_per_meter = pixels_per_meter
+        self.out_of_range_value = self.LIDAR_RANGE_M # lidar max range value or 0
         self.sensedObstacles = []
-        self.num_scans = None
-        self.out_of_range_value = self.Range_m # lidar max range value or 0
-        self.pixels_per_meter = 1
 
     # Euclidean DISTANCE CALCULATOR
     def distance(self, obstaclePosition):
@@ -64,12 +63,12 @@ class LiDARSensor():
         # self.thetaは真上(Y軸負方向)が0 radなので、pi/2を引くとX軸正方向が0の基準に揃う
         robot_global_angle = self.theta - math.pi / 2
         
-        for scan_angle in np.linspace(0, 2 * math.pi, self.num_scans, endpoint=False):
+        for scan_angle in np.linspace(0, 2 * math.pi, self.NUM_SCANS, endpoint=False):
             # 基準を揃えたロボットの向きに、センサーのローカルなスキャン角度を加算する
             global_angle = robot_global_angle + scan_angle
             x2, y2 = (
-                x1 + self.Range_m * self.pixels_per_meter * math.cos(global_angle),
-                y1 + self.Range_m * self.pixels_per_meter * math.sin(global_angle),
+                x1 + self.LIDAR_RANGE_M * self.pixels_per_meter * math.cos(global_angle),
+                y1 + self.LIDAR_RANGE_M * self.pixels_per_meter * math.sin(global_angle),
             )
 
             intersected = False
@@ -78,7 +77,7 @@ class LiDARSensor():
                 x = int(x1 + (x2 - x1) * u)
                 y = int(y1 + (y2 - y1) * u)
 
-                if not (0 <= x < self.screen_w and 0 <= y < self.screen_h):
+                if not (0 <= x < self.SCREEN_W and 0 <= y < self.SCREEN_H):
                     # 光線がマップの境界外に出た場合、その地点を障害物として扱う
                     distance = self.distance((x, y))
                     data.append([distance, global_angle])

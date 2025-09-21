@@ -96,7 +96,7 @@ def main():
     
     env.render_obstacle_and_robots()
 
-    print((env.screen_center_x, env.screen_center_y))
+    print((env.SCREEN_CENTER_X, env.SCREEN_CENTER_Y))
     while env.running:
         rclpy.spin_once(env, timeout_sec=0.01)
 
@@ -113,9 +113,9 @@ def main():
             point_cloud_msg = convert_to_pointcloud2(
                 sensor_data,
                 env.robot_theta,
-                env.lidar_range_m,
+                env.LIDAR_RANGE_M,
                 time_stamp=env.get_clock().now().to_msg(),
-                pixels_per_meter=env.pixels_per_meter,
+                pixels_per_meter=env.PIXELS_PER_METER,
             )
             env.publisher_.publish(point_cloud_msg)
         env.is_collision(env.robot_position)
