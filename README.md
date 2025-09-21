@@ -66,6 +66,8 @@ uv sync
 
 cd simulation_core
 uv pip install .
+# editable mode を使うなら
+uv pip install -e .
 ```
 ### Prerequisistes
 - Ubuntu 22.04
