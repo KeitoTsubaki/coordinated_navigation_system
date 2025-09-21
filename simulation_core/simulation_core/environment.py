@@ -16,10 +16,10 @@ from . import map_creator as mc
 class SimCoreEnvironment:
 
     def __init__(self, render_mode=None, config_path=None):
-        self.window_name = "2D LiDAR Simulation"
         
-
-        # Set parameters
+        # ===== Load config file =====
+        # For ROS2 package
+        # TODO: Make it work without sourcing the ROS2 workspace
         if config_path is None:
             from ament_index_python.packages import get_package_share_directory
             config_path = os.path.join(
@@ -30,42 +30,55 @@ class SimCoreEnvironment:
         with open(config_path, "r", encoding="utf-8") as f:
             config = yaml.safe_load(f)
             
-        self.np_random = np.random.default_rng(0) # random number generator with seed 0
+        # ===== import parameters from config file =====
+        self.window_name                = config["window"]["window_title"]
+        self.background_color           = config["window"]["background_color"]
+        self.screen_w                   = config["window"]["size"]
+        self.screen_h                   = config["window"]["size"]
+        
+        self.robot_radius_m             = config["robot"]["radius_m"]
+        self.robot_color                = config["robot"]["robot_color"]
+        self.target_color               = config["robot"]["target_color"]
+        self.T_dt_m_trap_shaped         = config["robot"]["T_dt_m_trap_shaped"]
+        self.T_dt_m_zigzag              = config["robot"]["T_dt_m_zigzag"]
+        self.T_dt_m_random              = config["robot"]["T_dt_m_random"]
+        self.T_dt_m_empty               = config["robot"]["T_dt_m_empty"]
+        self.v_max                      = config["robot"]["v_max"]
+        self.omega_max                  = config["robot"]["omega_max"]
+        self.a_max                      = config["robot"]["a_max"]
+        self.alpha_max                  = config["robot"]["alpha_max"]
+        self.max_d                      = config["robot"]["max_d"]
+        self.max_theta                  = config["robot"]["max_theta"]
+        self.num_check_points           = config["robot"]["num_check_points"]
+        
+        self.lidar_range_m              = config["lidar"]["range_m"]
+        self.lidar_line_color           = config["lidar"]["line_color"]
+        self.lidar_points_color         = config["lidar"]["points_color"]
+        self.r_lidar                    = config["lidar"]["range_m"]
+        self.resolution                 = config["lidar"]["resolution"]
+        
+        self.map_type                   = config["obstacles"]["default_map_type"]
+        self.T_do_m                     = config["obstacles"]["T_do_m"]
+        self.n_obstacles                = config["obstacles"]["count"]
+        self.min_obstacle_size_m        = config["obstacles"]["min_size_m"]
+        self.max_obstacle_size_m        = config["obstacles"]["max_size_m"]
+        self.obstacle_color             = config["obstacles"]["color"]
+        self.l_passage                  = config["obstacles"]["l_passage"]
+        
+        self.k8                         = config["simulation"]["k8"]
+        self.k9                         = config["simulation"]["k9"]
 
-        self.background_color = config["map"]["background_color"]
-        self.screen_w, self.screen_h = config["map"]["size"], config["map"]["size"]
-
-        self.robot_radius_m = config["robot"]["radius_m"]
-        self.robot_color = config["robot"]["robot_color"]
-        self.target_color = config["robot"]["target_color"]
-        self.T_dt_m_trap_shaped = config["robot"]["T_dt_m_trap_shaped"]
-        self.T_dt_m_zigzag = config["robot"]["T_dt_m_zigzag"]
-        self.T_dt_m_random = config["robot"]["T_dt_m_random"]
-        self.T_dt_m_empty = config["robot"]["T_dt_m_empty"]
-
-        self.lidar_range_m = config["lidar"]["range_m"]
-        self.lidar_line_color = config["lidar"]["line_color"]
-        self.lidar_points_color = config["lidar"]["points_color"]
-        self.r_lidar = config["lidar"]["range_m"]
-        self.resolution = config["lidar"]["resolution"]
-
-        self.T_do_m = config["obstacles"]["T_do_m"]
-        self.n_obstacles = config["obstacles"]["count"]
-        self.min_obstacle_size_m = config["obstacles"]["min_size_m"]
-        self.max_obstacle_size_m = config["obstacles"]["max_size_m"]
-        self.obstacle_color = config["obstacles"]["color"]
-        self.v_max = config["robot"]["v_max"]
-        self.omega_max = config["robot"]["omega_max"]
-        self.a_max = config["robot"]["a_max"]
-        self.alpha_max = config["robot"]["alpha_max"]
-        self.max_d = config["robot"]["max_d"]
-        self.max_theta = config["robot"]["max_theta"]
-
+        # initialize random number generator with seed 0
+        self.np_random = np.random.default_rng(0) 
+        
+        #! Prerequisite: window_w = max lidar range * 2
         self.pixels_per_meter = self.screen_w / (2 * self.lidar_range_m)
 
+        # ===== Post processing to convert parameters from meters to pixels =====
         self.robot_radius_pixels = self.robot_radius_m * self.pixels_per_meter
         self.lidar_range_pixels = self.lidar_range_m * self.pixels_per_meter
 
+        # ===== Initialize rendering screen =====
         self.render_mode = render_mode
         pygame.init()
         if self.render_mode == "human":
@@ -76,7 +89,6 @@ class SimCoreEnvironment:
             self.screen = pygame.Surface((self.screen_w, self.screen_h))
             
         self.screen.fill(self.background_color)
-
         self.screen_center_x = self.screen_w // 2
         self.screen_center_y = self.screen_h // 2
 
@@ -84,7 +96,6 @@ class SimCoreEnvironment:
         self.robot_and_lidar_layer = pygame.Surface(
             (self.screen_w, self.screen_h), pygame.SRCALPHA
         )
-        self.robot_layer = pygame.Surface((self.screen_w, self.screen_h), pygame.SRCALPHA)
         # Robot's orientation in radians
         # 0 radians is facing up (north), and increases clockwise
         self.robot_position = (self.screen_center_x, self.screen_center_y)
@@ -92,24 +103,12 @@ class SimCoreEnvironment:
         self.robot_theta = 0.0
         self.target_theta = 0.0
 
-        self.map_type = "empty"  # ["trap_shaped", "zigzag", "random", "empty"]
-
-        """
-        Trap-shaped map
-        """
+        # ===== Initialize variables for different map types for RL =====
+        # These parameters affect map difficulty
         self.s_t = 0  # number of success in the trap-shaped map
-        self.k8 = config["simulation"]["k8"]
-
-        """
-        Zigzag-shaped map
-        """
         self.s_z = 2400  # number of success in the zigzag-shaped map
-        self.k9 = config["simulation"]["k9"]
-        self.l_passage = 0  # length of the passage in the zigzag-shaped map
-        self.divided_space_width = (
-            self.screen_h // 5
-        )  # width of the divided space in the zigzag-shaped map
-      
+        
+        # ===== Initialize LiDAR sensor module =====
         self.sensor = sensor.LiDARSensor(
             self.lidar_range_m, self.screen, uncertainty=(0, 0)
         )
@@ -117,8 +116,8 @@ class SimCoreEnvironment:
         self.sensor.num_scans = self.resolution
         self.sensor.screen_w = self.screen_w
         self.sensor.screen_h = self.screen_h
-        self.running = True
         
+        # ===== Initialize map creator module =====
         self.map_creator = mc.MapCreator(
             map=self.screen,
             map_size=(self.screen_w, self.screen_h),
@@ -132,13 +131,14 @@ class SimCoreEnvironment:
             s_z=self.s_z,
             k9=self.k9,
             l_passage=self.l_passage,
-            divided_space_width=self.divided_space_width,
             robot_radius_pixels=self.robot_radius_pixels,
             )
         
-        self.num_check_points = 16
+        # ===== Other variables =====
+        self.running = True # 今の所使っていない
         self.closest_obstacle_info = None
         self.sensor_data = None
+        
 
     # ===== Visualization functions =====
     
