@@ -15,7 +15,7 @@ from . import map_creator as mc
 
 class SimCoreEnvironment:
 
-    def __init__(self, config_path=None):
+    def __init__(self, render_mode, config_path=None):
         self.window_name = "2D LiDAR Simulation"
         
 
@@ -66,14 +66,14 @@ class SimCoreEnvironment:
         self.robot_radius_pixels = self.robot_radius_m * self.pixels_per_meter
         self.lidar_range_pixels = self.lidar_range_m * self.pixels_per_meter
 
-        self.render_mode = "human"
+        self.render_mode = render_mode
         
-        # TODO: self.screen はrender mode でdisplay か Surfaceを切り替える
         if self.render_mode == "human":
             pygame.display.set_caption(self.window_name)
             self.screen = pygame.display.set_mode((self.screen_w, self.screen_h))
         else:
-           self.screen = pygame.Surface((self.screen_w, self.screen_h))
+            self.screen = pygame.Surface((self.screen_w, self.screen_h))
+            
         self.screen.fill(self.background_color)
 
         self.screen_center_x = self.screen_w // 2
