@@ -26,6 +26,7 @@ robot:
   alpha_max: 12.61        # 最大角加速度（rad/ss） 4 * pi
   max_d: 0.12          # 1ステップで進む最大距離（m）
   max_theta: 0.47    # 1ステップで回転する最大角度（rad）0.15 * pi
+  num_check_points: 16  # ロボット周囲の障害物チェックポイントの数
 
 lidar:
   range_m: 10           # 最大距離（m）
@@ -36,13 +37,16 @@ lidar:
   line_color: "#D2E0DF"
   points_color: "#04C4CD"  # スキャン点の色
 
-map:
+window:
+  window_title: "2D LiDAR Simulation"
   size: 800 # マップのサイズ（ピクセル）
   background_color: "#FFFFFF"
 
 obstacles:
+  default_map_type: "random"  # "trap_shaped", "zigzag", "random", "empty"
   count: 6            # ランダム障害物の数
   min_size_m: 20
   max_size_m: 80
   T_do_m: 7.5 # The threshold distance between each objects (meters)
   color: "#C2C4D0"  # 障害物の色（黒）
+  l_passage: 0 # length of the passage in the zigzag-shaped map (meters)
