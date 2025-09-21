@@ -128,7 +128,7 @@ class Env(gym.Env):
         self.env.update_sensors()
 
         if self.render_mode == "human":
-            self._render_frame()
+            self.render()
         
         # 報酬計算のために、現在の値を前の値として保存
         self.previous_distance_to_taret = self.current_distance_to_target
@@ -155,8 +155,7 @@ class Env(gym.Env):
     def reset(self, seed=None, options=None):
         """ Reset the state of the environment, and then render screen."""
         super().reset(seed=seed)
-        pygame.init()
-        pygame.display.init()
+        
         
         self.env.np_random = self.np_random
 
@@ -166,7 +165,7 @@ class Env(gym.Env):
         self.env.update_sensors()
         
         if self.render_mode == "human":
-            self._render_frame()
+            self.render()
         
         # 最初の観測でLiDAR履歴を初期化
         self.lidar_history.clear()
@@ -193,6 +192,41 @@ class Env(gym.Env):
         info = self._get_info()
         
         return observation, info
+    
+    def render(self):
+        if self.render_mode is None:
+            return
+        
+        if self.screen is None:
+            pygame.init()
+            if self.render_mode == "human":
+                pygame.display.init()
+                self.screen = pygame.display.set_mode((self.env.screen_w, self.env.screen_h))
+            elif self.render_mode is None or self.render_mode == "rgb_array":
+                self.screen = pygame.Surface((self.env.screen_w, self.env.screen_h))
+            
+        if self.clock is None:
+            self.clock = pygame.time.Clock()
+
+        if self.render_mode == "human":
+            self.env.render_robot_and_lidar()
+            
+            pygame.event.pump() # to update the event state
+            self.clock.tick(self.metadata["render_fps"])
+            pygame.display.update()
+            
+        elif self.render_mode == "rgb_array":
+            # rgb_arrayモードでも、配列に変換する前に描画内容を更新する必要がある
+            self.env.render_robot_and_lidar()
+            
+            return np.transpose(
+                np.array(pygame.surfarray.pixels3d(self.screen)), axes=(1, 0, 2)
+            )
+            
+    def close(self):
+        if self.screen is not None:
+            pygame.display.quit()
+            pygame.quit()
 
     def _calculate_reward(self):
         # r_s: spare reward corresponding to: robot reachs the target, collides with an obstacle
@@ -360,35 +394,6 @@ class Env(gym.Env):
     def _get_info(self):
         return {}
     
-    def render(self):
-        if self.render_mode == "rgb_array":
-            return self._render_frame()
-        
-    def _render_frame(self):
-        # self.screen (PygameのSurface) が未初期化の場合、初期化する
-        if self.screen is None:
-            self.screen = self.env.map
-            
-        if self.clock is None:
-            self.clock = pygame.time.Clock()
-
-        if self.render_mode == "human":
-            self.env.render_robot_and_lidar()
-            
-            pygame.event.pump() # to update the event state
-            pygame.display.update()
-            self.clock.tick(self.metadata["render_fps"])
-            
-        elif self.render_mode == "rgb_array":
-            # rgb_arrayモードでも、配列に変換する前に描画内容を更新する必要がある
-            self.env.render_robot_and_lidar()
-            
-            return np.transpose(
-                np.array(pygame.surfarray.pixels3d(self.screen)), axes=(1, 0, 2)
-            )
-    def close(self):
-        if self.screen is not None:
-            pygame.display.quit()
-            pygame.quit()
+    
             
             
