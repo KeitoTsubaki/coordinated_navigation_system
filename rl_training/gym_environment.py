@@ -33,7 +33,7 @@ class Env(gym.Env):
         assert render_mode is None or render_mode in self.metadata["render_modes"]
         self.render_mode = render_mode
         
-        self.env = environment.SimCoreEnvironment(self.render_mode, config_path=simulator_config_path)
+        self.env = environment.SimCoreEnvironment(render_mode=self.render_mode, config_path=simulator_config_path)
 
         # Define action and observation space
         self.v_max = self.env.v_max
@@ -69,7 +69,7 @@ class Env(gym.Env):
         # o_v:
         # o_o:
         # Define a reasonable maximum distance (e.g., map diagonal) instead of infinity
-        max_dist = math.sqrt(self.env.map_w**2 + self.env.map_h**2) / self.env.pixels_per_meter
+        max_dist = math.sqrt(self.env.screen_w**2 + self.env.screen_h**2) / self.env.pixels_per_meter
         self.observation_space = spaces.Dict(
             {
                 "lidar": spaces.Box(
@@ -156,7 +156,7 @@ class Env(gym.Env):
         self.env.np_random = self.np_random
 
         # render map and initialize robot ant target positions
-        self.env.render_obstacles()
+        self.env.render_obstacle_and_robots()
         # Perform an initial sensor scan to populate observation data
         self.env.update_sensors()
                 
@@ -316,7 +316,7 @@ class Env(gym.Env):
             self.env.robot_position[1] + dy,
         )
         
-        if 0 < next_robot_position[0] < self.env.map_w and 0 < next_robot_position[1] < self.env.map_h:
+        if 0 < next_robot_position[0] < self.env.screen_w and 0 < next_robot_position[1] < self.env.screen_h:
             if not self.env.is_collision(next_robot_position):
                 self.env.robot_position = next_robot_position
                 
