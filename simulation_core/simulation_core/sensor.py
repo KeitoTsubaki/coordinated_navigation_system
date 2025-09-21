@@ -32,7 +32,7 @@ class LiDARSensor():
         )  # <<< self.position should update to cursor's position!!!! BUG NEEDS TO BE FIXED
         self.theta = 0
         # self.map = map
-        self.W, self.H = pygame.display.get_surface().get_size()
+        self.screen_w, self.screen_h = 0, 0
         self.sensedObstacles = []
         self.num_scans = None
         self.out_of_range_value = self.Range_m # lidar max range value or 0
@@ -78,7 +78,7 @@ class LiDARSensor():
                 x = int(x1 + (x2 - x1) * u)
                 y = int(y1 + (y2 - y1) * u)
 
-                if not (0 <= x < self.W and 0 <= y < self.H):
+                if not (0 <= x < self.screen_w and 0 <= y < self.screen_h):
                     # 光線がマップの境界外に出た場合、その地点を障害物として扱う
                     distance = self.distance((x, y))
                     data.append([distance, global_angle])
