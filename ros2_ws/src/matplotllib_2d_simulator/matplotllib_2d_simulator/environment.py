@@ -22,7 +22,7 @@ class Environment(SimCoreEnvironment, Node):
 
     def __init__(self):
         # Initialize both parent classes
-        SimCoreEnvironment.__init__(self)
+        SimCoreEnvironment.__init__(self, render_mode="human")
         Node.__init__(self, "environment_node")
 
         self.publisher_ = self.create_publisher(PointCloud2, "pointcloud", 10)
@@ -113,6 +113,7 @@ def main():
             point_cloud_msg = convert_to_pointcloud2(
                 sensor_data,
                 env.robot_theta,
+                env.lidar_range_m,
                 time_stamp=env.get_clock().now().to_msg(),
                 pixels_per_meter=env.pixels_per_meter,
             )
@@ -129,7 +130,7 @@ def main():
     
 
 def convert_to_pointcloud2(
-    sensor_data, robot_theta, time_stamp, pixels_per_meter, frame_id="base_link"
+    sensor_data, robot_theta, max_range, time_stamp, pixels_per_meter, frame_id="base_link"
 ):
     header = Header()
     header.stamp = time_stamp
@@ -141,6 +142,8 @@ def convert_to_pointcloud2(
     for point_data in sensor_data:
         # print(point_data)
         distance = point_data[0]
+        if distance == max_range:
+            continue  # Skip max range points
         angle = point_data[1]
         angle -= robot_theta  # add robot's orientation to angle
         # x_distance = (
@@ -152,8 +155,8 @@ def convert_to_pointcloud2(
         # robot centoroid
         # x_distance = (distance * math.cos(angle)) / pixels_per_meter
         # y_distance = (distance * math.sin(angle)) / pixels_per_meter
-        y_distance = -(distance * math.cos(angle)) / pixels_per_meter
-        x_distance = -(distance * math.sin(angle)) / pixels_per_meter
+        y_distance = -(distance * math.cos(angle))
+        x_distance = -(distance * math.sin(angle))
         
         
         # print("x_distance, y_distance: ", x_distance, y_distance)
