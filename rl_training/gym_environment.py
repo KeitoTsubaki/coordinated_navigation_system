@@ -30,7 +30,10 @@ class Env(gym.Env):
         with open(ddpg_config_path, "r", encoding="utf-8") as f:
             self.ddpg_config = yaml.safe_load(f)
         
-        self.env = environment.SimCoreEnvironment(config_path=simulator_config_path)
+        assert render_mode is None or render_mode in self.metadata["render_modes"]
+        self.render_mode = render_mode
+        
+        self.env = environment.SimCoreEnvironment(self.render_mode, config_path=simulator_config_path)
 
         # Define action and observation space
         self.v_max = self.env.v_max
@@ -93,12 +96,6 @@ class Env(gym.Env):
             }
         )
         
-        assert render_mode is None or render_mode in self.metadata["render_modes"]
-        self.render_mode = render_mode
-        self.env.render_mode = self.render_mode
-        
-        # for human-rendering
-        self.screen = None
         self.clock = None
         
         # 4フレーム分のLiDARデータを保持するためのdeque
@@ -156,17 +153,13 @@ class Env(gym.Env):
         """ Reset the state of the environment, and then render screen."""
         super().reset(seed=seed)
         
-        
         self.env.np_random = self.np_random
 
         # render map and initialize robot ant target positions
         self.env.render_obstacles()
         # Perform an initial sensor scan to populate observation data
         self.env.update_sensors()
-        
-        if self.render_mode == "human":
-            self.render()
-        
+                
         # 最初の観測でLiDAR履歴を初期化
         self.lidar_history.clear()
         initial_lidar_obs = self._process_lidar_data(self.env.sensor_data)
@@ -191,20 +184,12 @@ class Env(gym.Env):
         observation = self._get_obs()
         info = self._get_info()
         
+        if self.render_mode == "human":
+            self.render()
+        
         return observation, info
     
     def render(self):
-        if self.render_mode is None:
-            return
-        
-        if self.screen is None:
-            pygame.init()
-            if self.render_mode == "human":
-                pygame.display.init()
-                self.screen = pygame.display.set_mode((self.env.screen_w, self.env.screen_h))
-            elif self.render_mode is None or self.render_mode == "rgb_array":
-                self.screen = pygame.Surface((self.env.screen_w, self.env.screen_h))
-            
         if self.clock is None:
             self.clock = pygame.time.Clock()
 
@@ -220,11 +205,11 @@ class Env(gym.Env):
             self.env.render_robot_and_lidar()
             
             return np.transpose(
-                np.array(pygame.surfarray.pixels3d(self.screen)), axes=(1, 0, 2)
+                np.array(pygame.surfarray.pixels3d(self.env.screen)), axes=(1, 0, 2)
             )
             
     def close(self):
-        if self.screen is not None:
+        if self.env.screen is not None:
             pygame.display.quit()
             pygame.quit()
 
