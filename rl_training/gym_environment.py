@@ -357,7 +357,7 @@ class Env(gym.Env):
         # The sensor data is in pixels, convert to meters
         lidar_in_meters = np.array(processed_lidar, dtype=np.float32)
         # Clip values to the defined observation space range
-        return np.clip(lidar_in_meters, 0, self.LIDAR_RANGE_M)
+        return lidar_in_meters
 
     def _get_obs(self):
         processed_lidar = self._process_lidar_data(self.env.sensor_data)
