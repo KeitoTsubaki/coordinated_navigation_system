@@ -72,7 +72,7 @@ class Env(gym.Env):
             {
                 "lidar": spaces.Box(
                     low=0,
-                    high=self.LIDAR_RANGE_M, # LiDAR values are already in meters
+                    high=self.LIDAR_RANGE_M*100, # LiDAR values are already in meters
                     shape=(4, self.N_L + self.N_E),
                     dtype=np.float32,
                 ),
