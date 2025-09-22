@@ -43,6 +43,7 @@ class Env(gym.Env):
         self.N_E = self.ddpg_config["lidar"]["n_e"]
         self.LIDAR_HISTORY_LEN = self.ddpg_config["lidar"]["lidar_history_len"]
         self.DT = 1 / self.metadata["render_fps"]
+        self.MAX_EPISODE_STEPS = self.ddpg_config["max_episode_steps"]
 
 
         
@@ -109,6 +110,8 @@ class Env(gym.Env):
         self.previous_v = 0.0
         self.previous_omega = 0.0
         
+        self.current_step = 0
+        
         
     def step(self, action):
         # Map the action to the executable action
@@ -135,8 +138,9 @@ class Env(gym.Env):
         # An eppisode is done if the robot has reached the target or collided with an obstacle
         # Terminated: Reached the target or collided with an obstacle
         # Truncated: Time limit exceeded
+        self.current_step += 1
         terminated = self.env.is_target_reached() or self.env.is_collision(self.env.robot_position)
-        truncated = False
+        truncated = self.current_step >= self.MAX_EPISODE_STEPS
         observation = self._get_obs()
         info = self._get_info()
         reward = self._calculate_reward()
@@ -152,6 +156,8 @@ class Env(gym.Env):
         # Perform an initial sensor scan to populate observation data
         self.env.update_sensors()
                 
+        self.current_step = 0
+
         self._reset_parameters()
             
         observation = self._get_obs()
