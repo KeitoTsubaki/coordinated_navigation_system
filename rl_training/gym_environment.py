@@ -96,9 +96,11 @@ class Env(gym.Env):
         
         self.clock = None
         
+        
+        # ===== Parameters that need to reset =====
         # 4フレーム分のLiDARデータを保持するためのdeque
         self.lidar_history = deque(maxlen=self.LIDAR_HISTORY_LEN)
-        
+        self.is_collision = False
         self.previous_distance_to_taret = None
         self.previous_angle_to_target = None
         self.current_distance_to_target = None
@@ -139,7 +141,7 @@ class Env(gym.Env):
         # Terminated: Reached the target or collided with an obstacle
         # Truncated: Time limit exceeded
         self.current_step += 1
-        terminated = self.env.is_target_reached() or self.env.is_collision(self.env.robot_position)
+        terminated = self.env.is_target_reached() or self.is_collision
         truncated = self.current_step >= self.MAX_EPISODE_STEPS
         observation = self._get_obs()
         info = self._get_info()
@@ -195,6 +197,8 @@ class Env(gym.Env):
         # super().reset(seed=seed) で定義された self.np_random をenvに渡す
         self.env.np_random = self.np_random
         
+        self.is_collision = False
+        
         # 最初の観測でLiDAR履歴を初期化
         self.lidar_history.clear()
         initial_lidar_obs = self._process_lidar_data(self.env.sensor_data)
@@ -245,7 +249,7 @@ class Env(gym.Env):
         
         if self.env.is_target_reached():
             r_s = r_arrival
-        elif self.env.is_collision(self.env.robot_position):
+        elif self.is_collision:
             r_s = r_collision
         
         # The robot is awarded when it approaches the target and turns to the target
@@ -320,7 +324,9 @@ class Env(gym.Env):
         )
         
         if 0 < next_robot_position[0] < self.env.SCREEN_W and 0 < next_robot_position[1] < self.env.SCREEN_H:
-            if not self.env.is_collision(next_robot_position):
+            if self.env.is_collision(next_robot_position):
+                self.is_collision = True
+            else:
                 self.env.robot_position = next_robot_position
                 
         # self.env.robot_position[0] += dx
