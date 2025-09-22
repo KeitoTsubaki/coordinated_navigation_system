@@ -309,7 +309,7 @@ class SimCoreEnvironment:
         elif map_type == "random":
             T_dt_m = self.T_DT_M_RANDOM
         elif map_type == "empty":
-            T_dt_m = self.T_dt_m_empty
+            T_dt_m = self.T_DT_M_EMPTY
         while True:
             self.robot_position = self.randomize_position(start_spawn_area)
             self.target_position = self.randomize_position(target_spawn_area)
