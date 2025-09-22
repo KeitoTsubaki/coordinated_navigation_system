@@ -72,7 +72,7 @@ uv pip install -e .
 ### Prerequisistes
 - Ubuntu 22.04
 - ROS2 Humble
-- Python 3.xx
+- Python 3.13
 ### Installation
 
 
