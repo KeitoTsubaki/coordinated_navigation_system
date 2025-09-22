@@ -142,7 +142,7 @@ class Env(gym.Env):
         info = self._get_info()
         reward = self._calculate_reward()
         
-        return observation, reward, terminated, truncated, info
+        return np.array(observation, reward, terminated, truncated, info)
 
     def reset(self, seed=None, options=None):
         """ Reset the state of the environment, and then render screen."""
