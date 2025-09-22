@@ -42,6 +42,7 @@ class Env(gym.Env):
         self.N_L = self.ddpg_config["lidar"]["n_l"]
         self.N_E = self.ddpg_config["lidar"]["n_e"]
         self.LIDAR_HISTORY_LEN = self.ddpg_config["lidar"]["lidar_history_len"]
+        self.DT = 1 / self.metadata["render_fps"]
 
 
         
@@ -110,13 +111,11 @@ class Env(gym.Env):
         
         
     def step(self, action):
-        # Execute one time step within the environment
-        
-        dt = 1 / self.metadata["render_fps"]
         # Map the action to the executable action
-        v_e, omega_e = self._action_to_executable_action(action, dt)
+        v_e, omega_e = self._action_to_executable_action(action, self.DT)
+        
         # Update robot position
-        self.update_robot_position(v_e, omega_e, dt=dt)
+        self._update_robot_position(v_e, omega_e, dt=self.DT)
         # Get new sensor readings from the new position
         self.env.update_sensors()
 
@@ -295,7 +294,7 @@ class Env(gym.Env):
         self.previous_omega = omega_e
         return v_e, omega_e
     
-    def update_robot_position(self, v_e, omega_e, dt):
+    def _update_robot_position(self, v_e, omega_e, dt):
         # ロボットの位置と向きを更新する関数
         # robot_theta = 0: y軸負方向
         # robot_theta = π/2: x軸正方向
