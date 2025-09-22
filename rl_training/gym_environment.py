@@ -12,7 +12,7 @@ from collections import deque
 from simulation_core import environment
 
 class Env(gym.Env):
-    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 10}
+    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 30}
     def __init__(self, render_mode=None):
         super().__init__()
 
