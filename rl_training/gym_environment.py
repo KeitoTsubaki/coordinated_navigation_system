@@ -120,8 +120,7 @@ class Env(gym.Env):
         # Get new sensor readings from the new position
         self.env.update_sensors()
 
-        if self.render_mode == "human":
-            self.render()
+        self.render()
         
         # 報酬計算のために、現在の値を前の値として保存
         self.previous_distance_to_taret = self.current_distance_to_target
@@ -147,41 +146,19 @@ class Env(gym.Env):
 
     def reset(self, seed=None, options=None):
         """ Reset the state of the environment, and then render screen."""
-        super().reset(seed=seed)
-        
-        self.env.np_random = self.np_random
+        super().reset(seed=seed) # sets self.np_random
 
         # render map and initialize robot ant target positions
         self.env.render_obstacle_and_robots()
         # Perform an initial sensor scan to populate observation data
         self.env.update_sensors()
                 
-        # 最初の観測でLiDAR履歴を初期化
-        self.lidar_history.clear()
-        initial_lidar_obs = self._process_lidar_data(self.env.sensor_data)
-        for _ in range(4):
-            self.lidar_history.append(initial_lidar_obs)
-            
-        # 速度情報を初期化
-        self.current_v = 0.0
-        self.current_omega = 0.0
-        self.previous_v = 0.0
-        self.previous_omega = 0.0
-        
-        # 報酬計算用の変数を初期化
-        initial_dist_to_target, initial_angle_to_target = self.env.get_goal_info()
-        self.previous_distance_to_taret = initial_dist_to_target
-        self.current_distance_to_target = initial_dist_to_target
-        self.previous_angle_to_target = initial_angle_to_target
-        self.current_angle_to_target = initial_angle_to_target
-        self.previous_distance_to_closest_obstacle = self.env.get_closest_obstacle_info()[0]
-        self.current_distance_to_closest_obstacle = self.env.get_closest_obstacle_info()[0]
+        self._reset_parameters()
             
         observation = self._get_obs()
         info = self._get_info()
         
-        if self.render_mode == "human":
-            self.render()
+        self.render()
         
         return observation, info
     
@@ -208,7 +185,32 @@ class Env(gym.Env):
         if self.env.screen is not None:
             pygame.display.quit()
             pygame.quit()
-
+            
+    def _reset_parameters(self):
+        # super().reset(seed=seed) で定義された self.np_random をenvに渡す
+        self.env.np_random = self.np_random
+        
+        # 最初の観測でLiDAR履歴を初期化
+        self.lidar_history.clear()
+        initial_lidar_obs = self._process_lidar_data(self.env.sensor_data)
+        for _ in range(4):
+            self.lidar_history.append(initial_lidar_obs)
+            
+        # 速度情報を初期化
+        self.current_v = 0.0
+        self.current_omega = 0.0
+        self.previous_v = 0.0
+        self.previous_omega = 0.0
+        
+        # 報酬計算用の変数を初期化
+        initial_dist_to_target, initial_angle_to_target = self.env.get_goal_info()
+        self.previous_distance_to_taret = initial_dist_to_target
+        self.current_distance_to_target = initial_dist_to_target
+        self.previous_angle_to_target = initial_angle_to_target
+        self.current_angle_to_target = initial_angle_to_target
+        self.previous_distance_to_closest_obstacle = self.env.get_closest_obstacle_info()[0]
+        self.current_distance_to_closest_obstacle = self.env.get_closest_obstacle_info()[0]
+        
     def _calculate_reward(self):
         # r_s: spare reward corresponding to: robot reachs the target, collides with an obstacle
         # r_d: dense reward to accelerate the training and seconadary tasks such as smoothness
