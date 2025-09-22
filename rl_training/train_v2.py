@@ -10,6 +10,8 @@ import numpy as np
 import torch
 from stable_baselines3 import DDPG
 from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.noise import OrnsteinUhlenbeckActionNoise
+
 
 if __package__ is None or __package__ == "":
     # If it is not running as a package
@@ -87,6 +89,10 @@ def main() -> None:
     env = gym.make("simulation_env-v0", render_mode=render_mode)
     env.reset(seed=args.seed)
     env = Monitor(env)
+    
+    n_actions = env.action_space.shape[-1]
+    action_noise = OrnsteinUhlenbeckActionNoise(mean=np.zeros(n_actions), sigma=0.2 * np.ones(n_actions))
+
 
     run_dir = make_run_directory(os.path.abspath(args.log_dir))
 
@@ -98,6 +104,7 @@ def main() -> None:
         buffer_size=args.buffer_size,
         batch_size=args.batch_size,
         learning_starts=args.learning_starts,
+        action_noise=action_noise,
         tau=args.tau,
         gamma=args.gamma,
         verbose=1,
