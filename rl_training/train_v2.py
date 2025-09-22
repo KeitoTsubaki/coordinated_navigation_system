@@ -31,7 +31,7 @@ EpisodeLogger = callbacks.EpisodeLogger
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train a DDPG agent in the simulation environment.")
-    parser.add_argument("--total-timesteps", type=int, default=500, help="Number of training timesteps.")
+    parser.add_argument("--total-timesteps", type=int, default=1_000_000, help="Number of training timesteps.")
     parser.add_argument(
         "--render-mode",
         type=str,
