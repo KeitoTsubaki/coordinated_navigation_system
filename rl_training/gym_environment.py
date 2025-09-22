@@ -12,7 +12,7 @@ from collections import deque
 from simulation_core import environment
 
 class Env(gym.Env):
-    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 30}
+    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 10}
     def __init__(self, render_mode=None):
         super().__init__()
 
@@ -141,7 +141,7 @@ class Env(gym.Env):
         info = self._get_info()
         reward = self._calculate_reward()
         
-        return np.array(observation, reward, terminated, truncated, info)
+        return observation, reward, terminated, truncated, info
 
     def reset(self, seed=None, options=None):
         """ Reset the state of the environment, and then render screen."""
