@@ -52,6 +52,7 @@ def parse_args() -> argparse.Namespace:
         default=10,
         help="Number of completed episodes between console log updates.",
     )
+    parser.add_argument("--learning-starts", type=int, default=10_000, help="Timesteps before training starts.")
     parser.add_argument("--buffer-size", type=int, default=100_000, help="Replay buffer size.")
     parser.add_argument("--batch-size", type=int, default=64, help="Batch size for training updates.")
     parser.add_argument("--tau", type=float, default=0.005, help="Soft update coefficient for target networks.")
@@ -96,6 +97,7 @@ def main() -> None:
         env=env,
         buffer_size=args.buffer_size,
         batch_size=args.batch_size,
+        learning_starts=args.learning_starts,
         tau=args.tau,
         gamma=args.gamma,
         verbose=1,
