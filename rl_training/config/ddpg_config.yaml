@@ -19,3 +19,4 @@ lidar:
   n_e: 11           # Number of extention points
   lidar_history_len: 4  # Number of previous LiDAR scans to stack
 
+max_episode_steps: 500
