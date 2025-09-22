@@ -32,7 +32,6 @@ class Env(gym.Env):
         
         self.env = environment.SimCoreEnvironment(render_mode=self.render_mode, config_path=simulator_config_path)
 
-        # Define action and observation space
         self.V_MAX = self.env.V_MAX
         self.OMEGA_MAX = self.env.OMEGA_MAX
         self.A_MAX = self.env.A_MAX
@@ -40,8 +39,8 @@ class Env(gym.Env):
         self.MAX_D = self.env.MAX_D
         self.MAX_THETA = self.env.MAX_THETA
         self.LIDAR_RANGE_M = self.env.LIDAR_RANGE_M
-        self.n_l = self.ddpg_config["lidar"]["n_l"]
-        self.n_e = self.ddpg_config["lidar"]["n_e"]
+        self.N_L = self.ddpg_config["lidar"]["n_l"]
+        self.N_E = self.ddpg_config["lidar"]["n_e"]
         self.LIDAR_HISTORY_LEN = self.ddpg_config["lidar"]["lidar_history_len"]
 
 
@@ -72,7 +71,7 @@ class Env(gym.Env):
                 "lidar": spaces.Box(
                     low=0,
                     high=self.LIDAR_RANGE_M, # LiDAR values are already in meters
-                    shape=(4, self.n_l + self.n_e),
+                    shape=(4, self.N_L + self.N_E),
                     dtype=np.float32,
                 ),
                 "goal": spaces.Box(
@@ -328,11 +327,11 @@ class Env(gym.Env):
         """LiDARスキャンデータの最初のn_e個の点を後ろにコピーし、n_l+n_e次元のベクトルに処理する"""
         if not sensor_data:
             # センサーデータがない場合は、最大距離で埋める
-            return np.full(self.n_l + self.n_e, self.LIDAR_RANGE_M, dtype=np.float32)
+            return np.full(self.N_L + self.N_E, self.LIDAR_RANGE_M, dtype=np.float32)
 
         sensor_data_distance = [data[0] for data in sensor_data]
         processed_lidar = list(sensor_data_distance)
-        processed_lidar += sensor_data_distance[:self.n_e]
+        processed_lidar += sensor_data_distance[:self.N_E]
 
         # print("sensor_data_distance length:", len(sensor_data_distance))
         # print("processed_lidar length:", len(processed_lidar))
