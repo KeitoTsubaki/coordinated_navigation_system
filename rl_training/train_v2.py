@@ -91,7 +91,8 @@ def main() -> None:
     env = Monitor(env)
     
     n_actions = env.action_space.shape[-1]
-    action_noise = OrnsteinUhlenbeckActionNoise(mean=np.zeros(n_actions), sigma=0.2 * np.ones(n_actions))
+    # action_noise = OrnsteinUhlenbeckActionNoise(mean=np.zeros(n_actions), sigma=0.2 * np.ones(n_actions))
+    action_noise = OrnsteinUhlenbeckActionNoise(mean=np.zeros(n_actions), sigma=np.array([0.2, 0.05], dtype=np.float32))
 
 
     run_dir = make_run_directory(os.path.abspath(args.log_dir))
