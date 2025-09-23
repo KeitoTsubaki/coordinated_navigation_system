@@ -32,8 +32,15 @@ EpisodeLogger = callbacks.EpisodeLogger
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Train a DDPG agent in the simulation environment.")
-    parser.add_argument("--total-timesteps", type=int, default=1_000_000, help="Number of training timesteps.")
+    parser = argparse.ArgumentParser(
+        description="Train a DDPG agent in the simulation environment."
+    )
+    parser.add_argument(
+        "--total-timesteps",
+        type=int,
+        default=1_000_000,
+        help="Number of training timesteps.",
+    )
     parser.add_argument(
         "--render-mode",
         type=str,
@@ -41,7 +48,9 @@ def parse_args() -> argparse.Namespace:
         choices=["none", "human", "rgb_array"],
         help="Rendering mode to use during training. 'none' disables rendering.",
     )
-    parser.add_argument("--seed", type=int, default=0, help="Random seed for reproducibility.")
+    parser.add_argument(
+        "--seed", type=int, default=0, help="Random seed for reproducibility."
+    )
     parser.add_argument(
         "--log-dir",
         type=str,
@@ -54,12 +63,31 @@ def parse_args() -> argparse.Namespace:
         default=10,
         help="Number of completed episodes between console log updates.",
     )
-    parser.add_argument("--learning-starts", type=int, default=10_000, help="Timesteps before training starts.")
-    parser.add_argument("--buffer-size", type=int, default=100_000, help="Replay buffer size.")
-    parser.add_argument("--batch-size", type=int, default=64, help="Batch size for training updates.")
-    parser.add_argument("--tau", type=float, default=0.005, help="Soft update coefficient for target networks.")
+    parser.add_argument(
+        "--learning-starts",
+        type=int,
+        default=10_000,
+        help="Timesteps before training starts.",
+    )
+    parser.add_argument(
+        "--buffer-size", type=int, default=100_000, help="Replay buffer size."
+    )
+    parser.add_argument(
+        "--batch-size", type=int, default=64, help="Batch size for training updates."
+    )
+    parser.add_argument(
+        "--tau",
+        type=float,
+        default=0.005,
+        help="Soft update coefficient for target networks.",
+    )
     parser.add_argument("--gamma", type=float, default=0.99, help="Discount factor.")
-    parser.add_argument("--log-interval", type=int, default=10, help="Logging interval for Stable-Baselines3.")
+    parser.add_argument(
+        "--log-interval",
+        type=int,
+        default=10,
+        help="Logging interval for Stable-Baselines3.",
+    )
     return parser.parse_args()
 
 
@@ -78,7 +106,6 @@ def set_random_seed(seed: int) -> None:
         torch.cuda.manual_seed_all(seed)
 
 
-
 def main() -> None:
     args = parse_args()
 
@@ -89,11 +116,14 @@ def main() -> None:
     env = gym.make("simulation_env-v0", render_mode=render_mode)
     env.reset(seed=args.seed)
     env = Monitor(env)
-    
+
     n_actions = env.action_space.shape[-1]
     # action_noise = OrnsteinUhlenbeckActionNoise(mean=np.zeros(n_actions), sigma=0.2 * np.ones(n_actions))
-    action_noise = OrnsteinUhlenbeckActionNoise(mean=np.zeros(n_actions), sigma=np.array([0.2, 0.05], dtype=np.float32))
-
+    action_noise = OrnsteinUhlenbeckActionNoise(
+        mean=np.zeros(n_actions),
+        sigma=0.2 * np.ones(n_actions),
+        theta=0.15 * np.ones(n_actions),
+    )
 
     run_dir = make_run_directory(os.path.abspath(args.log_dir))
 
@@ -113,16 +143,20 @@ def main() -> None:
         device="cuda" if torch.cuda.is_available() else "cpu",
     )
 
-    model.learn(total_timesteps=args.total_timesteps, callback=callback, log_interval=args.log_interval)
+    model.learn(
+        total_timesteps=args.total_timesteps,
+        callback=callback,
+        log_interval=args.log_interval,
+    )
 
     model_path = os.path.join(run_dir, "ddpg_model")
     model.save(model_path)
-
 
     env.close()
 
     print(f"Training completed. Model saved to: {model_path}")
     print(f"Training logs and TensorBoard data are available in: {run_dir}")
+
 
 if __name__ == "__main__":
     main()
