@@ -19,10 +19,12 @@ if __package__ is None or __package__ == "":
     sys.path.insert(0, str(package_root.parent))
     from rl_training import ddpg_td3  # type: ignore
     from rl_training import callbacks  # type: ignore
+    from rl_training import utils  # type: ignore
 else:  # pragma: no cover - executed when run as module
     # If it is running directly
     from . import ddpg_td3
     from . import callbacks
+    from . import utils
 
 # Ensure the custom environment is registered
 import rl_training  # noqa: F401
@@ -118,13 +120,13 @@ def main() -> None:
     env = Monitor(env)
 
     n_actions = env.action_space.shape[-1]
-    # action_noise = OrnsteinUhlenbeckActionNoise(mean=np.zeros(n_actions), sigma=0.2 * np.ones(n_actions))
-    action_noise = OrnsteinUhlenbeckActionNoise(
+    action_noise = utils.DecayOUActionNoise(
         mean=np.zeros(n_actions),
         sigma=0.2 * np.ones(n_actions),
         theta=0.15 * np.ones(n_actions),
+        initial_e=1.0,
+        decay_rate=4000,
     )
-
     run_dir = make_run_directory(os.path.abspath(args.log_dir))
 
     callback = EpisodeLogger(log_dir=run_dir, log_every=args.log_every, verbose=1)
