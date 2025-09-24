@@ -22,12 +22,12 @@ if __package__ is None or __package__ == "":
     # If it is not running as a package
     package_root = Path(__file__).resolve().parent
     sys.path.insert(0, str(package_root.parent))
-    from rl_training import ddpg_td3  # type: ignore
+    from rl_training import custom_ddpg_policy  # type: ignore
     from rl_training import callbacks  # type: ignore
     from rl_training import utils  # type: ignore
 else:  # pragma: no cover - executed when run as module
     # If it is running directly
-    from . import ddpg_td3
+    from . import custom_ddpg_policy
     from . import callbacks
     from . import utils
 
@@ -222,7 +222,7 @@ def main() -> None:
     )
 
     model = CustomDDPG(
-        policy=ddpg_td3.CustomDDPGPolicy,
+        policy=custom_ddpg_policy.CustomDDPGPolicy,
         env=gym_env,
         buffer_size=args.buffer_size,
         batch_size=args.batch_size,

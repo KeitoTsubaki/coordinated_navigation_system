@@ -7,7 +7,7 @@ import gymnasium as gym
 from stable_baselines3 import DDPG
 # __init__.pyで環境が登録されるため、rl_trainingをインポートします。
 import rl_training
-from ddpg_td3 import CustomDDPGPolicy
+from rl_training.custom_ddpg_policy import CustomDDPGPolicy
 
 env = gym.make('simulation_env-v0', render_mode='human')
 
