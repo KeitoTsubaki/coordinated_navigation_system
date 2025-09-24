@@ -135,18 +135,21 @@ def main() -> None:
     callback = EpisodeLogger(
         action_lr_schedule=action_lr_schedule,
         critic_lr_schedule=critic_lr_schedule,
+        action_noise=action_noise,
         log_dir=run_dir,
         log_every=args.log_every,
         verbose=1,
     )
 
-    CustomDDPGPolicy = ddpg_td3.CustomDDPGPolicy(
-        action_lr_schedule=action_lr_schedule, critic_lr_schedule=critic_lr_schedule
-    )
+    policy_kwargs = {
+        "action_lr_schedule": action_lr_schedule,
+        "critic_lr_schedule": critic_lr_schedule,
+    }
 
     model = DDPG(
-        policy=CustomDDPGPolicy,
+        policy=ddpg_td3.CustomDDPGPolicy,
         env=env,
+        policy_kwargs=policy_kwargs,
         buffer_size=args.buffer_size,
         batch_size=args.batch_size,
         learning_starts=args.learning_starts,
