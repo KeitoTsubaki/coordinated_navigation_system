@@ -173,6 +173,11 @@ class Env(gym.Env):
         super().reset(seed=seed)  # sets self.np_random
 
         # render map and initialize robot ant target positions
+        
+        # Seletct map type based on pt and pz
+        # map_type = self._randomly_seletct_map(
+        #     pt=self.env.get_pt(), pz=self.env.get_pz()
+        # )
         map_type = "empty"
         self.env.render_obstacle_and_robots(map_type=map_type)
         # Perform an initial sensor scan to populate observation data
@@ -189,7 +194,7 @@ class Env(gym.Env):
 
         self.env.update_pt()
         self.env.update_pz()
-        
+
         return observation, info
 
     def render(self):
@@ -457,3 +462,17 @@ class Env(gym.Env):
 
     def get_pz(self):
         return self.env.get_pz()
+
+    def _randomly_seletct_map(self, pt, pz):
+        map_types = ["trap_shaped", "zigzag", "random", "empty"]
+        probabilities = [0.25, 0.25, 0.25, 0.25]
+        if pt == 1 and pz == 1:
+            probabilities = [0.345, 0.345, 0.25, 0.06]
+            selected_map = self.np_random.choice(map_types, p=probabilities)
+        elif pt > pz:
+            probabilities = [0.23, 0.46, 0.25, 0.06]
+            selected_map = self.np_random.choice(map_types, p=probabilities)
+        else:
+            probabilities = [0.46, 0.23, 0.25, 0.06]
+            selected_map = self.np_random.choice(map_types, p=probabilities)
+        return selected_map
