@@ -130,17 +130,17 @@ class MapCreator:
                     distance = math.sqrt(
                         (obstacle_cx - pos[0]) ** 2 + (obstacle_cy - pos[1]) ** 2
                     )
-                    print(f"Distance (m): {distance // self.PIXELS_PER_METER}")
+                    # print(f"Distance (m): {distance // self.PIXELS_PER_METER}")
                     if distance < self.T_DO_M * self.PIXELS_PER_METER:
                         is_ok = False
                 if is_ok:
                     obstacle_pos_list.append((obstacle_cx, obstacle_cy))
                     # break
-        print(f"Obstacle Position: {obstacle_cx}, {obstacle_cy}")
+        # print(f"Obstacle Position: {obstacle_cx}, {obstacle_cy}")
 
         for obstacle_cx, obstacle_cy in obstacle_pos_list:
             shape_random = self.np_random.integers(0, 1, endpoint=True)
-            print(f"shape_random: {shape_random}")
+            # print(f"shape_random: {shape_random}")
             if shape_random == 0:
                 # Draw a rectangle obstacle
                 rectangular_l_m = 4 + self.np_random.uniform(0, 1)
@@ -338,7 +338,7 @@ class MapCreator:
     
     def _calculate_spawan_area_in_zigzag_map(self):
         """Calculates the spawn area for the robot in the zigzag map."""
-        print("l_passage:", self.l_passage)
+        # print("l_passage:", self.l_passage)
         start_spawn_area = [
             self.map_center_x
             - self.l_passage // 2 * self.PIXELS_PER_METER

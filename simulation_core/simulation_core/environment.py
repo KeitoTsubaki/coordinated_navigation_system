@@ -318,9 +318,9 @@ class SimCoreEnvironment:
                 + (self.target_position[1] - self.robot_position[1]) ** 2
             )
             if distance_btwn_robot_and_target > T_dt_m * self.PIXELS_PER_METER:
-                print(
-                    f"Distance between robot and target: {distance_btwn_robot_and_target // self.PIXELS_PER_METER} m"
-                )
+                # print(
+                #     f"Distance between robot and target: {distance_btwn_robot_and_target // self.PIXELS_PER_METER} m"
+                # )
                 break
             
     
