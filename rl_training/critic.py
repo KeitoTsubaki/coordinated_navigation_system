@@ -6,8 +6,8 @@ from lidar_network import LiDARNetwork
 from utils import split_obs
 
 class CustomCritic(BasePolicy):
-    def __init__(self, observation_space, action_space, shared_lidar_network, lr_schedule):
-        super().__init__(observation_space, action_space, lr_schedule, squash_output=False)
+    def __init__(self, observation_space, action_space, shared_lidar_network):
+        super().__init__(observation_space, action_space, squash_output=False)
         
         self.lidar_network = shared_lidar_network
         self.state_net = nn.Sequential(
@@ -25,7 +25,6 @@ class CustomCritic(BasePolicy):
             nn.LeakyReLU(0.01),
             nn.Linear(128, 1)
         )
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=lr_schedule(1))
         
     def _compute_q(self, obs_dict, action):
         lidar, discrete_state = split_obs(obs_dict)

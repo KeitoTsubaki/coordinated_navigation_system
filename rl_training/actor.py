@@ -8,8 +8,8 @@ from utils import split_obs
 
 
 class CustomActor(BasePolicy):
-    def __init__(self, observation_space, action_space, shared_lidar_network, lr_schedule, v_max=1.2, omega_max=4.71):
-        super().__init__(observation_space, action_space, lr_schedule, squash_output=False)
+    def __init__(self, observation_space, action_space, shared_lidar_network, v_max=1.2, omega_max=4.71):
+        super().__init__(observation_space, action_space, squash_output=False)
         # squash_output=False: 自動的にActionがtanhで正規化されるのを防ぐ。今回の場合はtanhとsigmoidを使用するため。
         
         self.lidar_network = shared_lidar_network
@@ -26,7 +26,6 @@ class CustomActor(BasePolicy):
         self.sigmoid = nn.Sigmoid()
         self.v_max = v_max
         self.omega_max = omega_max
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=lr_schedule(1))
         
     def forward(self, obs_dict):
         # observation is a dictionary from the environment
