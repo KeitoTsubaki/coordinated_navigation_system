@@ -30,16 +30,24 @@ class DecayOUActionNoise(OrnsteinUhlenbeckActionNoise):
 
     def step_episode(self):
         self.episode_count += 1
+    
+    def get_current_e(self):
+        return self.current_e
+
 
 class CustomLRSchedule:
     def __init__(self, initial_lr, decay_rate):
         self.initial_lr = initial_lr
+        self.current_lr = initial_lr
         self.decay_rate = decay_rate
         self.episode_count = 0
 
     def __call__(self, progress_remaining):
-        lr = self.initial_lr / (1 + self.episode_count / self.decay_rate)
-        return lr
+        self.current_lr = self.initial_lr / (1 + self.episode_count / self.decay_rate)
+        return self.current_lr
 
     def step_episode(self):
         self.episode_count += 1
+
+    def get_current_lr(self):
+        return self.current_lr
