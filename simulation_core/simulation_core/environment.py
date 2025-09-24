@@ -104,8 +104,10 @@ class SimCoreEnvironment:
 
         # ===== Initialize variables for different map types for RL =====
         # These parameters affect map difficulty
-        self.s_t = 0  # number of success in the trap-shaped map
-        self.s_z = 2400  # number of success in the zigzag-shaped map
+        self.st = 0  # number of success in the trap-shaped map
+        self.sz = 0  # number of success in the zigzag-shaped map
+        self.pt = 0
+        self.pz = 0
         
         # ===== Initialize LiDAR sensor module =====
         self.sensor = sensor.LiDARSensor(
@@ -126,10 +128,6 @@ class SimCoreEnvironment:
             pixels_per_meter=self.PIXELS_PER_METER,
             np_random=self.np_random,
             T_do_m=self.T_DO_M,
-            s_t=self.s_t,
-            k8=self.K8,
-            s_z=self.s_z,
-            k9=self.K9,
             l_passage=self.l_passage,
             robot_radius_pixels=self.ROBOT_RADIUS_PIXELS,
             )
@@ -234,7 +232,7 @@ class SimCoreEnvironment:
     def render_obstacle_and_robots(self, map_type="empty"):
         screen_center_xy = (self.SCREEN_CENTER_X, self.SCREEN_CENTER_Y)
         screen_size_wh = (self.SCREEN_W, self.SCREEN_H)
-        self.map_creator.create_map(map_type, self.obstacle_layer)
+        self.map_creator.create_map(map_type, self.obstacle_layer, pt=self.pt, pz=self.pz)
         start_spawn_area, target_spawn_area = self.map_creator.initialize_map_parameters(map_type, screen_center_xy, screen_size_wh, self.ROBOT_RADIUS_PIXELS)
         self.create_start_and_target_position(
             map_type, start_spawn_area, target_spawn_area
@@ -254,7 +252,7 @@ class SimCoreEnvironment:
         self.map_type = map_type
         
         self.clear_all_layers()
-        self.render_obstacle_and_robots(map_type) # Draw obstacles, robot, and target
+        self.render_obstacle_and_robots(map_type, pt=self.pt, pz=self.pz) # Draw obstacles, robot, and target
 
     def clear_all_layers(self):
         """Clear the entire layers including main screen, obstacle layer, and lidar sensor layer."""
@@ -472,3 +470,20 @@ class SimCoreEnvironment:
                     self.reset(map_type=next_map_type)
                 if event.key == pygame.K_SPACE:
                     self.reset(map_type=self.map_type)
+                    
+    def count_up_st(self):
+        self.st += 1
+        
+    def count_up_sz(self):
+        self.sz += 1
+        
+    def update_pt(self):
+        self.pt = min(self.st / self.K8, 1)
+        
+    def update_pz(self):
+        self.pz = min(self.sz / self.K9, 1)
+    
+    def get_pt(self):
+        return self.pt
+    def get_pz(self):
+        return self.pz
