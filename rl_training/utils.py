@@ -13,21 +13,24 @@ def split_obs(obs_dict):
 
 class DecayOUActionNoise(OrnsteinUhlenbeckActionNoise):
     def __init__(self, mean, theta, sigma, initial_e, decay_rate):
-        super().__init__(mean=mean, theta=theta, sigma=sigma)
         self.initial_e = initial_e
         self.decay_rate = decay_rate
-
         self.episode_count = 0
         self.current_e = initial_e
+        # Call super().__init__() after initializing attributes
+        # because the parent's __init__ calls self.reset()
+        super().__init__(mean=mean, sigma=sigma, theta=theta)
 
     def __call__(self):
         return self.current_e * super().__call__()
 
     def reset(self):
         super().reset()
-        self.episode_count += 1
         self.current_e = self.initial_e / (1 + self.episode_count / self.decay_rate)
-     
+
+    def step_episode(self):
+        self.episode_count += 1
+
 class CustomLRSchedule:
     def __init__(self, initial_lr, decay_rate):
         self.initial_lr = initial_lr
@@ -37,6 +40,6 @@ class CustomLRSchedule:
     def __call__(self, progress_remaining):
         lr = self.initial_lr / (1 + self.episode_count / self.decay_rate)
         return lr
-    
+
     def step_episode(self):
         self.episode_count += 1
