@@ -3,7 +3,7 @@ import math
 
 class MapCreator:
 
-    def __init__(self, map, map_size, obstacle_color, n_obstacles, pixels_per_meter, np_random, T_do_m, s_t, k8, s_z, k9, l_passage, robot_radius_pixels):
+    def __init__(self, map, map_size, obstacle_color, n_obstacles, pixels_per_meter, np_random, T_do_m, l_passage, robot_radius_pixels):
         self.map = map
         self.MAP_SIZE = map_size
         self.OBSTACLE_COLOR = obstacle_color
@@ -13,10 +13,6 @@ class MapCreator:
         self.ROBOT_RADIUS_PIXELS = robot_radius_pixels
         
         self.T_DO_M = T_do_m
-        self.s_t = s_t
-        self.K8 = k8
-        self.s_z = s_z
-        self.K9 = k9
         self.l_passage = l_passage
         
         self.MAP_W, self.MAP_H = self.MAP_SIZE
@@ -37,14 +33,14 @@ class MapCreator:
             ),
             width=0,
         )
-    def create_map(self, map_type, obstacle_layer=None):
+    def create_map(self, map_type, obstacle_layer=None, pt=0, pz=0):
         self.obstacle_layer = obstacle_layer
         """Creates the environment and initializes the map."""
         # map_size: (map_w, map_h)
         if map_type == "trap_shaped":
-            self._create_trap_shaped_map()
+            self._create_trap_shaped_map(pt=pt)
         elif map_type == "zigzag":
-            self._create_zigzag_map()
+            self._create_zigzag_map(pz=pz)
         elif map_type == "random":
             self._create_random_map()
         elif map_type == "empty":
@@ -182,19 +178,18 @@ class MapCreator:
         #     obstacle_layer, (0, 0)
         # )  # Draw the obstacle layer onto the map
 
-    def _create_trap_shaped_map(self):
+    def _create_trap_shaped_map(self, pt=0):
         """Creates a trap-shaped map with obstacles"""
         
         # Parameters
-        p_t = min(self.s_t / self.K8, 1)
         w_wall = 0.2  # Width of the walls in meters
         l_horizontal = []
         for i in range(3):
-            l_horizontal.append(1.5 * p_t + 3 + self.np_random.uniform(0, 1))
+            l_horizontal.append(1.5 * pt + 3 + self.np_random.uniform(0, 1))
         l_vertical = []
         for i in range(3):
-            l_vertical_left = 6 * p_t + 1 + 4 * self.np_random.uniform(0, 1)
-            l_vertical_right = 6 * p_t + 1 + 4 * self.np_random.uniform(0, 1)
+            l_vertical_left = 6 * pt + 1 + 4 * self.np_random.uniform(0, 1)
+            l_vertical_right = 6 * pt + 1 + 4 * self.np_random.uniform(0, 1)
             if i == 0:
                 if self.np_random.integers(0, 1, endpoint=True) == 0:
                     l_vertical_left = self.MAP_H
@@ -202,7 +197,7 @@ class MapCreator:
                 if self.np_random.integers(0, 1, endpoint=True) == 0:
                     l_vertical_right = self.MAP_H
             l_vertical.append([l_vertical_left, l_vertical_right])
-        w_passage_0 = -1.6 * p_t + 2.5 + 0.2 * self.np_random.uniform(0, 1)
+        w_passage_0 = -1.6 * pt + 2.5 + 0.2 * self.np_random.uniform(0, 1)
         w_passage_1 = (0.5 + 0.5 * self.np_random.uniform(0, 1)) * w_passage_0
 
         distance_btwn_H_shaped_obstacles_left = (
@@ -266,16 +261,15 @@ class MapCreator:
         #     obstacle_layer, (0, 0)
         # )  # Draw the obstacle layer onto the map
 
-    def _create_zigzag_map(self):
+    def _create_zigzag_map(self, pz=0):
         """Creates a zigzag-shaped map with obstacles"""
         
         # Parameters
-        p_z = min(self.s_z / self.K9, 1)
         w_wall = 0.2
-        self.l_passage = 6 * p_z + 8 + 2 * self.np_random.uniform(0, 1)
+        self.l_passage = 6 * pz + 8 + 2 * self.np_random.uniform(0, 1)
         w_openings = []
         for _ in range(4):
-            w_openings.append(-4.6 * p_z + 6 + 0.4 * self.np_random.uniform(0, 1))
+            w_openings.append(-4.6 * pz + 6 + 0.4 * self.np_random.uniform(0, 1))
         d_deviations = []
         for _ in range(4):
             d_deviations.append(2.4 * self.np_random.uniform(0, 1) - 1.2)
