@@ -173,7 +173,7 @@ class Env(gym.Env):
         super().reset(seed=seed)  # sets self.np_random
 
         # render map and initialize robot ant target positions
-        
+
         # Seletct map type based on pt and pz
         # map_type = self._randomly_seletct_map(
         #     pt=self.env.get_pt(), pz=self.env.get_pz()

@@ -90,7 +90,7 @@ class EpisodeLogger(BaseCallback):
                 continue
 
             self._episode_counter += 1
-            
+
             pt = self.gym_env.unwrapped.get_pt()
             pz = self.gym_env.unwrapped.get_pz()
 

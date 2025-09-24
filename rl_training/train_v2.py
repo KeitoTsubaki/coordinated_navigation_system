@@ -110,7 +110,6 @@ def set_random_seed(seed: int) -> None:
         torch.cuda.manual_seed_all(seed)
 
 
-
 def main() -> None:
     args = parse_args()
 

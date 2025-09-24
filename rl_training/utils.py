@@ -30,7 +30,7 @@ class DecayOUActionNoise(OrnsteinUhlenbeckActionNoise):
 
     def step_episode(self):
         self.episode_count += 1
-    
+
     def get_current_e(self):
         return self.current_e
 
