@@ -150,11 +150,21 @@ class Env(gym.Env):
         # Terminated: Reached the target or collided with an obstacle
         # Truncated: Time limit exceeded
         self.current_step += 1
-        terminated = self.env.is_target_reached() or self.is_collision
+        is_target_reached = self.env.is_target_reached()
+        terminated = is_target_reached or self.is_collision
         truncated = self.current_step >= self.MAX_EPISODE_STEPS
         observation = self._get_obs()
         info = self._get_info()
         reward = self._calculate_reward()
+
+        # Update s_t and s_z
+        if is_target_reached:
+            if self.env.map_type == "trap":
+                self.env.count_up_st()
+                self.env.update_pt()
+            elif self.env.map_type == "zigzag":
+                self.env.count_up_sz()
+                self.update_pz()
 
         return observation, reward, terminated, truncated, info
 
@@ -163,7 +173,8 @@ class Env(gym.Env):
         super().reset(seed=seed)  # sets self.np_random
 
         # render map and initialize robot ant target positions
-        self.env.render_obstacle_and_robots()
+        map_type = "empty"
+        self.env.render_obstacle_and_robots(map_type=map_type)
         # Perform an initial sensor scan to populate observation data
         self.env.update_sensors()
 
@@ -176,6 +187,9 @@ class Env(gym.Env):
 
         self.render()
 
+        self.env.update_pt()
+        self.env.update_pz()
+        
         return observation, info
 
     def render(self):
@@ -437,3 +451,9 @@ class Env(gym.Env):
 
     def _get_info(self):
         return {}
+
+    def get_pt(self):
+        return self.env.get_pt()
+
+    def get_pz(self):
+        return self.env.get_pz()
