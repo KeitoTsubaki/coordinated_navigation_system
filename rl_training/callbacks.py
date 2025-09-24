@@ -18,12 +18,16 @@ class EpisodeLogger(BaseCallback):
 
     def __init__(
         self,
+        action_lr_schedule,
+        critic_lr_schedule,
         log_dir: str,
         log_every: int = 10,
         verbose: int = 1,
         filename: Optional[str] = None,
     ) -> None:
         super().__init__(verbose)
+        self.action_lr_schedule = action_lr_schedule
+        self.critic_lr_schedule = critic_lr_schedule
         self.log_dir = log_dir
         self.log_every = max(1, log_every)
         self.filename = filename or "episode_log.csv"
@@ -71,6 +75,9 @@ class EpisodeLogger(BaseCallback):
                 continue
 
             self._episode_counter += 1
+            self.action_lr_schedule.step_episode()
+            self.critic_lr_schedule.step_episode()
+
             episode_reward = float(episode_info.get("r", 0.0))
             episode_length = int(episode_info.get("l", 0))
 
@@ -80,7 +87,13 @@ class EpisodeLogger(BaseCallback):
             if self._csv_writer is not None:
                 timestamp = datetime.utcnow().isoformat()
                 self._csv_writer.writerow(
-                    [timestamp, self._episode_counter, self.num_timesteps, episode_reward, episode_length]
+                    [
+                        timestamp,
+                        self._episode_counter,
+                        self.num_timesteps,
+                        episode_reward,
+                        episode_length,
+                    ]
                 )
                 self._log_file.flush()
 
