@@ -337,7 +337,7 @@ class SimCoreEnvironment:
             # Ensure the check point is within the map boundaries
             if not (0 <= check_x < self.SCREEN_W and 0 <= check_y < self.SCREEN_H):
                 # Part of the robot is outside the map, which is a collision
-                print("Collision with wall detected: out of bounds")
+                # print("Collision with wall detected: out of bounds")
                 return True
 
             # Get the color of the pixel at the check point
@@ -346,13 +346,13 @@ class SimCoreEnvironment:
                 # print("pixel_color:", pixel_color)
             except IndexError:
                 # This can happen if the coordinates are somehow still out of bounds
-                print("Collision with wall detected: index error")
+                # print("Collision with wall detected: index error")
                 return True
 
             # Check if the pixel color matches the obstacle color.
             obstacle_color_rgb = utils.hex_to_rgb(self.OBSTACLE_COLOR)
             if (pixel_color[0], pixel_color[1], pixel_color[2]) == obstacle_color_rgb:
-                print("Collision with obstacle detected")
+                # print("Collision with obstacle detected")
                 return True
         return False
     
