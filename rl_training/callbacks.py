@@ -20,6 +20,7 @@ class EpisodeLogger(BaseCallback):
         self,
         action_lr_schedule,
         critic_lr_schedule,
+        action_noise,
         log_dir: str,
         log_every: int = 10,
         verbose: int = 1,
@@ -28,6 +29,7 @@ class EpisodeLogger(BaseCallback):
         super().__init__(verbose)
         self.action_lr_schedule = action_lr_schedule
         self.critic_lr_schedule = critic_lr_schedule
+        self.action_noise = action_noise
         self.log_dir = log_dir
         self.log_every = max(1, log_every)
         self.filename = filename or "episode_log.csv"
@@ -77,6 +79,7 @@ class EpisodeLogger(BaseCallback):
             self._episode_counter += 1
             self.action_lr_schedule.step_episode()
             self.critic_lr_schedule.step_episode()
+            self.action_noise.step_episode()
 
             episode_reward = float(episode_info.get("r", 0.0))
             episode_length = int(episode_info.get("l", 0))
