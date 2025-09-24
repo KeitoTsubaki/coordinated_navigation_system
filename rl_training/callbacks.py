@@ -21,6 +21,7 @@ class EpisodeLogger(BaseCallback):
         action_lr_schedule,
         critic_lr_schedule,
         action_noise,
+        gym_env,
         log_dir: str,
         log_every: int = 10,
         verbose: int = 1,
@@ -30,6 +31,7 @@ class EpisodeLogger(BaseCallback):
         self.action_lr_schedule = action_lr_schedule
         self.critic_lr_schedule = critic_lr_schedule
         self.action_noise = action_noise
+        self.gym_env = gym_env
         self.log_dir = log_dir
         self.log_every = max(1, log_every)
         self.filename = filename or "episode_log.csv"
@@ -55,6 +57,8 @@ class EpisodeLogger(BaseCallback):
                 "action_lr",
                 "critic_lr",
                 "action_noise_epsilon",
+                "p_t",
+                "p_z",
             ]
         )
 
@@ -86,21 +90,24 @@ class EpisodeLogger(BaseCallback):
                 continue
 
             self._episode_counter += 1
-            self.action_lr_schedule.step_episode()
-            self.critic_lr_schedule.step_episode()
-            self.action_noise.step_episode()
+            
+            pt = self.gym_env.unwrapped.get_pt()
+            pz = self.gym_env.unwrapped.get_pz()
+
+            if pt == 1 and pz == 1:
+                self.action_lr_schedule.step_episode()
+                self.critic_lr_schedule.step_episode()
+                self.action_noise.step_episode()
 
             episode_reward = float(episode_info.get("r", 0.0))
             episode_length = int(episode_info.get("l", 0))
 
             self._recent_rewards.append(episode_reward)
             self._recent_lengths.append(episode_length)
-            
+
             action_lr = self.action_lr_schedule.get_current_lr()
             critic_lr = self.critic_lr_schedule.get_current_lr()
             action_noise_epsilon = self.action_noise.get_current_e()
-
-            
 
             if self._csv_writer is not None:
                 timestamp = datetime.utcnow().isoformat()
@@ -114,6 +121,8 @@ class EpisodeLogger(BaseCallback):
                         action_lr,
                         critic_lr,
                         action_noise_epsilon,
+                        pt,
+                        pz,
                     ]
                 )
                 self._log_file.flush()
