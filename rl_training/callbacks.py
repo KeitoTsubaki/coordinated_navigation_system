@@ -46,7 +46,16 @@ class EpisodeLogger(BaseCallback):
         self._log_file = open(log_path, "w", newline="", encoding="utf-8")
         self._csv_writer = csv.writer(self._log_file)
         self._csv_writer.writerow(
-            ["timestamp", "episode", "timesteps", "episode_reward", "episode_length"]
+            [
+                "timestamp",
+                "episode",
+                "timesteps",
+                "episode_reward",
+                "episode_length",
+                "action_lr",
+                "critic_lr",
+                "action_noise_epsilon",
+            ]
         )
 
     def _close_logger(self) -> None:
@@ -86,6 +95,12 @@ class EpisodeLogger(BaseCallback):
 
             self._recent_rewards.append(episode_reward)
             self._recent_lengths.append(episode_length)
+            
+            action_lr = self.action_lr_schedule.get_current_lr()
+            critic_lr = self.critic_lr_schedule.get_current_lr()
+            action_noise_epsilon = self.action_noise.get_current_e()
+
+            
 
             if self._csv_writer is not None:
                 timestamp = datetime.utcnow().isoformat()
@@ -96,6 +111,9 @@ class EpisodeLogger(BaseCallback):
                         self.num_timesteps,
                         episode_reward,
                         episode_length,
+                        action_lr,
+                        critic_lr,
+                        action_noise_epsilon,
                     ]
                 )
                 self._log_file.flush()
