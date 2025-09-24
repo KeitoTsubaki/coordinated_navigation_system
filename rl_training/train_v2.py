@@ -29,7 +29,7 @@ else:  # pragma: no cover - executed when run as module
 # Ensure the custom environment is registered
 import rl_training  # noqa: F401
 
-CustomDDPGPolicy = ddpg_td3.CustomDDPGPolicy
+
 EpisodeLogger = callbacks.EpisodeLogger
 
 
@@ -129,7 +129,20 @@ def main() -> None:
     )
     run_dir = make_run_directory(os.path.abspath(args.log_dir))
 
-    callback = EpisodeLogger(log_dir=run_dir, log_every=args.log_every, verbose=1)
+    action_lr_schedule = utils.CustomLRSchedule(initial_lr=0.0002, decay_rate=2000)
+    critic_lr_schedule = utils.CustomLRSchedule(initial_lr=0.0005, decay_rate=2000)
+
+    callback = EpisodeLogger(
+        action_lr_schedule=action_lr_schedule,
+        critic_lr_schedule=critic_lr_schedule,
+        log_dir=run_dir,
+        log_every=args.log_every,
+        verbose=1,
+    )
+
+    CustomDDPGPolicy = ddpg_td3.CustomDDPGPolicy(
+        action_lr_schedule=action_lr_schedule, critic_lr_schedule=critic_lr_schedule
+    )
 
     model = DDPG(
         policy=CustomDDPGPolicy,
@@ -149,6 +162,7 @@ def main() -> None:
         total_timesteps=args.total_timesteps,
         callback=callback,
         log_interval=args.log_interval,
+        progress_bar=True,  # 気になったからTrueにしてみた
     )
 
     model_path = os.path.join(run_dir, "ddpg_model")
