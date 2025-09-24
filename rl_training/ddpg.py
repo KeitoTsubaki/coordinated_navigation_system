@@ -1,67 +1,81 @@
-import torch
-from torch import nn
-from typing import Any, Dict, List, Optional, Type
-
-import gymnasium as gym
+import torch as th
+import numpy as np
+from torch.nn import functional as F
+from stable_baselines3.common.utils import polyak_update
 from stable_baselines3 import DDPG
-from stable_baselines3.common.policies import BasePolicy
-from stable_baselines3.common.torch_layers import BaseFeaturesExtractor, FlattenExtractor
-from stable_baselines3.common.type_aliases import Schedule
-
-from actor import CustomActor
-from critic import CustomCritic
-from lidar_network import LiDARNetwork
 
 
-class CustomCombinedExtractor(BaseFeaturesExtractor):
-    def __init__(self, observation_space: Dict):
-        # We must specify the features_dim, this is the dimension of the output of the extractor
-        discrete_state_dim = 2 + 2 + 2 # goal, velocity, closest_obstacle
-        lidar_dim = 60
-        features_dim = discrete_state_dim + lidar_dim
-        super().__init__(observation_space, features_dim)
-
-        self.lidar_network = LiDARNetwork()
-
-    def forward(self, observations: Dict[str, torch.Tensor]) -> torch.Tensor:
-        # Process LiDAR data
-        lidar_features = self.lidar_network(observations["lidar"])
-
-        # Concatenate with other observation parts
-        other_features = torch.cat([
-            observations["goal"],
-            observations["velocity"],
-            observations["closest_obstacle"]
-        ], dim=1)
-
-        # Combine all features
-        return torch.cat([lidar_features, other_features], dim=1)
-
-
-class CustomDDPGPolicy(BasePolicy):
-    def __init__(
-        self,
-        observation_space,
-        action_space,
-        lr_schedule: Schedule,
-        net_arch: Optional[List[int]] = None,
-        # v_max と omega_max を kwargs から受け取る
-        v_max: float = 1.2,
-        omega_max: float = 4.71,
-        **kwargs,
-    ):
-        super().__init__(observation_space, action_space, **kwargs, features_extractor_class=CustomCombinedExtractor)
+class CustomDDPG(DDPG):
+    def __init__(self, *args, action_lr_schedule=None, critic_lr_schedule=None,**kwargs):
+        super().__init__(*args, **kwargs)
+        self.actor_lr_schedule = action_lr_schedule
+        self.critic_lr_schedule = critic_lr_schedule
         
-        state_dim = self.features_extractor.features_dim
-        action_dim = action_space.shape[-1]
-        
-        self.actor = CustomActor(state_dim, action_dim, v_max, omega_max)
-        self.actor_target = CustomActor(state_dim, action_dim, v_max, omega_max)
-        self.critic = CustomCritic(state_dim, action_dim)
-        self.critic_target = CustomCritic(state_dim, action_dim)
+    def _update_learning_rate(self, optimizers, lr_schedule):
+        new_lr = lr_schedule(self._current_progress_remaining)
+        for optimizer in optimizers:
+            for param_group in optimizer.param_groups:
+                param_group["lr"] = new_lr
+    
+    def train(self, gradient_steps: int, batch_size: int = 100) -> None:
+        # Switch to train mode (this affects batch norm / dropout)
+        self.policy.set_training_mode(True)
 
-    def forward(self, obs: torch.Tensor, deterministic: bool = False) -> torch.Tensor:
-        # This method is not used by DDPG for training, but can be for prediction
-        # The actual forward pass is handled by the actor and critic directly in the DDPG algorithm
-        features = self.extract_features(obs)
-        return self.actor(features)
+        # Update learning rate according to lr schedule
+        # self._update_learning_rate([self.actor.optimizer, self.critic.optimizer])
+        self._update_learning_rate([self.actor.optimizer], self.actor_lr_schedule)
+        self._update_learning_rate([self.critic.optimizer], self.critic_lr_schedule)
+
+        actor_losses, critic_losses = [], []
+        for _ in range(gradient_steps):
+            self._n_updates += 1
+            # Sample replay buffer
+            replay_data = self.replay_buffer.sample(batch_size, env=self._vec_normalize_env)  # type: ignore[union-attr]
+            # For n-step replay, discount factor is gamma**n_steps (when no early termination)
+            discounts = replay_data.discounts if replay_data.discounts is not None else self.gamma
+
+            with th.no_grad():
+                # Select action according to policy and add clipped noise
+                noise = replay_data.actions.clone().data.normal_(0, self.target_policy_noise)
+                noise = noise.clamp(-self.target_noise_clip, self.target_noise_clip)
+                next_actions = (self.actor_target(replay_data.next_observations) + noise).clamp(-1, 1)
+
+                # Compute the next Q-values: min over all critics targets
+                next_q_values = th.cat(self.critic_target(replay_data.next_observations, next_actions), dim=1)
+                next_q_values, _ = th.min(next_q_values, dim=1, keepdim=True)
+                target_q_values = replay_data.rewards + (1 - replay_data.dones) * discounts * next_q_values
+
+            # Get current Q-values estimates for each critic network
+            current_q_values = self.critic(replay_data.observations, replay_data.actions)
+
+            # Compute critic loss
+            critic_loss = sum(F.mse_loss(current_q, target_q_values) for current_q in current_q_values)
+            assert isinstance(critic_loss, th.Tensor)
+            critic_losses.append(critic_loss.item())
+
+            # Optimize the critics
+            self.critic.optimizer.zero_grad()
+            critic_loss.backward()
+            self.critic.optimizer.step()
+
+            # Delayed policy updates
+            if self._n_updates % self.policy_delay == 0:
+                # Compute actor loss
+                actor_loss = -self.critic.q1_forward(replay_data.observations, self.actor(replay_data.observations)).mean()
+                actor_losses.append(actor_loss.item())
+
+                # Optimize the actor
+                self.actor.optimizer.zero_grad()
+                actor_loss.backward()
+                self.actor.optimizer.step()
+
+                polyak_update(self.critic.parameters(), self.critic_target.parameters(), self.tau)
+                polyak_update(self.actor.parameters(), self.actor_target.parameters(), self.tau)
+                # Copy running stats, see GH issue #996
+                polyak_update(self.critic_batch_norm_stats, self.critic_batch_norm_stats_target, 1.0)
+                polyak_update(self.actor_batch_norm_stats, self.actor_batch_norm_stats_target, 1.0)
+
+        self.logger.record("train/n_updates", self._n_updates, exclude="tensorboard")
+        if len(actor_losses) > 0:
+            self.logger.record("train/actor_loss", np.mean(actor_losses))
+        self.logger.record("train/critic_loss", np.mean(critic_losses))
