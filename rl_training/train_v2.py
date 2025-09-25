@@ -74,7 +74,7 @@ def parse_args() -> argparse.Namespace:
         help="Timesteps before training starts.",
     )
     parser.add_argument(
-        "--buffer-size", type=int, default=100_000, help="Replay buffer size."
+        "--buffer-size", type=int, default=150_000, help="Replay buffer size."
     )
     parser.add_argument(
         "--batch-size", type=int, default=64, help="Batch size for training updates."
