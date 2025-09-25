@@ -139,6 +139,7 @@ class SimCoreEnvironment:
         self.running = True  # ROS2で使ってる
         self.closest_obstacle_info = None
         self.sensor_data = None
+        self.path = []
 
     # ===== Visualization functions =====
 
@@ -163,7 +164,9 @@ class SimCoreEnvironment:
 
     def visualize_robot_theta(self, position, color=(0, 0, 255)):
         font = pygame.font.SysFont("arial", 16)
-        theta_text = font.render(f"{math.degrees(self.robot_theta):.1f}(deg)", True, color)
+        theta_text = font.render(
+            f"{math.degrees(self.robot_theta):.1f}(deg)", True, color
+        )
         self.robot_and_lidar_layer.blit(
             theta_text,
             (
@@ -212,12 +215,10 @@ class SimCoreEnvironment:
         obstacle_angle = self.robot_theta - math.pi / 2 - angle_to_obstacle
 
         dot_x = int(
-            position[0]
-            - self.ROBOT_RADIUS_PIXELS * 1.5 * math.sin(obstacle_angle)
+            position[0] - self.ROBOT_RADIUS_PIXELS * 1.5 * math.sin(obstacle_angle)
         )
         dot_y = int(
-            position[1]
-            - self.ROBOT_RADIUS_PIXELS * 1.5 * math.cos(obstacle_angle)
+            position[1] - self.ROBOT_RADIUS_PIXELS * 1.5 * math.cos(obstacle_angle)
         )
 
         pygame.draw.circle(
@@ -497,6 +498,12 @@ class SimCoreEnvironment:
         self.closest_obstacle_info = self.sensor.get_closest_obstacle_info(
             self.sensor_data
         )
+
+    def update_path(self, new_position, new_theta):
+        self.robot_position = new_position
+        self.robot_theta = new_theta
+
+        self.path.append([new_position, new_theta])
 
     def lidar_scan(self):
         self.sensor.position = self.robot_position

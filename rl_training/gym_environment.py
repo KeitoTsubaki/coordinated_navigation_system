@@ -397,6 +397,8 @@ class Env(gym.Env):
         self.env.robot_theta = (self.env.robot_theta + math.pi) % (
             2 * math.pi
         ) - math.pi
+        
+        self.env.update_path(self.env.robot_position, self.env.robot_theta)
 
     def _process_lidar_data(self, sensor_data):
         """LiDARスキャンデータの最初のn_e個の点を後ろにコピーし、n_l+n_e次元のベクトルに処理する"""
