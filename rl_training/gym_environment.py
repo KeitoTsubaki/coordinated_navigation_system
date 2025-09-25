@@ -179,6 +179,7 @@ class Env(gym.Env):
         #     pt=self.env.get_pt(), pz=self.env.get_pz()
         # )
         map_type = "empty"
+        self.env.reset_path()
         self.env.render_obstacle_and_robots(map_type=map_type)
         # Perform an initial sensor scan to populate observation data
         self.env.update_sensors()

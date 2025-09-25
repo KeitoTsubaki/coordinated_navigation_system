@@ -208,7 +208,7 @@ class SimCoreEnvironment:
             ),
         )
 
-    def visualize_closest_obstacle_info(self, position, color=(60, 180, 110)):
+    def visualize_closest_obstacle_info(self, position, color=(106,90,205)):
         distance_to_obstacle, angle_to_obstacle = self.get_closest_obstacle_info()
         font = pygame.font.SysFont("arial", 16)
         # Convert robot-relative angle to a global angle for drawing
@@ -248,6 +248,27 @@ class SimCoreEnvironment:
                 dot_y - distance_text.get_height() - 5,
             ),
         )
+    
+    def visualize_path(self):
+        if len(self.path) < 2:
+            return
+
+        for i in range(len(self.path) - 1):
+            start_pos = (
+                int(self.path[i][0][0]),
+                int(self.path[i][0][1]),
+            )
+            end_pos = (
+                int(self.path[i + 1][0][0]),
+                int(self.path[i + 1][0][1]),
+            )
+            pygame.draw.line(
+                self.robot_and_lidar_layer,
+                (0, 255, 0),  # Blue color for the path
+                start_pos,
+                end_pos,
+                1,  # Line thickness
+            )
 
     def show_robot_and_lidar(self, sensor_data=None):
         if sensor_data != False:  # if sensor_data exists, then start for loop
@@ -297,6 +318,7 @@ class SimCoreEnvironment:
                 2,  # Draw the target's head
             )
 
+            self.visualize_path()
             self.visualize_search_point(self.robot_position, self.ROBOT_COLOR)
             self.visualize_goal_info(self.robot_position)
             self.visualize_closest_obstacle_info(self.robot_position)
@@ -355,6 +377,7 @@ class SimCoreEnvironment:
 
     def reset(self, map_type="empty"):
         self.map_type = map_type
+        self.reset_path()
 
         self.clear_all_layers()
         self.render_obstacle_and_robots(
@@ -504,6 +527,10 @@ class SimCoreEnvironment:
         self.robot_theta = new_theta
 
         self.path.append([new_position, new_theta])
+    
+    def reset_path(self):
+        self.path = []
+
 
     def lidar_scan(self):
         self.sensor.position = self.robot_position
