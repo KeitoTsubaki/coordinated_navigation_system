@@ -57,7 +57,9 @@ class Env(gym.Env):
         # action = [v_n, omega_n]
         self.action_space = spaces.Box(
             # Normalize action space to [-1, 1] for better compatibility with RL algorithms.
-            low=np.array([-1.0, -1.0], dtype=np.float32),
+            # low=np.array([0.0, -1.0], dtype=np.float32),
+            # high=np.array([1.0, 1.0], dtype=np.float32),
+            low=np.array([-1.0, 0.0], dtype=np.float32),
             high=np.array([1.0, 1.0], dtype=np.float32),
             dtype=np.float32,
         )
@@ -164,7 +166,7 @@ class Env(gym.Env):
                 self.env.update_pt()
             elif self.env.map_type == "zigzag":
                 self.env.count_up_sz()
-                self.update_pz()
+                self.env.update_pz()
 
         return observation, reward, terminated, truncated, info
 
@@ -175,12 +177,13 @@ class Env(gym.Env):
         # render map and initialize robot ant target positions
 
         # Seletct map type based on pt and pz
-        # map_type = self._randomly_seletct_map(
-        #     pt=self.env.get_pt(), pz=self.env.get_pz()
-        # )
-        map_type = "empty"
-        self.env.reset_path()
-        self.env.render_obstacle_and_robots(map_type=map_type)
+        map_type = self._randomly_seletct_map(
+            pt=self.env.get_pt(), pz=self.env.get_pz()
+        )
+        # map_type = "empty"
+        self.env.reset(map_type=map_type)
+        # self.env.reset_path()
+        # self.env.render_obstacle_and_robots(map_type=map_type)
         # Perform an initial sensor scan to populate observation data
         self.env.update_sensors()
 
@@ -292,12 +295,15 @@ class Env(gym.Env):
             * (self.previous_distance_to_taret - self.current_distance_to_target)
             / self.MAX_D
         )
+        # ターゲットへのズレの絶対角度が小さくなるほど報酬を与える
         r_g_o1 = (
             k_2
-            * (self.current_angle_to_target - self.previous_angle_to_target)
+            * (abs(self.previous_angle_to_target) - abs(self.current_angle_to_target))
             / self.MAX_THETA
         )
-        r_g_o2 = -k_3 * abs(self.current_angle_to_target) / math.pi
+        r_g_o2 = (
+            -k_3 * abs(self.current_angle_to_target) / math.pi
+        )  # ターゲット方向を向くことを促す
         r_g = r_g_d + r_g_o1 + r_g_o2
 
         # The robot is punished when it is aproaching and being close to the obstacles
@@ -343,9 +349,9 @@ class Env(gym.Env):
         # De-normalize the action from [-1, 1] to the robot's physical limits.
         # Linear velocity: maps [-1, 1] to [0, V_MAX]
         # Note: action[0] is used. A value of -1 maps to 0, and 1 maps to V_MAX.
-        v_n = (action[0] + 1.0) / 2.0 * self.V_MAX
+        v_n = (action[0] + 1) / 2 * self.V_MAX
         # Angular velocity: maps [-1, 1] to [-OMEGA_MAX, OMEGA_MAX]
-        omega_n = action[1] * self.OMEGA_MAX
+        omega_n = (action[1] - 0.5) * 2 * self.OMEGA_MAX
 
         v_kmin = max(0, self.previous_v - self.A_MAX * dt)
         v_kmax = min(self.V_MAX, self.previous_v + self.A_MAX * dt)
@@ -398,7 +404,7 @@ class Env(gym.Env):
         self.env.robot_theta = (self.env.robot_theta + math.pi) % (
             2 * math.pi
         ) - math.pi
-        
+
         self.env.update_path(self.env.robot_position, self.env.robot_theta)
 
     def _process_lidar_data(self, sensor_data):
