@@ -48,10 +48,13 @@ class CustomActor(BasePolicy):
         # The action space is normalized to [-1, 1] for both v and omega.
         # v_n should be in [0, v_max], omega_n in [-omega_max, omega_max].
         # The policy should output actions in [-1, 1] range.
-        v_out = self.sigmoid(v) * self.v_max  # Range [0, 1] * v_max = [0, v_max]
-        omega_out = (
-            self.tanh(omega) * self.omega_max
-        )  # Range [-1, 1] * omega_max = [-omega_max, omega_max]
+        # v_out = self.sigmoid(v) * self.v_max  # Range [0, 1] * v_max = [0, v_max]
+        # omega_out = (
+        #     self.tanh(omega) * self.omega_max
+        # )  # Range [-1, 1] * omega_max = [-omega_max, omega_max]
+
+        v_out = self.tanh(v)
+        omega_out = self.sigmoid(omega)
 
         # Scale to the actual action range
         # output_v = v_out * self.v_max
