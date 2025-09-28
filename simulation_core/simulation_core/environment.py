@@ -208,7 +208,7 @@ class SimCoreEnvironment:
             ),
         )
 
-    def visualize_closest_obstacle_info(self, position, color=(106,90,205)):
+    def visualize_closest_obstacle_info(self, position, color=(106, 90, 205)):
         distance_to_obstacle, angle_to_obstacle = self.get_closest_obstacle_info()
         font = pygame.font.SysFont("arial", 16)
         # Convert robot-relative angle to a global angle for drawing
@@ -248,7 +248,7 @@ class SimCoreEnvironment:
                 dot_y - distance_text.get_height() - 5,
             ),
         )
-    
+
     def visualize_path(self):
         if len(self.path) < 2:
             return
@@ -380,9 +380,7 @@ class SimCoreEnvironment:
         self.reset_path()
 
         self.clear_all_layers()
-        self.render_obstacle_and_robots(
-            map_type, pt=self.pt, pz=self.pz
-        )  # Draw obstacles, robot, and target
+        self.render_obstacle_and_robots(map_type)  # Draw obstacles, robot, and target
 
     def clear_all_layers(self):
         """Clear the entire layers including main screen, obstacle layer, and lidar sensor layer."""
@@ -527,15 +525,16 @@ class SimCoreEnvironment:
         self.robot_theta = new_theta
 
         self.path.append([new_position, new_theta])
-    
+
     def reset_path(self):
         self.path = []
-
 
     def lidar_scan(self):
         self.sensor.position = self.robot_position
         self.sensor.theta = self.robot_theta
-        sensor_data = self.sensor.sense_obstacles(self.screen, self.OBSTACLE_COLOR)
+        sensor_data = self.sensor.sense_obstacles(
+            self.obstacle_layer, self.OBSTACLE_COLOR
+        )
         return sensor_data
 
     def get_goal_info(self):
