@@ -26,6 +26,7 @@ class EpisodeLogger(BaseCallback):
         action_noise,
         gym_env,
         eval_env,
+        eval_freq_episodes: int,
         fps: int,
         video_dir: str,
         log_dir: str,
@@ -39,6 +40,7 @@ class EpisodeLogger(BaseCallback):
         self.action_noise = action_noise
         self.gym_env = gym_env
         self.eval_env = eval_env
+        self.eval_freq_episodes = eval_freq_episodes
         self.fps = fps
         self.video_dir = video_dir
         self.log_dir = log_dir
@@ -157,6 +159,9 @@ class EpisodeLogger(BaseCallback):
                         f"Length avg: {mean_length:.1f}"
                     )
                 )
+            
+            if self._episode_counter % self.eval_freq_episodes == 0:
+                self.periodic_test_and_record()
 
         return True
 
