@@ -3,9 +3,12 @@ import os
 from collections import deque
 from datetime import datetime
 from typing import Optional
+import imageio
+import torch
 
 import numpy as np
 from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.vec_env import DummyVecEnv, VecVideoRecorder
 
 
 class EpisodeLogger(BaseCallback):
@@ -22,6 +25,9 @@ class EpisodeLogger(BaseCallback):
         critic_lr_schedule,
         action_noise,
         gym_env,
+        eval_env,
+        fps: int,
+        video_dir: str,
         log_dir: str,
         log_every: int = 10,
         verbose: int = 1,
@@ -32,6 +38,9 @@ class EpisodeLogger(BaseCallback):
         self.critic_lr_schedule = critic_lr_schedule
         self.action_noise = action_noise
         self.gym_env = gym_env
+        self.eval_env = eval_env
+        self.fps = fps
+        self.video_dir = video_dir
         self.log_dir = log_dir
         self.log_every = max(1, log_every)
         self.filename = filename or "episode_log.csv"
@@ -41,7 +50,9 @@ class EpisodeLogger(BaseCallback):
         self._episode_counter = 0
         self._recent_rewards: deque[float] = deque(maxlen=self.log_every)
         self._recent_lengths: deque[int] = deque(maxlen=self.log_every)
-
+        
+        self.n_eval_episodes = {"trap-shaped": 100, "zigzag": 100, "random": 100, "empty": 10}
+        
     def _init_logger(self) -> None:
         os.makedirs(self.log_dir, exist_ok=True)
         log_path = os.path.join(self.log_dir, self.filename)
@@ -151,3 +162,38 @@ class EpisodeLogger(BaseCallback):
 
     def _on_training_end(self) -> None:
         self._close_logger()
+
+    def periodic_test_and_record(self) -> None:
+        for map_name, n_episodes in self.n_eval_episodes.items():
+            rewards, successes = [], []
+            for ep in range(n_episodes):
+                is_record = False
+                # 1環境につき５つの動画を保存
+                if ep % 20 == 0:
+                    is_record = True
+                
+                obs, _ = self.eval_env.reset()
+                done = False
+                total_reward = 0.0
+                success = False
+                
+                if is_record:
+                    video_path = os.path.join(self.video_dir, f"{map_name}_episode_{ep + 1}.mp4")
+                    writer = imageio.get_writer(video_path, fps=self.fps)
+                
+                while not done:
+                    action, _states = self.model.actor(torch.tensor(obs).float().to(self.model.device))
+                    obs, reward, done, info = self.eval_env.step(action)
+                    total_reward += reward
+
+                    if is_record:                    
+                        frame = self.eval_env.render()
+                        writer.append_data(frame)
+                    
+                if is_record:
+                    writer.close()
+                
+                rewards.append(total_reward)
+                successes.append(success)
+            mean_reward = np.mean(rewards)
+            success_rate = np.mean(successes)
