@@ -156,7 +156,7 @@ class Env(gym.Env):
         terminated = is_target_reached or self.is_collision
         truncated = self.current_step >= self.MAX_EPISODE_STEPS
         observation = self._get_obs()
-        info = self._get_info()
+        info = {"is_target_reached": is_target_reached}
         reward = self._calculate_reward()
 
         # Update s_t and s_z
