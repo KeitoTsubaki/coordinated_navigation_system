@@ -5,3 +5,4 @@ ros2_ws/log/
 **simulation_core/build/
 **simulation_core/simulation_core.egg-info/
 .venv/*
+uv.lock
