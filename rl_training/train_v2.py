@@ -145,7 +145,7 @@ def main() -> None:
         action_noise=action_noise,
         gym_env=gym_env,
         eval_env=eval_env,
-        eval_freq_episodes=1,
+        eval_freq_episodes=100,
         fps=30,
         video_dir=os.path.join(run_dir, "videos"),
         log_dir=run_dir,
