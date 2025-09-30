@@ -1,5 +1,7 @@
 import csv
 import os
+import sys
+import select
 from collections import deque
 from datetime import datetime
 from typing import Optional
@@ -33,6 +35,7 @@ class EpisodeLogger(BaseCallback):
         log_every: int = 10,
         verbose: int = 1,
         filename: Optional[str] = None,
+        patience: int = 1000,
     ) -> None:
         super().__init__(verbose)
         self.action_lr_schedule = action_lr_schedule
@@ -46,12 +49,17 @@ class EpisodeLogger(BaseCallback):
         self.log_dir = log_dir
         self.log_every = max(1, log_every)
         self.filename = filename or "episode_log.csv"
+        self.patience = patience
+        self.best_success_rate = -np.inf
+        self.no_improve_counter = 0
 
         self._log_file: Optional[object] = None
         self._csv_writer: Optional[csv.writer] = None
         self._episode_counter = 0
         self._recent_rewards: deque[float] = deque(maxlen=self.log_every)
         self._recent_lengths: deque[int] = deque(maxlen=self.log_every)
+        
+        
         
         self.n_eval_episodes = {"trap-shaped": 100, "zigzag": 100, "random": 100, "empty": 10}
         
@@ -72,6 +80,18 @@ class EpisodeLogger(BaseCallback):
                 "action_noise_epsilon",
                 "p_t",
                 "p_z",
+            ]
+        )
+        eval_log_path = os.path.join(self.log_dir, "eval_log.csv")
+        self._eval_log_file = open(eval_log_path, "w", newline="", encoding="utf-8")
+        self._eval_csv_writer = csv.writer(self._eval_log_file)
+        self._eval_csv_writer.writerow(
+            [
+                "timestamp",
+                "episode",
+                "mean_reward",
+                "success_rate",
+                "overall_success_rate",
             ]
         )
 
@@ -161,14 +181,36 @@ class EpisodeLogger(BaseCallback):
                 )
             
             if self._episode_counter % self.eval_freq_episodes == 0:
-                self.periodic_test_and_record()
+                overall_success_rate = self.periodic_test_and_record()
+                if pt == 1 and pz == 1:
+                    if overall_success_rate > self.best_success_rate:
+                        self.best_success_rate = overall_success_rate
+                        self.no_improve_counter = 0
+                    else:
+                        self.no_improve_counter += self.eval_freq_episodes
 
+            if self.no_improve_counter >= self.patience:
+                if self.verbose > 0:
+                    print("⏹ Early stopping triggered!")
+                self.model.stop_training = True
+                
+            dr, _, _ = select.select([sys.stdin], [], [], 0)
+            if dr:
+                key = sys.stdin.read(1)
+                if key == 'q':
+                    print("⏹ Training stopped by user (key press).")
+                    self.model.stop_training = True
+        
         return True
 
     def _on_training_end(self) -> None:
         self._close_logger()
 
     def periodic_test_and_record(self) -> None:
+        print("\nStarted periodic evaluation...")
+        total_episodes = sum(self.n_eval_episodes.values())
+        episode_count = 0
+        total_successes = []
         for map_name, n_episodes in self.n_eval_episodes.items():
             rewards, successes = [], []
             for ep in range(n_episodes):
@@ -180,16 +222,23 @@ class EpisodeLogger(BaseCallback):
                 obs, _ = self.eval_env.reset()
                 done = False
                 total_reward = 0.0
-                success = False
+                success = 0
                 
                 if is_record:
+                    print(f"Recording evaluation video for map: {map_name}, episode: {ep + 1}")
                     video_path = os.path.join(self.video_dir, f"{map_name}_episode_{ep + 1}.mp4")
-                    writer = imageio.get_writer(video_path, fps=self.fps)
+                    writer = imageio.get_writer(video_path, fps=self.fps, codec="libx264", format="mp4")
                 
                 while not done:
-                    action, _states = self.model.actor(torch.tensor(obs).float().to(self.model.device))
-                    obs, reward, done, info = self.eval_env.step(action)
+                    action, _states = self.model.predict(obs, deterministic=True)
+                    obs, reward, terminated, truncated, info = self.eval_env.step(action)
                     total_reward += reward
+                    
+                    if info.get("is_target_reached", True):
+                        success = 1
+                    
+                    if terminated or truncated:
+                        done = True
 
                     if is_record:                    
                         frame = self.eval_env.render()
@@ -197,8 +246,41 @@ class EpisodeLogger(BaseCallback):
                     
                 if is_record:
                     writer.close()
+                    print(f"Saved evaluation video to: {video_path}")
                 
                 rewards.append(total_reward)
                 successes.append(success)
+                total_successes.append(success)
+                episode_count += 1
+                if episode_count % 10 == 0:
+                    self.show_test_progress(episode_count, total_episodes)
+                
             mean_reward = np.mean(rewards)
             success_rate = np.mean(successes)
+            overall_success_rate = np.mean(total_successes)
+            
+            if self._eval_csv_writer is not None:
+                timestamp = datetime.utcnow().isoformat()
+                self._eval_csv_writer.writerow(
+                    [
+                        timestamp,
+                        self._episode_counter,
+                        mean_reward,
+                        success_rate,
+                        overall_success_rate,
+                    ]
+                )
+                self._eval_log_file.flush()
+        return overall_success_rate
+    
+    def show_test_progress(self, episode: int, total_episodes: int) -> None:
+        progress = (episode / total_episodes) * 100
+        progress_bar = ""
+        for i in range(10):
+            if i < (progress / 10):
+                bar = "#"
+            else:
+                bar = "-"
+            progress_bar += bar
+        print(f"[{progress_bar}] {progress:.2f}%")
+        

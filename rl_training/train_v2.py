@@ -42,7 +42,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--total-timesteps",
         type=int,
-        default=1_000_000,
+        default=10_000_000,
         help="Number of training timesteps.",
     )
     parser.add_argument(
@@ -70,11 +70,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--learning-starts",
         type=int,
-        default=10_000,
+        default=50_000,
         help="Timesteps before training starts.",
     )
     parser.add_argument(
-        "--buffer-size", type=int, default=150_000, help="Replay buffer size."
+        "--buffer-size", type=int, default=100_000, help="Replay buffer size."
     )
     parser.add_argument(
         "--batch-size", type=int, default=64, help="Batch size for training updates."
@@ -99,6 +99,7 @@ def make_run_directory(base_dir: str) -> str:
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     run_dir = os.path.join(base_dir, f"ddpg_run_{timestamp}")
     os.makedirs(run_dir, exist_ok=True)
+    os.makedirs(os.path.join(run_dir, "videos"), exist_ok=True)
     return run_dir
 
 
@@ -120,6 +121,10 @@ def main() -> None:
     gym_env = gym.make("simulation_env-v0", render_mode=render_mode)
     gym_env.reset(seed=args.seed)
     gym_env = Monitor(gym_env)
+    
+    eval_env = gym.make("simulation_env-v0", render_mode="rgb_array")
+    eval_env.reset(seed=args.seed + 1000)
+
 
     n_actions = gym_env.action_space.shape[-1]
     action_noise = utils.DecayOUActionNoise(
@@ -139,6 +144,10 @@ def main() -> None:
         critic_lr_schedule=critic_lr_schedule,
         action_noise=action_noise,
         gym_env=gym_env,
+        eval_env=eval_env,
+        eval_freq_episodes=1,
+        fps=30,
+        video_dir=os.path.join(run_dir, "videos"),
         log_dir=run_dir,
         log_every=args.log_every,
         verbose=1,
