@@ -234,10 +234,9 @@ class EpisodeLogger(BaseCallback):
                     obs, reward, terminated, truncated, info = self.eval_env.step(action)
                     total_reward += reward
                     
-                    if info.get("is_target_reached", True):
-                        success = 1
-                    
                     if terminated or truncated:
+                        if info.get("is_target_reached", True):
+                            success = 1
                         done = True
 
                     if is_record:                    
