@@ -58,8 +58,8 @@ class Env(gym.Env):
         # action = [v_n, omega_n]
         self.action_space = spaces.Box(
             # Normalize action space to [-1, 1] for better compatibility with RL algorithms.
-            # low=np.array([0.0, -1.0], dtype=np.float32),
-            low=np.array([-1.0, 0.0], dtype=np.float32), # tanh -> [-1,1], sigmoid -> [0,1]
+            low=np.array([-1.0, -1.0], dtype=np.float32),
+            # low=np.array([-1.0, 0.0], dtype=np.float32), # tanh -> [-1,1], sigmoid -> [0,1]
             high=np.array([1.0, 1.0], dtype=np.float32),
             dtype=np.float32,
         )
@@ -104,7 +104,8 @@ class Env(gym.Env):
         {
             "lidar": spaces.Box(
                 low=0.0,
-                high=1.0,   # 0〜1（レンジ内）、障害物なしは100
+                # high=1.0,   # 0〜1（レンジ内）、障害物なしは100
+                high=100.0,
                 shape=(self.LIDAR_HISTORY_LEN, self.N_L + self.N_E),
                 dtype=np.float32,
             ),
@@ -381,7 +382,8 @@ class Env(gym.Env):
         v_n = (action[0] + 1) / 2 * self.V_MAX
         # Angular velocity: maps [-1, 1] to [-OMEGA_MAX, OMEGA_MAX]
         # Angular velocity from sigmoid [0, 1] -> maps to [-OMEGA_MAX, OMEGA_MAX]
-        omega_n = (action[1] - 0.5) * 2 * self.OMEGA_MAX
+        # omega_n = (action[1] - 0.5) * 2 * self.OMEGA_MAX
+        omega_n = action[1] * self.OMEGA_MAX
         # print(f"omega: {action[1]:.2f}  |  omega_n: {omega_n:.2f}")
 
         v_kmin = max(0, self.previous_v - self.A_MAX * dt)
@@ -448,8 +450,8 @@ class Env(gym.Env):
             if data[0] < self.LIDAR_RANGE_M:
                 distance = data[0] / self.LIDAR_RANGE_M
             else:
-                # distance = self.LIDAR_RANGE_M * 100 / self.LIDAR_RANGE_M
-                distance = 1.0
+                distance = self.LIDAR_RANGE_M * 100 / self.LIDAR_RANGE_M
+                # distance = 1.0
             processed_lidar.append(distance)
         processed_lidar += processed_lidar[: self.N_E]
 

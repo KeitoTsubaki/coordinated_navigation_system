@@ -54,7 +54,8 @@ class CustomActor(BasePolicy):
         # )  # Range [-1, 1] * omega_max = [-omega_max, omega_max]
 
         v_out = self.tanh(v)
-        omega_out = self.sigmoid(omega)
+        # omega_out = self.sigmoid(omega)
+        omega_out = self.tanh(omega)
 
         # Scale to the actual action range
         # output_v = v_out * self.v_max
