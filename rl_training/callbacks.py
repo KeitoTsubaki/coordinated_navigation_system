@@ -28,6 +28,7 @@ class EpisodeLogger(BaseCallback):
         action_noise,
         gym_env,
         eval_env,
+        eval_starts_episode: int,
         eval_freq_episodes: int,
         fps: int,
         video_dir: str,
@@ -43,6 +44,7 @@ class EpisodeLogger(BaseCallback):
         self.action_noise = action_noise
         self.gym_env = gym_env
         self.eval_env = eval_env
+        self.eval_starts_episode = eval_starts_episode
         self.eval_freq_episodes = eval_freq_episodes
         self.fps = fps
         self.video_dir = video_dir
@@ -53,15 +55,18 @@ class EpisodeLogger(BaseCallback):
         self.best_success_rate = -np.inf
         self.no_improve_counter = 0
 
+        self.periodic_test_count = 0
         self._log_file: Optional[object] = None
         self._csv_writer: Optional[csv.writer] = None
         self._episode_counter = 0
         self._recent_rewards: deque[float] = deque(maxlen=self.log_every)
         self._recent_lengths: deque[int] = deque(maxlen=self.log_every)
+
+        self.in_eval = False
         
         
         
-        self.n_eval_episodes = {"trap-shaped": 100, "zigzag": 100, "random": 100, "empty": 10}
+        self.n_eval_episodes = {"trap_shaped": 100, "zigzag": 100, "random": 100, "empty": 10}
         
     def _init_logger(self) -> None:
         os.makedirs(self.log_dir, exist_ok=True)
@@ -89,9 +94,20 @@ class EpisodeLogger(BaseCallback):
             [
                 "timestamp",
                 "episode",
+                "type",
                 "mean_reward",
                 "success_rate",
-                "overall_success_rate",
+            ]
+        )
+        velocity_log_path = os.path.join(self.log_dir, "velocity_log.csv")
+        self._velocity_log_file = open(velocity_log_path, "w", newline="", encoding="utf-8")
+        self._velocity_csv_writer = csv.writer(self._velocity_log_file)
+        self._velocity_csv_writer.writerow(
+            [
+                "timestamp",
+                "episode",
+                "linear_velocity",
+                "angular_velocity"
             ]
         )
 
@@ -113,6 +129,18 @@ class EpisodeLogger(BaseCallback):
 
         dones = np.array(dones).flatten()
         for idx, done in enumerate(dones):
+
+            timestamp = datetime.utcnow().isoformat()
+            self._velocity_csv_writer.writerow(
+                [
+                    timestamp,
+                    self._episode_counter,
+                    self.gym_env.unwrapped.current_v,
+                    self.gym_env.unwrapped.current_omega,
+                ]
+            )
+            self._velocity_log_file.flush()
+
             if not done:
                 continue
 
@@ -180,7 +208,7 @@ class EpisodeLogger(BaseCallback):
                     )
                 )
             
-            if self._episode_counter % self.eval_freq_episodes == 0:
+            if self._episode_counter % self.eval_freq_episodes == 0 and self._episode_counter >= self.eval_starts_episode:
                 overall_success_rate = self.periodic_test_and_record()
                 if pt == 1 and pz == 1:
                     if overall_success_rate > self.best_success_rate:
@@ -192,22 +220,20 @@ class EpisodeLogger(BaseCallback):
             if self.no_improve_counter >= self.patience:
                 if self.verbose > 0:
                     print("⏹ Early stopping triggered!")
-                self.model.stop_training = True
+                return False
                 
-            dr, _, _ = select.select([sys.stdin], [], [], 0)
-            if dr:
-                key = sys.stdin.read(1)
-                if key == 'q':
-                    print("⏹ Training stopped by user (key press).")
-                    self.model.stop_training = True
         
         return True
 
     def _on_training_end(self) -> None:
         self._close_logger()
 
+    
+
     def periodic_test_and_record(self) -> None:
         print("\nStarted periodic evaluation...")
+        # self.in_eval = True
+        self.periodic_test_count += 1
         total_episodes = sum(self.n_eval_episodes.values())
         episode_count = 0
         total_successes = []
@@ -215,37 +241,39 @@ class EpisodeLogger(BaseCallback):
             rewards, successes = [], []
             for ep in range(n_episodes):
                 is_record = False
-                # 1環境につき５つの動画を保存
-                if ep % 20 == 0:
+                # 1環境につき1つの動画を保存
+                if ep == 0:
                     is_record = True
+                writer=None
                 
-                obs, _ = self.eval_env.reset()
-                done = False
+                obs, _ = self.eval_env.reset(options={"map_type": map_name})
                 total_reward = 0.0
                 success = 0
                 
                 if is_record:
                     print(f"Recording evaluation video for map: {map_name}, episode: {ep + 1}")
-                    video_path = os.path.join(self.video_dir, f"{map_name}_episode_{ep + 1}.mp4")
+                    video_path = os.path.join(self.video_dir, f"{map_name}_test_{self.periodic_test_count}.mp4")
                     writer = imageio.get_writer(video_path, fps=self.fps, codec="libx264", format="mp4")
                 
-                while not done:
-                    action, _states = self.model.predict(obs, deterministic=True)
-                    obs, reward, terminated, truncated, info = self.eval_env.step(action)
-                    total_reward += reward
-                    
-                    if terminated or truncated:
-                        if info.get("is_target_reached", True):
-                            success = 1
-                        done = True
+                try:
+                    while True:
+                        action, _states = self.model.predict(obs, deterministic=True)
+                        obs, reward, terminated, truncated, info = self.eval_env.step(action)
+                        total_reward += reward
+                        
+                        if terminated or truncated:
+                            if info.get("is_target_reached", True):
+                                success = 1
+                            break
 
-                    if is_record:                    
-                        frame = self.eval_env.render()
-                        writer.append_data(frame)
-                    
-                if is_record:
-                    writer.close()
-                    print(f"Saved evaluation video to: {video_path}")
+                        if writer is not None:                 
+                            frame = self.eval_env.render()
+                            if frame is not None and frame.ndim == 3:
+                                writer.append_data(frame)
+                finally:   
+                    if writer is not None:
+                        writer.close()
+                        print(f"Saved evaluation video to: {video_path}")
                 
                 rewards.append(total_reward)
                 successes.append(success)
@@ -264,12 +292,30 @@ class EpisodeLogger(BaseCallback):
                     [
                         timestamp,
                         self._episode_counter,
+                        map_name,
                         mean_reward,
                         success_rate,
-                        overall_success_rate,
                     ]
                 )
                 self._eval_log_file.flush()
+        if self._eval_csv_writer is not None:
+            timestamp = datetime.utcnow().isoformat()
+            self._eval_csv_writer.writerow(
+                [
+                    timestamp,
+                    self._episode_counter,
+                    "overall",
+                    mean_reward,
+                    overall_success_rate,
+                ]
+            )
+            self._eval_log_file.flush()
+        
+        save_path = os.path.join(self.log_dir, f"model_ep{self._episode_counter}.zip")
+        self.model.save(save_path)
+        print(f"[PeriodicTest] Saved model to {save_path}")
+        
+        # self.in_eval = False
         return overall_success_rate
     
     def show_test_progress(self, episode: int, total_episodes: int) -> None:
