@@ -13,6 +13,21 @@ class CustomDDPG(DDPG):
         self.actor_lr_schedule = action_lr_schedule
         self.critic_lr_schedule = critic_lr_schedule
 
+    # --- Helper: モデル内から LiDARNetwork を取り出す ---
+    @staticmethod
+    def _find_lidar_module(module):
+        # サブモジュールを総なめにして LiDARNetwork を見つける
+        for m in module.modules():
+            if m.__class__.__name__ == "LiDARNetwork":
+                return m
+        raise RuntimeError("LiDARNetwork module not found in given model.")
+
+    @staticmethod
+    def _copy_params(dst_module, src_module):
+        with th.no_grad():
+            for p_dst, p_src in zip(dst_module.parameters(), src_module.parameters()):
+                p_dst.copy_(p_src)
+
     def _update_learning_rate(self, optimizers, lr_schedule):
         new_lr = lr_schedule(self._current_progress_remaining)
         for optimizer in optimizers:
@@ -46,9 +61,19 @@ class CustomDDPG(DDPG):
                     0, self.target_policy_noise
                 )
                 noise = noise.clamp(-self.target_noise_clip, self.target_noise_clip)
-                next_actions = (
-                    self.actor_target(replay_data.next_observations) + noise
-                ).clamp(-1, 1)
+                # next_actions = (
+                #     self.actor_target(replay_data.next_observations) + noise
+                # ).clamp(-1, 1)
+                # 環境のアクション空間に合わせて clamp
+                action_low = th.as_tensor(
+                    self.action_space.low, device=self.device, dtype=noise.dtype
+                )
+                action_high = th.as_tensor(
+                    self.action_space.high, device=self.device, dtype=noise.dtype
+                )
+
+                next_actions = self.actor_target(replay_data.next_observations) + noise
+                next_actions = th.max(th.min(next_actions, action_high), action_low)
 
                 # Compute the next Q-values: min over all critics targets
                 next_q_values = th.cat(
@@ -68,7 +93,7 @@ class CustomDDPG(DDPG):
 
             # Compute critic loss
             critic_loss = sum(
-                F.mse_loss(current_q, target_q_values) for current_q in current_q_values
+                F.smooth_l1_loss(current_q, target_q_values) for current_q in current_q_values
             )
             assert isinstance(critic_loss, th.Tensor)
             critic_losses.append(critic_loss.item())
@@ -77,6 +102,10 @@ class CustomDDPG(DDPG):
             self.critic.optimizer.zero_grad()
             critic_loss.backward()
             self.critic.optimizer.step()
+
+            critic_lidar = self._find_lidar_module(self.critic)
+            actor_lidar  = self._find_lidar_module(self.actor)
+            self._copy_params(actor_lidar, critic_lidar)
 
             # Delayed policy updates
             if self._n_updates % self.policy_delay == 0:
@@ -90,6 +119,11 @@ class CustomDDPG(DDPG):
                 self.actor.optimizer.zero_grad()
                 actor_loss.backward()
                 self.actor.optimizer.step()
+
+                critic_lidar = self._find_lidar_module(self.critic)
+                actor_lidar  = self._find_lidar_module(self.actor)
+                self._copy_params(critic_lidar, actor_lidar)
+
 
                 polyak_update(
                     self.critic.parameters(), self.critic_target.parameters(), self.tau
