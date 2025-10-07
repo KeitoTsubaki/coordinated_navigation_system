@@ -5,14 +5,17 @@ from critic import CustomCritic
 
 
 class CustomDDPGPolicy(TD3Policy):
-    def __init__(self, *args, **kwargs):
-        self.shared_lidar_network = None
-        super().__init__(*args, **kwargs)
+    # def __init__(self, *args, **kwargs):
+    #     self.shared_lidar_network = None
+    #     super().__init__(*args, **kwargs)
 
-    def _get_shared_lidar_network(self):
-        if self.shared_lidar_network is None:
-            self.shared_lidar_network = LiDARNetwork()
-        return self.shared_lidar_network
+    # def _get_shared_lidar_network(self):
+    #     if self.shared_lidar_network is None:
+    #         self.shared_lidar_network = LiDARNetwork()
+    #     return self.shared_lidar_network
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
     def _build(self, lr_schedule):
         super()._build(lr_schedule)
@@ -23,13 +26,15 @@ class CustomDDPGPolicy(TD3Policy):
     """
 
     def make_actor(self, features_extractor=None):
-        actor = CustomActor(
-            self.observation_space, self.action_space, self._get_shared_lidar_network()
-        )
+        # actor = CustomActor(
+        #     self.observation_space, self.action_space, self._get_shared_lidar_network()
+        # )
+        actor = CustomActor(self.observation_space, self.action_space, LiDARNetwork())
         return actor.to(self.device)
 
     def make_critic(self, features_extractor=None):
-        critic = CustomCritic(
-            self.observation_space, self.action_space, self._get_shared_lidar_network()
-        )
+        # critic = CustomCritic(
+        #     self.observation_space, self.action_space, self._get_shared_lidar_network()
+        # )
+        critic = CustomCritic(self.observation_space, self.action_space, LiDARNetwork())
         return critic.to(self.device)
