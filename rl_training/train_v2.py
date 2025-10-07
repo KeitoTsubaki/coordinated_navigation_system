@@ -122,7 +122,7 @@ def main() -> None:
     gym_env.reset(seed=args.seed)
     gym_env = Monitor(gym_env)
     
-    eval_env = gym.make("simulation_env-v0", render_mode="rgb_array")
+    eval_env = gym.make("simulation_env-v0", render_mode="rgb_array", eval_mode=True)
     eval_env.reset(seed=args.seed + 1000)
 
 
@@ -145,8 +145,9 @@ def main() -> None:
         action_noise=action_noise,
         gym_env=gym_env,
         eval_env=eval_env,
+        eval_starts_episode=700,
         eval_freq_episodes=100,
-        fps=30,
+        fps=10,
         video_dir=os.path.join(run_dir, "videos"),
         log_dir=run_dir,
         log_every=args.log_every,
