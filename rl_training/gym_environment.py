@@ -13,9 +13,9 @@ from simulation_core import environment
 
 
 class Env(gym.Env):
-    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 30}
+    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 10}
 
-    def __init__(self, render_mode=None):
+    def __init__(self, render_mode=None, eval_mode=False):
         super().__init__()
 
         # ===== Initialize and load config files =====
@@ -36,6 +36,7 @@ class Env(gym.Env):
         self.env = environment.SimCoreEnvironment(
             render_mode=self.render_mode, config_path=simulator_config_path
         )
+        self.env.eval_mode = eval_mode
 
         self.V_MAX = self.env.V_MAX
         self.OMEGA_MAX = self.env.OMEGA_MAX
@@ -58,8 +59,7 @@ class Env(gym.Env):
         self.action_space = spaces.Box(
             # Normalize action space to [-1, 1] for better compatibility with RL algorithms.
             # low=np.array([0.0, -1.0], dtype=np.float32),
-            # high=np.array([1.0, 1.0], dtype=np.float32),
-            low=np.array([-1.0, 0.0], dtype=np.float32),
+            low=np.array([-1.0, 0.0], dtype=np.float32), # tanh -> [-1,1], sigmoid -> [0,1]
             high=np.array([1.0, 1.0], dtype=np.float32),
             dtype=np.float32,
         )
@@ -75,31 +75,56 @@ class Env(gym.Env):
             math.sqrt(self.env.SCREEN_W**2 + self.env.SCREEN_H**2)
             / self.env.PIXELS_PER_METER
         )
+        # self.observation_space = spaces.Dict(
+        #     {
+        #         "lidar": spaces.Box(
+        #             low=0,
+        #             high=self.LIDAR_RANGE_M * 100,  # LiDAR values are already in meters
+        #             shape=(4, self.N_L + self.N_E),
+        #             dtype=np.float32,
+        #         ),
+        #         "goal": spaces.Box(
+        #             low=np.array([0, -np.pi], dtype=np.float32),
+        #             high=np.array([max_dist, np.pi], dtype=np.float32),
+        #             dtype=np.float32,
+        #         ),
+        #         "velocity": spaces.Box(
+        #             low=np.array([0, -self.OMEGA_MAX], dtype=np.float32),
+        #             high=np.array([self.V_MAX, self.OMEGA_MAX], dtype=np.float32),
+        #             dtype=np.float32,
+        #         ),
+        #         "closest_obstacle": spaces.Box(
+        #             low=np.array([0, -np.pi], dtype=np.float32),
+        #             high=np.array([max_dist, np.pi], dtype=np.float32),
+        #             dtype=np.float32,
+        #         ),
+        #     }
+        # )
         self.observation_space = spaces.Dict(
-            {
-                "lidar": spaces.Box(
-                    low=0,
-                    high=self.LIDAR_RANGE_M * 100,  # LiDAR values are already in meters
-                    shape=(4, self.N_L + self.N_E),
-                    dtype=np.float32,
-                ),
-                "goal": spaces.Box(
-                    low=np.array([0, -np.pi], dtype=np.float32),
-                    high=np.array([max_dist, np.pi], dtype=np.float32),
-                    dtype=np.float32,
-                ),
-                "velocity": spaces.Box(
-                    low=np.array([0, -self.OMEGA_MAX], dtype=np.float32),
-                    high=np.array([self.V_MAX, self.OMEGA_MAX], dtype=np.float32),
-                    dtype=np.float32,
-                ),
-                "closest_obstacle": spaces.Box(
-                    low=np.array([0, -np.pi], dtype=np.float32),
-                    high=np.array([max_dist, np.pi], dtype=np.float32),
-                    dtype=np.float32,
-                ),
-            }
-        )
+        {
+            "lidar": spaces.Box(
+                low=0.0,
+                high=1.0,   # 0〜1（レンジ内）、障害物なしは100
+                shape=(self.LIDAR_HISTORY_LEN, self.N_L + self.N_E),
+                dtype=np.float32,
+            ),
+            "goal": spaces.Box(
+                low=np.array([0.0, -1.0], dtype=np.float32),    # 距離は未正規化、角度は-1〜1
+                high=np.array([max_dist,  1.0], dtype=np.float32),
+                dtype=np.float32,
+            ),
+            "velocity": spaces.Box(
+                low=np.array([0.0, -1.0], dtype=np.float32),    # v/Vmax, ω/Ωmax
+                high=np.array([1.0,  1.0], dtype=np.float32),
+                dtype=np.float32,
+            ),
+            "closest_obstacle": spaces.Box(
+                low=np.array([0.0, -1.0], dtype=np.float32),
+                high=np.array([1.0,  1.0], dtype=np.float32),
+                dtype=np.float32,
+            ),
+        }
+    )
 
         self.clock = None
 
@@ -177,9 +202,12 @@ class Env(gym.Env):
         # render map and initialize robot ant target positions
 
         # Seletct map type based on pt and pz
-        map_type = self._randomly_seletct_map(
-            pt=self.env.get_pt(), pz=self.env.get_pz()
-        )
+        if options is not None and "map_type" in options:
+            map_type = options["map_type"]
+        else:
+            map_type = self._randomly_seletct_map(
+                pt=self.env.get_pt(), pz=self.env.get_pz()
+            )
         # map_type = "empty"
         self.env.reset(map_type=map_type)
         # self.env.reset_path()
@@ -338,7 +366,7 @@ class Env(gym.Env):
         r_v = r_v_v + r_v_omega
 
         # r_m: minor penalty to encourage the robot to actively explore the environment and shorten the trajectory. penalty for time passage
-        r_m = -0.1
+        r_m = -0.001
 
         r_d = r_g + r_c + r_v + r_m
 
@@ -349,9 +377,12 @@ class Env(gym.Env):
         # De-normalize the action from [-1, 1] to the robot's physical limits.
         # Linear velocity: maps [-1, 1] to [0, V_MAX]
         # Note: action[0] is used. A value of -1 maps to 0, and 1 maps to V_MAX.
+        # Linear velocity from tanh [-1, 1] -> maps to [0, V_MAX] (robot only moves forward)
         v_n = (action[0] + 1) / 2 * self.V_MAX
         # Angular velocity: maps [-1, 1] to [-OMEGA_MAX, OMEGA_MAX]
+        # Angular velocity from sigmoid [0, 1] -> maps to [-OMEGA_MAX, OMEGA_MAX]
         omega_n = (action[1] - 0.5) * 2 * self.OMEGA_MAX
+        # print(f"omega: {action[1]:.2f}  |  omega_n: {omega_n:.2f}")
 
         v_kmin = max(0, self.previous_v - self.A_MAX * dt)
         v_kmax = min(self.V_MAX, self.previous_v + self.A_MAX * dt)
@@ -374,13 +405,12 @@ class Env(gym.Env):
         # v_e は m/s, omega_e は rad/s
         # 位置はピクセル単位で計算するため、v_eをピクセル/秒に変換
         v_e_pps = v_e * self.env.PIXELS_PER_METER
-        dx = (
-            -v_e_pps * math.sin(self.env.robot_theta) * dt
-        )  # 反時計回りを正とするためsinの符号を反転
+        dx = -v_e_pps * math.sin(self.env.robot_theta) * dt
         dy = (
             -v_e_pps * math.cos(self.env.robot_theta) * dt
-        )  # Pygameのy軸は下向きが正のため、符号を反転. cosは不変
+        )  # Pygameのy軸は下向きが正のため、cosの符号を反転
         dtheta = omega_e * dt
+        # print(f"omega_e: {omega_e:.2f}  |  dtheta: {dtheta:.2f}")
 
         next_robot_position = (
             self.env.robot_position[0] + dx,
@@ -416,9 +446,10 @@ class Env(gym.Env):
         processed_lidar = []
         for data in sensor_data:
             if data[0] < self.LIDAR_RANGE_M:
-                distance = data[0]
+                distance = data[0] / self.LIDAR_RANGE_M
             else:
-                distance = self.LIDAR_RANGE_M * 100
+                # distance = self.LIDAR_RANGE_M * 100 / self.LIDAR_RANGE_M
+                distance = 1.0
             processed_lidar.append(distance)
         processed_lidar += processed_lidar[: self.N_E]
 
@@ -436,16 +467,22 @@ class Env(gym.Env):
 
         obs_lidar = np.array(list(self.lidar_history), dtype=np.float32)
         # print("obs_lidar shape:", obs_lidar.shape)
-        obs_goal = np.array(self.env.get_goal_info(), dtype=np.float32)
+        goal_dist, goal_angle = self.env.get_goal_info()
+        goal_angle_n = np.clip(goal_angle / math.pi, -1.0, 1.0)
+        obs_goal = np.array([goal_dist, goal_angle_n], dtype=np.float32)
         # print("robot theta: ", self.env.robot_theta)
         # print("obs_goal shape:", obs_goal.shape)
         # print("obs_goal:", obs_goal)
-        obs_velocity = np.array([self.current_v, self.current_omega], dtype=np.float32)
+        v_n = np.clip((self.current_v or 0.0) / self.V_MAX, 0.0, 1.0)
+        omega_n = np.clip((self.current_omega or 0.0) / self.OMEGA_MAX, -1.0, 1.0)
+        obs_velocity = np.array([v_n, omega_n], dtype=np.float32)
         # print("obs_velocity shape:", obs_velocity.shape)
         # print("obs_velocity:", obs_velocity)
-        obs_closest_obstacle = np.array(
-            self.env.get_closest_obstacle_info(), dtype=np.float32
-        )
+
+        co_dist, co_angle = self.env.get_closest_obstacle_info()
+        co_dist_n = np.clip(co_dist / self.LIDAR_RANGE_M, 0.0, 1.0)
+        co_angle_n = np.clip(co_angle / math.pi, -1.0, 1.0)
+        obs_closest_obstacle = np.array([co_dist_n, co_angle_n], dtype=np.float32)
 
         # # --- Debug Print ---
         # print(f"Robot Theta: {self.env.robot_theta:.2f} rad (0:UP)")
