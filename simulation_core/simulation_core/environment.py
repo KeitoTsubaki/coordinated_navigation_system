@@ -140,6 +140,7 @@ class SimCoreEnvironment:
         self.closest_obstacle_info = None
         self.sensor_data = None
         self.path = []
+        self.eval_mode = False
 
     # ===== Visualization functions =====
 
@@ -174,6 +175,20 @@ class SimCoreEnvironment:
                 position[1] - self.ROBOT_RADIUS_PIXELS - theta_text.get_height() - 5,
             ),
         )
+    
+    # def visualize_velocities(self, position, color=(0, 0, 255)):
+    #     font = pygame.font.SysFont("arial", 16)
+    #     v_text = font.render(
+    #         f"{self.v:.1f}(m/s), {self.omega:.1f}(rad/s)", True, color
+    #     )
+    #     self.robot_and_lidar_layer.blit(
+    #         v_text,
+    #         (
+    #             position[0] - v_text.get_width() // 2,
+    #             position[1] - self.ROBOT_RADIUS_PIXELS - v_text.get_height() - 5,
+    #         ),
+    #     )
+
 
     def visualize_goal_info(self, position, color=(255, 0, 0)):
         distance_to_target, angle_to_target = self.get_goal_info()
@@ -195,8 +210,13 @@ class SimCoreEnvironment:
             sign = "+"
         elif angle_to_target_deg < 0:
             sign = "-"
+        # distance_text = font.render(
+        #     f"{distance_to_target:.2f}(m), {sign}{angle_to_target_deg:.2f}(deg)",
+        #     True,
+        #     color,
+        # )
         distance_text = font.render(
-            f"{distance_to_target:.2f}(m), {sign}{angle_to_target_deg:.2f}(deg)",
+            f"target: {distance_to_target:.2f}(m)",
             True,
             color,
         )
@@ -236,8 +256,13 @@ class SimCoreEnvironment:
             sign = "+"
         elif angle_to_obstacle_deg < 0:
             sign = "-"
+        # distance_text = font.render(
+        #     f"{distance_to_obstacle:.2f}(m), {sign}{abs(angle_to_obstacle_deg):.2f}(deg)",
+        #     True,
+        #     color,
+        # )
         distance_text = font.render(
-            f"{distance_to_obstacle:.2f}(m), {sign}{abs(angle_to_obstacle_deg):.2f}(deg)",
+            f"obstacle: {distance_to_obstacle:.2f}(m)",
             True,
             color,
         )
@@ -323,6 +348,7 @@ class SimCoreEnvironment:
             self.visualize_goal_info(self.robot_position)
             self.visualize_closest_obstacle_info(self.robot_position)
             # self.visualize_robot_theta(self.robot_position)
+            # self.visualize_velocities(self.robot_position)
             pygame.draw.circle(
                 self.robot_and_lidar_layer,
                 self.ROBOT_COLOR,
@@ -641,9 +667,13 @@ class SimCoreEnvironment:
 
     def update_pt(self):
         self.pt = min(self.st / self.K8, 1)
+        if self.eval_mode:
+            self.pt = 1
 
     def update_pz(self):
         self.pz = min(self.sz / self.K9, 1)
+        if self.eval_mode:
+            self.pz = 1
 
     def get_pt(self):
         return self.pt
