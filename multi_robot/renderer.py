@@ -303,7 +303,7 @@ class MultiRobotSimulator:
         if robot is self.robot_states[self.selected_robot_index]:
             pygame.draw.circle(
                 self.env.robot_and_lidar_layer,
-                (255, 255, 0),
+                (0, 255, 0),
                 (int(position[0]), int(position[1])),
                 int(self.robot_frame_radius + 6),
                 width=2,
@@ -343,7 +343,7 @@ class MultiRobotSimulator:
         if robot.closest_obstacle[0] != float("inf"):
             lines.append(f"obstacle: {robot.closest_obstacle[0]:.1f}m")
         for line_index, text in enumerate(lines):
-            label = font.render(text, True, (255, 255, 255))
+            label = font.render(text, True, (0, 0, 0))
             text_position = (
                 int(robot.position[0] - label.get_width() / 2),
                 int(
@@ -363,10 +363,10 @@ class MultiRobotSimulator:
         hud_lines = [
             f"Map: {self.env.map_type}",
             f"Selected: {selected.name}",
-            "Controls: TAB/0-9 select, W/S move, Q/E rotate, C cycle map, SPACE reset, L toggle LiDAR",
+            "Controls: TAB/0-9 select, W move forward, Q/E rotate, C cycle map, SPACE reset, L toggle LiDAR",
         ]
         for index, text in enumerate(hud_lines):
-            label = font.render(text, True, (255, 255, 255))
+            label = font.render(text, True, (0, 0, 0))
             self.env.robot_and_lidar_layer.blit(label, (10, 10 + index * 20))
 
     # ------------------------------------------------------------------
@@ -433,8 +433,8 @@ class MultiRobotSimulator:
 
         if keys[pygame.K_w]:
             moved |= self._attempt_move(robot, -self.manual_step_pixels)
-        if keys[pygame.K_s]:
-            moved |= self._attempt_move(robot, self.manual_step_pixels)
+        # if keys[pygame.K_s]:
+        #     moved |= self._attempt_move(robot, self.manual_step_pixels)
         if keys[pygame.K_q]:
             robot.theta += self.manual_rotation_step
             moved = True
@@ -499,13 +499,13 @@ class MultiRobotSimulator:
                     robot.position,
                     self.env.PIXELS_PER_METER,
                 )
-                pygame.draw.line(
-                    self.env.robot_and_lidar_layer,
-                    self.lidar_line_color,
-                    (int(robot.position[0]), int(robot.position[1])),
-                    (int(point[0]), int(point[1])),
-                    1,
-                )
+                # pygame.draw.line(
+                #     self.env.robot_and_lidar_layer,
+                #     self.lidar_line_color,
+                #     (int(robot.position[0]), int(robot.position[1])),
+                #     (int(point[0]), int(point[1])),
+                #     1,
+                # )
                 pygame.draw.circle(
                     self.env.robot_and_lidar_layer,
                     self.lidar_points_color,
@@ -533,23 +533,13 @@ def demo() -> None:
     simulator.set_robot_target(0, simulator.meters_to_pixels(1.0, 1.0))
     simulator.set_robot_target(1, simulator.meters_to_pixels(-1.0, -1.0))
 
-    t = 0.0
     clock = pygame.time.Clock()
     try:
         while simulator.running:
             simulator.process_events()
-            # Simple circular trajectories for demonstration purposes.
-            x0 = math.cos(t) * 2.0
-            y0 = math.sin(t) * 2.0
-            simulator.set_robot_pose(0, (x0, y0), theta=t / 2, in_meters=True)
-
-            x1 = math.cos(-t) * 1.5
-            y1 = math.sin(-t) * 1.5
-            simulator.set_robot_pose(1, (x1, y1), theta=-t / 2, in_meters=True)
 
             simulator.draw_scene()
             clock.tick(30)
-            t += 0.05
     finally:
         simulator.close()
 
