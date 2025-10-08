@@ -12,7 +12,7 @@ from __future__ import annotations
 import math
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Deque, List, Optional, Sequence, Tuple
+from typing import Deque, List, Optional, Sequence, Tuple, Union
 
 import importlib
 import importlib.resources
@@ -30,8 +30,19 @@ else:
 
 SimCoreEnvironment = _environment_module.SimCoreEnvironment
 
+_sensor_module = importlib.import_module(f"{_environment_module.__package__}.sensor")
+_utils_module = importlib.import_module(f"{_environment_module.__package__}.utils")
+
+LiDARSensor = _sensor_module.LiDARSensor
+
 Color = Tuple[int, int, int]
 Position = Tuple[float, float]
+
+
+def _to_rgb(color: Union[Color, str]) -> Color:
+    if isinstance(color, str):
+        return _utils_module.hex_to_rgb(color)
+    return color
 
 
 @dataclass
@@ -44,6 +55,10 @@ class RobotState:
     color: Color = (0, 128, 255)
     target: Optional[Position] = None
     path: Deque[Tuple[Position, float]] = field(default_factory=deque)
+    sensor: Optional[LiDARSensor] = None
+    sensor_data: List[Tuple[float, float]] = field(default_factory=list)
+    closest_obstacle: Tuple[float, float] = (float("inf"), 0.0)
+    lidar_enabled: bool = True
 
 
 class MultiRobotSimulator:
@@ -57,6 +72,7 @@ class MultiRobotSimulator:
         config_path: Optional[str] = None,
         path_history: int = 256,
         show_labels: bool = True,
+        manual_control: bool = True,
     ) -> None:
         if config_path is None:
             config_path = str(
@@ -69,11 +85,18 @@ class MultiRobotSimulator:
         self.path_history = max(0, path_history)
         self.show_labels = show_labels
         self.running = True
+        self.manual_control = manual_control
+        self.selected_robot_index = 0
+        self.manual_step_pixels = 5
+        self.manual_rotation_step = 0.1
 
         self.robot_radius_pixels = (
             self.env.ROBOT_RADIUS_M * 0.8 * self.env.PIXELS_PER_METER
         )
         self.robot_frame_radius = self.env.ROBOT_RADIUS_M * self.env.PIXELS_PER_METER
+        self.obstacle_color_rgb = _to_rgb(self.env.OBSTACLE_COLOR)
+        self.lidar_line_color = _to_rgb(self.env.LIDAR_LINE_COLOR)
+        self.lidar_points_color = _to_rgb(self.env.LIDAR_POINTS_COLOR)
 
         self.robot_states: List[RobotState] = []
         for i in range(num_robots):
@@ -88,6 +111,7 @@ class MultiRobotSimulator:
                     path=deque(maxlen=self.path_history or None),
                 )
             )
+            self.robot_states[-1].sensor = self._create_sensor()
 
         # Create the first map.  By default we use the same map type as the
         # single robot simulator so that existing scenarios work out of the box.
@@ -132,6 +156,7 @@ class MultiRobotSimulator:
             theta=theta,
             path=deque(maxlen=self.path_history or None),
         )
+        robot.sensor = self._create_sensor()
         self.robot_states.append(robot)
         return len(self.robot_states) - 1
 
@@ -150,10 +175,10 @@ class MultiRobotSimulator:
         if in_meters:
             position = self.meters_to_pixels(*position)
 
-        robot.position = position
+        robot.position = (float(position[0]), float(position[1]))
         robot.theta = theta
         if record_path and self.path_history != 0:
-            robot.path.append((position, theta))
+            robot.path.append((robot.position, robot.theta))
 
     def set_robot_target(
         self,
@@ -180,6 +205,7 @@ class MultiRobotSimulator:
 
         self.env.reset(map_type)
         self.clear_paths()
+        self._recenter_robots()
 
     # ------------------------------------------------------------------
     # Rendering utilities
@@ -189,6 +215,7 @@ class MultiRobotSimulator:
 
         self.env.clear_robot_and_lidar_layer()
         for robot in self.robot_states:
+            self._update_lidar(robot)
             if robot.path:
                 self._draw_path(robot)
             if robot.target is not None:
@@ -196,6 +223,7 @@ class MultiRobotSimulator:
             self._draw_robot(robot)
             if self.show_labels:
                 self._draw_label(robot)
+        self._draw_hud()
         self.env.screen.blit(self.env.robot_and_lidar_layer, (0, 0))
 
         if self.env.render_mode == "human":
@@ -218,6 +246,27 @@ class MultiRobotSimulator:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    self.running = False
+                elif event.key == pygame.K_c:
+                    self._cycle_map()
+                elif event.key == pygame.K_SPACE:
+                    self.set_map(self.env.map_type)
+                elif event.key == pygame.K_TAB:
+                    self._select_next_robot()
+                elif pygame.K_1 <= event.key <= pygame.K_9:
+                    index = event.key - pygame.K_1
+                    if index < len(self.robot_states):
+                        self.selected_robot_index = index
+                elif event.key == pygame.K_0 and len(self.robot_states) >= 10:
+                    self.selected_robot_index = 9
+                elif event.key == pygame.K_l:
+                    robot = self.robot_states[self.selected_robot_index]
+                    robot.lidar_enabled = not robot.lidar_enabled
+
+        if self.manual_control and self.robot_states:
+            self._operate_moving()
 
     def close(self) -> None:
         """Shut down pygame resources."""
@@ -253,6 +302,14 @@ class MultiRobotSimulator:
             (int(head_position[0]), int(head_position[1])),
             width=2,
         )
+        if robot is self.robot_states[self.selected_robot_index]:
+            pygame.draw.circle(
+                self.env.robot_and_lidar_layer,
+                (255, 255, 0),
+                (int(position[0]), int(position[1])),
+                int(self.robot_frame_radius + 6),
+                width=2,
+            )
 
     def _draw_target(self, robot: RobotState) -> None:
         assert robot.target is not None
@@ -278,12 +335,41 @@ class MultiRobotSimulator:
 
     def _draw_label(self, robot: RobotState) -> None:
         font = pygame.font.SysFont("arial", 16)
-        label = font.render(robot.name, True, (255, 255, 255))
-        text_position = (
-            int(robot.position[0] - label.get_width() / 2),
-            int(robot.position[1] - self.robot_frame_radius - label.get_height() - 4),
-        )
-        self.env.robot_and_lidar_layer.blit(label, text_position)
+        lines = [robot.name]
+        if robot.target is not None:
+            tx, ty = robot.target
+            distance = math.hypot(
+                tx - robot.position[0], ty - robot.position[1]
+            ) / self.env.PIXELS_PER_METER
+            lines.append(f"target: {distance:.1f}m")
+        if robot.closest_obstacle[0] != float("inf"):
+            lines.append(f"obstacle: {robot.closest_obstacle[0]:.1f}m")
+        for line_index, text in enumerate(lines):
+            label = font.render(text, True, (255, 255, 255))
+            text_position = (
+                int(robot.position[0] - label.get_width() / 2),
+                int(
+                    robot.position[1]
+                    - self.robot_frame_radius
+                    - label.get_height() * (len(lines) - line_index)
+                    - 4
+                ),
+            )
+            self.env.robot_and_lidar_layer.blit(label, text_position)
+
+    def _draw_hud(self) -> None:
+        if not self.robot_states:
+            return
+        font = pygame.font.SysFont("arial", 16)
+        selected = self.robot_states[self.selected_robot_index]
+        hud_lines = [
+            f"Map: {self.env.map_type}",
+            f"Selected: {selected.name}",
+            "Controls: TAB/0-9 select, W/S move, Q/E rotate, C cycle map, SPACE reset, L toggle LiDAR",
+        ]
+        for index, text in enumerate(hud_lines):
+            label = font.render(text, True, (255, 255, 255))
+            self.env.robot_and_lidar_layer.blit(label, (10, 10 + index * 20))
 
     # ------------------------------------------------------------------
     # Utility helpers
@@ -308,6 +394,138 @@ class MultiRobotSimulator:
             (0, 206, 209),
         ]
         return palette[index % len(palette)]
+
+    def _create_sensor(self) -> LiDARSensor:
+        return LiDARSensor(
+            Range=self.env.LIDAR_RANGE_M,
+            uncertainty=(0, 0),
+            pixels_per_meter=self.env.PIXELS_PER_METER,
+            lidar_resolution=self.env.LIDAR_RESOLUTION,
+            screen_w=self.env.SCREEN_W,
+            screen_h=self.env.SCREEN_H,
+        )
+
+    def _recenter_robots(self) -> None:
+        if not self.robot_states:
+            return
+        radius = max(self.env.ROBOT_RADIUS_PIXELS * 4, 1)
+        center_x, center_y = self.env.SCREEN_CENTER_X, self.env.SCREEN_CENTER_Y
+        for index, robot in enumerate(self.robot_states):
+            angle = 2 * math.pi * index / max(1, len(self.robot_states))
+            robot.position = (
+                center_x + radius * math.cos(angle),
+                center_y + radius * math.sin(angle),
+            )
+            robot.theta = 0.0
+            robot.path.clear()
+            robot.sensor_data = []
+            robot.closest_obstacle = (float("inf"), 0.0)
+
+    def _cycle_map(self) -> None:
+        next_map_type = _utils_module.switch_map_type(
+            self.env.map_type, self.env.np_random, switch_mode="cycle"
+        )
+        if next_map_type is not None:
+            self.set_map(next_map_type)
+
+    def _operate_moving(self) -> None:
+        robot = self.robot_states[self.selected_robot_index]
+        keys = pygame.key.get_pressed()
+        moved = False
+
+        if keys[pygame.K_w]:
+            moved |= self._attempt_move(robot, -self.manual_step_pixels)
+        if keys[pygame.K_s]:
+            moved |= self._attempt_move(robot, self.manual_step_pixels)
+        if keys[pygame.K_q]:
+            robot.theta += self.manual_rotation_step
+            moved = True
+        if keys[pygame.K_e]:
+            robot.theta -= self.manual_rotation_step
+            moved = True
+
+        if moved:
+            robot.theta = (robot.theta + math.pi) % (2 * math.pi) - math.pi
+
+        if moved and self.path_history != 0:
+            robot.path.append((robot.position, robot.theta))
+
+    def _attempt_move(self, robot: RobotState, step: float) -> bool:
+        dx = step * math.sin(robot.theta)
+        dy = step * math.cos(robot.theta)
+        next_position = (robot.position[0] + dx, robot.position[1] + dy)
+
+        if self._is_collision(next_position):
+            return False
+
+        robot.position = next_position
+        return True
+
+    def _is_collision(self, position: Position) -> bool:
+        for i in range(self.env.NUM_CHECK_POINTS):
+            angle = 2 * math.pi * i / self.env.NUM_CHECK_POINTS
+            check_x = int(position[0] + self.env.ROBOT_RADIUS_PIXELS * math.cos(angle))
+            check_y = int(position[1] + self.env.ROBOT_RADIUS_PIXELS * math.sin(angle))
+
+            if not (0 <= check_x < self.env.SCREEN_W and 0 <= check_y < self.env.SCREEN_H):
+                return True
+
+            pixel_color = self.env.obstacle_layer.get_at((check_x, check_y))
+            if (pixel_color[0], pixel_color[1], pixel_color[2]) == self.obstacle_color_rgb:
+                return True
+
+        return False
+
+    def _update_lidar(self, robot: RobotState) -> None:
+        if not robot.lidar_enabled or robot.sensor is None:
+            robot.sensor_data = []
+            robot.closest_obstacle = (float("inf"), 0.0)
+            return
+
+        robot.sensor.position = (
+            int(robot.position[0]),
+            int(robot.position[1]),
+        )
+        robot.sensor.theta = robot.theta
+        raw_sensor_data = robot.sensor.sense_obstacles(
+            self.env.obstacle_layer, self.env.OBSTACLE_COLOR
+        )
+        robot.sensor_data = list(raw_sensor_data) if raw_sensor_data else []
+
+        if robot.sensor_data:
+            for distance, relative_angle in robot.sensor_data:
+                obstacle_angle = robot.theta - math.pi / 2 - relative_angle
+                point = _utils_module.AD2pos(
+                    distance,
+                    obstacle_angle,
+                    robot.position,
+                    self.env.PIXELS_PER_METER,
+                )
+                pygame.draw.line(
+                    self.env.robot_and_lidar_layer,
+                    self.lidar_line_color,
+                    (int(robot.position[0]), int(robot.position[1])),
+                    (int(point[0]), int(point[1])),
+                    1,
+                )
+                pygame.draw.circle(
+                    self.env.robot_and_lidar_layer,
+                    self.lidar_points_color,
+                    (int(point[0]), int(point[1])),
+                    2,
+                )
+            robot.closest_obstacle = robot.sensor.get_closest_obstacle_info(
+                robot.sensor_data
+            )
+        else:
+            robot.closest_obstacle = (float("inf"), 0.0)
+
+    def _select_next_robot(self) -> None:
+        if not self.robot_states:
+            return
+        self.selected_robot_index = (self.selected_robot_index + 1) % len(
+            self.robot_states
+        )
 
 
 def demo() -> None:
