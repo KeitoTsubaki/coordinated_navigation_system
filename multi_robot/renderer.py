@@ -76,9 +76,7 @@ class MultiRobotSimulator:
     ) -> None:
         if config_path is None:
             config_path = str(
-                importlib.resources.files("simulation_core")
-                .joinpath("config", "simulator_config.yaml")
-                .resolve()
+                importlib.resources.files("simulation_core").parent / "config" / "simulator_config.yaml"
             )
 
         self.env = SimCoreEnvironment(render_mode=render_mode, config_path=config_path)
