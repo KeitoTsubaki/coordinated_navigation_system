@@ -403,8 +403,7 @@ class MultiRobotSimulator:
         font = pygame.font.SysFont("arial", 16)
         selected = self.robot_states[self.selected_robot_index]
         hud_lines = [
-            f"Selected: {selected.name}",
-            "Controls: TAB/0-9 select, W move forward, Q/E rotate, C cycle map, SPACE reset, L toggle LiDAR",
+            f"Controls: TAB/0-9 select, W move forward, Q/E rotate, C cycle map, SPACE reset, L toggle LiDAR",
         ]
         for index, text in enumerate(hud_lines):
             label = font.render(text, True, (0, 0, 0))
