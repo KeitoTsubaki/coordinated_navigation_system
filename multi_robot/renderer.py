@@ -630,7 +630,7 @@ class MultiRobotSimulator:
 def demo() -> None:
     """Simple interactive demo used for manual testing."""
 
-    simulator = MultiRobotSimulator(num_robots=2, render_mode="human")
+    simulator = MultiRobotSimulator(num_robots=2, render_mode="human", show_labels=False)
     simulator.set_robot_target(0, simulator.meters_to_pixels(1.0, 1.0))
     simulator.set_robot_target(1, simulator.meters_to_pixels(-1.0, -1.0))
 
