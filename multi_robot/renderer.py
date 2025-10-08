@@ -59,6 +59,8 @@ class RobotState:
     sensor_data: List[Tuple[float, float]] = field(default_factory=list)
     closest_obstacle: Tuple[float, float] = (float("inf"), 0.0)
     lidar_enabled: bool = True
+    last_update_time: Optional[float] = None
+    velocity: float = 0.0
 
 
 class MultiRobotSimulator:
@@ -87,6 +89,14 @@ class MultiRobotSimulator:
         self.selected_robot_index = 0
         self.manual_step_pixels = 5
         self.manual_rotation_step = 0.1
+        self.info_panel_width = max(280, int(self.env.SCREEN_W * 0.4))
+        self.info_panel_background = (245, 245, 245)
+        self.info_panel_text_color = (32, 32, 32)
+        self.info_panel_highlight = (220, 235, 250)
+        self.info_panel_divider = (200, 200, 200)
+        self.info_padding = 16
+        self._clock = pygame.time.Clock()
+        self._fps = 0.0
 
         self.robot_radius_pixels = (
             self.env.ROBOT_RADIUS_M * 0.8 * self.env.PIXELS_PER_METER
@@ -113,6 +123,17 @@ class MultiRobotSimulator:
                 )
             )
             self.robot_states[-1].sensor = self._create_sensor()
+
+        total_width = self.env.SCREEN_W + self.info_panel_width
+        if self.env.render_mode == "human":
+            pygame.display.set_mode((total_width, self.env.SCREEN_H))
+            self.display_surface = pygame.display.get_surface()
+            self.env.screen = pygame.Surface((self.env.SCREEN_W, self.env.SCREEN_H))
+            self.env.map_creator.map = self.env.screen
+            self.env.clear_all_layers()
+        else:
+            self.display_surface = pygame.Surface((total_width, self.env.SCREEN_H))
+        self.simulation_surface = self.env.screen
 
         # Create the first map.  By default we use the same map type as the
         # single robot simulator so that existing scenarios work out of the box.
@@ -176,7 +197,7 @@ class MultiRobotSimulator:
         if in_meters:
             position = self.meters_to_pixels(*position)
 
-        robot.position = (float(position[0]), float(position[1]))
+        self._update_robot_motion(robot, (float(position[0]), float(position[1])))
         robot.theta = theta
         if record_path and self.path_history != 0:
             robot.path.append((robot.position, robot.theta))
@@ -214,6 +235,13 @@ class MultiRobotSimulator:
     def draw_scene(self) -> pygame.Surface:
         """Draw the current scene and return the main pygame surface."""
 
+        self.simulation_surface = self.env.screen
+        if self.env.render_mode == "human":
+            self._clock.tick(60)
+        else:
+            self._clock.tick()
+        self._fps = self._clock.get_fps()
+
         self.env.clear_robot_and_lidar_layer()
         for robot in self.robot_states:
             self._update_lidar(robot)
@@ -227,10 +255,14 @@ class MultiRobotSimulator:
         self._draw_hud()
         self.env.screen.blit(self.env.robot_and_lidar_layer, (0, 0))
 
+        self.display_surface.fill(self.env.BACKGROUND_COLOR)
+        self.display_surface.blit(self.simulation_surface, (0, 0))
+        self._draw_info_panel()
+
         if self.env.render_mode == "human":
             pygame.display.flip()
 
-        return self.env.screen
+        return self.display_surface
 
     def draw_rgb_array(self):
         """Return the rendered surface as a NumPy array."""
@@ -372,9 +404,141 @@ class MultiRobotSimulator:
             label = font.render(text, True, (0, 0, 0))
             self.env.robot_and_lidar_layer.blit(label, (10, 10 + index * 20))
 
+    def _draw_info_panel(self) -> None:
+        panel_left = self.env.SCREEN_W
+        panel_rect = pygame.Rect(panel_left, 0, self.info_panel_width, self.env.SCREEN_H)
+        pygame.draw.rect(self.display_surface, self.info_panel_background, panel_rect)
+        pygame.draw.line(
+            self.display_surface,
+            self.info_panel_divider,
+            (panel_left, 0),
+            (panel_left, self.env.SCREEN_H),
+            width=2,
+        )
+
+        title_font = pygame.font.SysFont("arial", 20, bold=True)
+        name_font = pygame.font.SysFont("arial", 18, bold=True)
+        value_font = pygame.font.SysFont("consolas", 16)
+
+        x_offset = panel_left + self.info_padding
+        y_offset = self.info_padding
+
+        title = title_font.render("Simulation Info", True, self.info_panel_text_color)
+        self.display_surface.blit(title, (x_offset, y_offset))
+        y_offset += title.get_height() + 10
+
+        general_lines = [
+            f"FPS: {self._fps:5.1f}",
+            f"Map: {self.env.map_type}",
+            f"Robots: {len(self.robot_states)}",
+        ]
+        for line in general_lines:
+            label = value_font.render(line, True, self.info_panel_text_color)
+            self.display_surface.blit(label, (x_offset, y_offset))
+            y_offset += label.get_height() + 4
+
+        y_offset += 10
+
+        robots_header = title_font.render("Robots", True, self.info_panel_text_color)
+        self.display_surface.blit(robots_header, (x_offset, y_offset))
+        y_offset += robots_header.get_height() + 8
+
+        if not self.robot_states:
+            empty_label = value_font.render("No robots", True, self.info_panel_text_color)
+            self.display_surface.blit(empty_label, (x_offset, y_offset))
+            return
+
+        for index, robot in enumerate(self.robot_states):
+            robot_name = name_font.render(robot.name, True, self.info_panel_text_color)
+            metrics: List[str] = []
+            pos_m = self.pixels_to_meters(*robot.position)
+            metrics.append(f"Pos: ({pos_m[0]:.2f}, {pos_m[1]:.2f}) m")
+            metrics.append(f"Theta: {math.degrees(robot.theta):.1f}°")
+            metrics.append(f"Speed: {robot.velocity:.2f} m/s")
+
+            if robot.target is not None:
+                target_m = self.pixels_to_meters(*robot.target)
+                distance = math.hypot(
+                    target_m[0] - pos_m[0], target_m[1] - pos_m[1]
+                )
+                metrics.append(f"Target dist: {distance:.2f} m")
+            else:
+                metrics.append("Target: None")
+
+            if robot.closest_obstacle[0] != float("inf"):
+                metrics.append(f"Closest obs: {robot.closest_obstacle[0]:.2f} m")
+            else:
+                metrics.append("Closest obs: --")
+
+            metrics.append(f"LiDAR: {'On' if robot.lidar_enabled else 'Off'}")
+
+            line_height = value_font.get_height() + 4
+            block_height = robot_name.get_height() + 4 + len(metrics) * line_height + 12
+            block_rect = pygame.Rect(
+                panel_left + 8,
+                y_offset - 6,
+                self.info_panel_width - 16,
+                block_height,
+            )
+            background_color = (
+                self.info_panel_highlight
+                if index == self.selected_robot_index
+                else self.info_panel_background
+            )
+            pygame.draw.rect(
+                self.display_surface,
+                background_color,
+                block_rect,
+                border_radius=8,
+            )
+            pygame.draw.rect(
+                self.display_surface,
+                self.info_panel_divider,
+                block_rect,
+                width=1,
+                border_radius=8,
+            )
+
+            text_x = block_rect.x + 10
+            text_y = y_offset
+            self.display_surface.blit(robot_name, (text_x, text_y))
+            text_y += robot_name.get_height() + 4
+
+            for metric in metrics:
+                metric_label = value_font.render(metric, True, self.info_panel_text_color)
+                self.display_surface.blit(metric_label, (text_x, text_y))
+                text_y += line_height
+
+            y_offset = block_rect.bottom + 10
+
     # ------------------------------------------------------------------
     # Utility helpers
     # ------------------------------------------------------------------
+    def _update_robot_motion(self, robot: RobotState, new_position: Position) -> None:
+        previous_position = robot.position
+        dx = new_position[0] - previous_position[0]
+        dy = new_position[1] - previous_position[1]
+        distance_pixels = math.hypot(dx, dy)
+
+        current_time = (
+            pygame.time.get_ticks() / 1000.0 if pygame.get_init() else None
+        )
+
+        velocity = 0.0
+        if (
+            current_time is not None
+            and robot.last_update_time is not None
+            and distance_pixels > 0.0
+        ):
+            dt = current_time - robot.last_update_time
+            if dt > 0:
+                distance_m = distance_pixels / self.env.PIXELS_PER_METER
+                velocity = distance_m / dt
+
+        robot.velocity = velocity
+        robot.last_update_time = current_time
+        robot.position = (float(new_position[0]), float(new_position[1]))
+
     @staticmethod
     def _with_alpha(color: Color, alpha: float) -> Color:
         r, g, b = color
@@ -415,11 +579,13 @@ class MultiRobotSimulator:
 
         for robot in self.robot_states:
             position = self._sample_robot_spawn(start_spawn_area, robot_positions)
-            robot.position = position
+            robot.position = (float(position[0]), float(position[1]))
             robot.theta = 0.0
             robot.path.clear()
             robot.sensor_data = []
             robot.closest_obstacle = (float("inf"), 0.0)
+            robot.last_update_time = None
+            robot.velocity = 0.0
             robot_positions.append(position)
 
         self._assign_random_targets(target_spawn_area, robot_positions)
@@ -534,9 +700,12 @@ class MultiRobotSimulator:
         robot = self.robot_states[self.selected_robot_index]
         keys = pygame.key.get_pressed()
         moved = False
+        translated = False
 
         if keys[pygame.K_w]:
-            moved |= self._attempt_move(robot, -self.manual_step_pixels)
+            move_success = self._attempt_move(robot, -self.manual_step_pixels)
+            moved |= move_success
+            translated |= move_success
         # if keys[pygame.K_s]:
         #     moved |= self._attempt_move(robot, self.manual_step_pixels)
         if keys[pygame.K_q]:
@@ -551,6 +720,8 @@ class MultiRobotSimulator:
 
         if moved and self.path_history != 0:
             robot.path.append((robot.position, robot.theta))
+        if not translated:
+            robot.velocity = 0.0
 
     def _attempt_move(self, robot: RobotState, step: float) -> bool:
         dx = step * math.sin(robot.theta)
@@ -560,7 +731,7 @@ class MultiRobotSimulator:
         if self._is_collision(next_position, ignore_robot=robot):
             return False
 
-        robot.position = next_position
+        self._update_robot_motion(robot, next_position)
         return True
 
     def _is_collision(
