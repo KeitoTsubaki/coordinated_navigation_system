@@ -557,13 +557,15 @@ class MultiRobotSimulator:
         dy = step * math.cos(robot.theta)
         next_position = (robot.position[0] + dx, robot.position[1] + dy)
 
-        if self._is_collision(next_position):
+        if self._is_collision(next_position, ignore_robot=robot):
             return False
 
         robot.position = next_position
         return True
 
-    def _is_collision(self, position: Position) -> bool:
+    def _is_collision(
+        self, position: Position, *, ignore_robot: Optional[RobotState] = None
+    ) -> bool:
         for i in range(self.env.NUM_CHECK_POINTS):
             angle = 2 * math.pi * i / self.env.NUM_CHECK_POINTS
             check_x = int(position[0] + self.env.ROBOT_RADIUS_PIXELS * math.cos(angle))
@@ -574,6 +576,15 @@ class MultiRobotSimulator:
 
             pixel_color = self.env.obstacle_layer.get_at((check_x, check_y))
             if (pixel_color[0], pixel_color[1], pixel_color[2]) == self.obstacle_color_rgb:
+                return True
+
+        for other in self.robot_states:
+            if other is ignore_robot:
+                continue
+
+            distance = math.hypot(position[0] - other.position[0], position[1] - other.position[1])
+            min_clearance = self.robot_frame_radius * 2
+            if distance < min_clearance:
                 return True
 
         return False
