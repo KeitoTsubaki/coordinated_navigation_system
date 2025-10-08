@@ -18,6 +18,7 @@ import importlib
 import importlib.resources
 import importlib.util
 import pygame
+import textwrap
 
 _SPEC = importlib.util.find_spec("simulation_core.environment")
 if _SPEC is None:
@@ -95,6 +96,12 @@ class MultiRobotSimulator:
         self.info_panel_highlight = (220, 235, 250)
         self.info_panel_divider = (200, 200, 200)
         self.info_padding = 16
+        self.map_descriptions = {
+            "trap_shaped": "Trap-shaped course with a narrow passage leading to the target zone.",
+            "zigzag": "Zigzag corridors that require repeated tight turns to reach the goal.",
+            "random": "Randomly distributed obstacles that create unpredictable navigation challenges.",
+            "empty": "Open field without obstacles for free navigation and debugging.",
+        }
         self._clock = pygame.time.Clock()
         self._fps = 0.0
 
@@ -396,7 +403,6 @@ class MultiRobotSimulator:
         font = pygame.font.SysFont("arial", 16)
         selected = self.robot_states[self.selected_robot_index]
         hud_lines = [
-            f"Map: {self.env.map_type}",
             f"Selected: {selected.name}",
             "Controls: TAB/0-9 select, W move forward, Q/E rotate, C cycle map, SPACE reset, L toggle LiDAR",
         ]
@@ -427,10 +433,15 @@ class MultiRobotSimulator:
         self.display_surface.blit(title, (x_offset, y_offset))
         y_offset += title.get_height() + 10
 
+        selected_name = (
+            self.robot_states[self.selected_robot_index].name
+            if self.robot_states
+            else "None"
+        )
         general_lines = [
             f"FPS: {self._fps:5.1f}",
-            f"Map: {self.env.map_type}",
             f"Robots: {len(self.robot_states)}",
+            f"Selected: {selected_name}",
         ]
         for line in general_lines:
             label = value_font.render(line, True, self.info_panel_text_color)
@@ -438,6 +449,35 @@ class MultiRobotSimulator:
             y_offset += label.get_height() + 4
 
         y_offset += 10
+
+        map_header = title_font.render("Map", True, self.info_panel_text_color)
+        self.display_surface.blit(map_header, (x_offset, y_offset))
+        y_offset += map_header.get_height() + 8
+
+        map_width_m = self.env.SCREEN_W / self.env.PIXELS_PER_METER
+        map_height_m = self.env.SCREEN_H / self.env.PIXELS_PER_METER
+        map_lines = [
+            f"Type: {self.env.map_type}",
+            f"Size: {map_width_m:.1f}m x {map_height_m:.1f}m",
+        ]
+        for line in map_lines:
+            label = value_font.render(line, True, self.info_panel_text_color)
+            self.display_surface.blit(label, (x_offset, y_offset))
+            y_offset += label.get_height() + 4
+
+        description = self.map_descriptions.get(self.env.map_type)
+        if description:
+            desc_label = value_font.render("Description:", True, self.info_panel_text_color)
+            self.display_surface.blit(desc_label, (x_offset, y_offset))
+            y_offset += desc_label.get_height() + 4
+
+            wrap_width = max(1, (self.info_panel_width - 2 * self.info_padding) // 8)
+            for line in textwrap.wrap(description, width=wrap_width):
+                desc_line = value_font.render(line, True, self.info_panel_text_color)
+                self.display_surface.blit(desc_line, (x_offset + 10, y_offset))
+                y_offset += desc_line.get_height() + 2
+
+            y_offset += 6
 
         robots_header = title_font.render("Robots", True, self.info_panel_text_color)
         self.display_surface.blit(robots_header, (x_offset, y_offset))

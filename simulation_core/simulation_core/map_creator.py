@@ -64,20 +64,7 @@ class MapCreator:
             ],
             width=wall_width,
         )
-        font = pygame.font.SysFont("arial", 16)
-        text = font.render(
-            f"{map_w // self.PIXELS_PER_METER}m x {map_h // self.PIXELS_PER_METER}m",
-            True,
-            (0, 0, 0),
-        )
-        self.obstacle_layer.blit(
-            text,
-            (
-                map_w - text.get_width() - 5,
-                map_h - text.get_height() - 5,
-            ),
-        )
-        
+
     def _create_random_map(self):
         """Creates a random map with obstacles"""
         # Draw walls
