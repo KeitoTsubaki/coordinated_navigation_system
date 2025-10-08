@@ -406,18 +406,119 @@ class MultiRobotSimulator:
     def _recenter_robots(self) -> None:
         if not self.robot_states:
             return
-        radius = max(self.env.ROBOT_RADIUS_PIXELS * 4, 1)
-        center_x, center_y = self.env.SCREEN_CENTER_X, self.env.SCREEN_CENTER_Y
-        for index, robot in enumerate(self.robot_states):
-            angle = 2 * math.pi * index / max(1, len(self.robot_states))
-            robot.position = (
-                center_x + radius * math.cos(angle),
-                center_y + radius * math.sin(angle),
-            )
+
+        start_spawn_area, target_spawn_area = self._get_spawn_areas()
+        robot_positions: List[Position] = []
+
+        for robot in self.robot_states:
+            position = self._sample_robot_spawn(start_spawn_area, robot_positions)
+            robot.position = position
             robot.theta = 0.0
             robot.path.clear()
             robot.sensor_data = []
             robot.closest_obstacle = (float("inf"), 0.0)
+            robot_positions.append(position)
+
+        self._assign_random_targets(target_spawn_area, robot_positions)
+
+    def _get_spawn_areas(self) -> Tuple[Optional[Sequence[float]], Optional[Sequence[float]]]:
+        screen_center_xy = (self.env.SCREEN_CENTER_X, self.env.SCREEN_CENTER_Y)
+        screen_size_wh = (self.env.SCREEN_W, self.env.SCREEN_H)
+        start_spawn_area, target_spawn_area = self.env.map_creator.initialize_map_parameters(
+            self.env.map_type,
+            screen_center_xy,
+            screen_size_wh,
+            self.env.ROBOT_RADIUS_PIXELS,
+        )
+        return start_spawn_area, target_spawn_area
+
+    def _sample_robot_spawn(
+        self,
+        spawn_area: Optional[Sequence[float]],
+        existing_positions: Sequence[Position],
+    ) -> Position:
+        min_clearance = self.env.ROBOT_RADIUS_PIXELS * 2.5
+        max_attempts = 512
+
+        for _ in range(max_attempts):
+            candidate = self.env.randomize_position(spawn_area)
+            if all(
+                math.hypot(candidate[0] - other[0], candidate[1] - other[1]) >= min_clearance
+                for other in existing_positions
+            ):
+                return float(candidate[0]), float(candidate[1])
+
+        fallback = self.env.randomize_position(None)
+        return float(fallback[0]), float(fallback[1])
+
+    def _assign_random_targets(
+        self,
+        target_spawn_area: Optional[Sequence[float]],
+        robot_positions: Sequence[Position],
+    ) -> None:
+        if target_spawn_area is None:
+            for robot in self.robot_states:
+                robot.target = None
+            return
+
+        min_target_distance = self._minimum_target_distance_pixels()
+        assigned_targets: List[Position] = []
+
+        for robot, robot_position in zip(self.robot_states, robot_positions):
+            target = self._sample_target_position(
+                target_spawn_area,
+                robot_position,
+                assigned_targets,
+                robot_positions,
+                min_target_distance,
+            )
+            robot.target = target
+            assigned_targets.append(target)
+
+    def _sample_target_position(
+        self,
+        spawn_area: Sequence[float],
+        robot_position: Position,
+        assigned_targets: Sequence[Position],
+        robot_positions: Sequence[Position],
+        min_robot_distance: float,
+    ) -> Position:
+        min_clearance = self.env.ROBOT_RADIUS_PIXELS * 2.0
+        max_attempts = 512
+
+        for _ in range(max_attempts):
+            candidate = self.env.randomize_position(spawn_area)
+            candidate_pos = (float(candidate[0]), float(candidate[1]))
+
+            if math.hypot(candidate_pos[0] - robot_position[0], candidate_pos[1] - robot_position[1]) < min_robot_distance:
+                continue
+
+            if any(
+                math.hypot(candidate_pos[0] - other[0], candidate_pos[1] - other[1]) < min_clearance
+                for other in assigned_targets
+            ):
+                continue
+
+            if any(
+                math.hypot(candidate_pos[0] - other[0], candidate_pos[1] - other[1]) < min_clearance
+                for other in robot_positions
+                if other is not robot_position
+            ):
+                continue
+
+            return candidate_pos
+
+        fallback = self.env.randomize_position(None)
+        return float(fallback[0]), float(fallback[1])
+
+    def _minimum_target_distance_pixels(self) -> float:
+        map_specific_thresholds = {
+            "trap_shaped": self.env.T_DT_M_TRAP_SHAPED,
+            "zigzag": self.env.T_DT_M_ZIGZAG,
+            "random": self.env.T_DT_M_RANDOM,
+            "empty": self.env.T_DT_M_EMPTY,
+        }
+        return map_specific_thresholds.get(self.env.map_type, 0.0) * self.env.PIXELS_PER_METER
 
     def _cycle_map(self) -> None:
         next_map_type = _utils_module.switch_map_type(
