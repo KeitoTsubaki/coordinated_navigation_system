@@ -95,6 +95,9 @@ class MultiRobotSimulator:
         self.obstacle_color_rgb = _to_rgb(self.env.OBSTACLE_COLOR)
         self.lidar_line_color = _to_rgb(self.env.LIDAR_LINE_COLOR)
         self.lidar_points_color = _to_rgb(self.env.LIDAR_POINTS_COLOR)
+        self._lidar_detection_surface = pygame.Surface(
+            (self.env.SCREEN_W, self.env.SCREEN_H), pygame.SRCALPHA
+        )
 
         self.robot_states: List[RobotState] = []
         for i in range(num_robots):
@@ -586,8 +589,23 @@ class MultiRobotSimulator:
             int(robot.position[1]),
         )
         robot.sensor.theta = robot.theta
+        detection_surface = self._lidar_detection_surface
+        detection_surface.fill((0, 0, 0, 0))
+        detection_surface.blit(self.env.obstacle_layer, (0, 0))
+
+        for other in self.robot_states:
+            if other is robot:
+                continue
+
+            pygame.draw.circle(
+                detection_surface,
+                self.obstacle_color_rgb,
+                (int(other.position[0]), int(other.position[1])),
+                int(self.robot_frame_radius),
+            )
+
         raw_sensor_data = robot.sensor.sense_obstacles(
-            self.env.obstacle_layer, self.env.OBSTACLE_COLOR
+            detection_surface, self.env.OBSTACLE_COLOR
         )
         robot.sensor_data = list(raw_sensor_data) if raw_sensor_data else []
 
