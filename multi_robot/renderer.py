@@ -448,7 +448,7 @@ class MultiRobotSimulator:
             ):
                 return float(candidate[0]), float(candidate[1])
 
-        fallback = self.env.randomize_position(None)
+        fallback = self.env.randomize_position(spawn_area)
         return float(fallback[0]), float(fallback[1])
 
     def _assign_random_targets(
@@ -508,7 +508,7 @@ class MultiRobotSimulator:
 
             return candidate_pos
 
-        fallback = self.env.randomize_position(None)
+        fallback = self.env.randomize_position(spawn_area)
         return float(fallback[0]), float(fallback[1])
 
     def _minimum_target_distance_pixels(self) -> float:
@@ -609,7 +609,7 @@ class MultiRobotSimulator:
                 # )
                 pygame.draw.circle(
                     self.env.robot_and_lidar_layer,
-                    self.lidar_points_color,
+                    robot.color,
                     (int(point[0]), int(point[1])),
                     2,
                 )
