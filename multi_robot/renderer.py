@@ -836,23 +836,22 @@ class MultiRobotSimulator:
             self._filter_robot_reflections(robot)
 
         if robot.sensor_data:
-            filtered_map: dict[float, Deque[float]] = {}
+            filtered_counts: dict[float, int] = {}
             if robot.filtered_sensor_data:
-                for distance, relative_angle in robot.filtered_sensor_data:
-                    filtered_map.setdefault(relative_angle, deque()).append(distance)
+                for _distance, relative_angle in robot.filtered_sensor_data:
+                    filtered_counts[relative_angle] = (
+                        filtered_counts.get(relative_angle, 0) + 1
+                    )
 
             for distance, relative_angle in robot.sensor_data:
-                display_distance = distance
-                color = robot.color
-                if filtered_map:
-                    original_distances = filtered_map.get(relative_angle)
-                    if original_distances:
-                        display_distance = original_distances.popleft()
-                        color = self.lidar_filtered_points_color
+                color = self.lidar_points_color
+                if filtered_counts.get(relative_angle):
+                    filtered_counts[relative_angle] -= 1
+                    color = self.lidar_filtered_points_color
 
                 obstacle_angle = robot.theta - math.pi / 2 - relative_angle
                 point = _utils_module.AD2pos(
-                    display_distance,
+                    distance,
                     obstacle_angle,
                     robot.position,
                     self.env.PIXELS_PER_METER,
