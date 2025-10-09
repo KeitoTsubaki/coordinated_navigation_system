@@ -866,6 +866,7 @@ class MultiRobotSimulator:
 
         robot_radius_m = self.env.ROBOT_RADIUS_M
         lidar_range = robot.sensor.LIDAR_RANGE_M
+        pixels_per_meter = self.env.PIXELS_PER_METER
         other_robot_filters = []
 
         for other in self.robot_states:
@@ -878,13 +879,13 @@ class MultiRobotSimulator:
             if distance_pixels == 0:
                 continue
 
-            distance_m = distance_pixels / self.env.PIXELS_PER_METER
+            distance_m = distance_pixels / pixels_per_meter
             if distance_m > lidar_range + robot_radius_m:
                 continue
 
-            angle_center = math.atan2(dy_pixels, dx_pixels)
-            if angle_center < 0:
-                angle_center += 2 * math.pi
+            global_angle = math.atan2(-dx_pixels, -dy_pixels)
+            if global_angle < 0:
+                global_angle += 2 * math.pi
 
             if distance_m <= robot_radius_m:
                 angle_half_width = math.pi
@@ -895,19 +896,20 @@ class MultiRobotSimulator:
             distance_min = max(0.0, distance_m - robot_radius_m)
             distance_max = distance_m + robot_radius_m
             other_robot_filters.append(
-                (angle_center, angle_half_width, distance_min, distance_max)
+                (global_angle, angle_half_width, distance_min, distance_max)
             )
 
         if not other_robot_filters:
             return
 
         filtered_data: List[Tuple[float, float]] = []
+        theta = robot.theta
         for distance, relative_angle in robot.sensor_data:
-            angle = relative_angle % (2 * math.pi)
+            global_angle = (theta - math.pi / 2 - relative_angle) % (2 * math.pi)
             replaced = False
 
             for angle_center, angle_half_width, distance_min, distance_max in other_robot_filters:
-                angle_diff = abs(angle - angle_center)
+                angle_diff = abs(global_angle - angle_center)
                 angle_diff = min(angle_diff, 2 * math.pi - angle_diff)
 
                 if angle_diff <= angle_half_width and distance_min <= distance <= distance_max:
