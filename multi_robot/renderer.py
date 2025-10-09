@@ -78,6 +78,9 @@ class FormationPlan:
     assignment: List[int]
     cost: float
     per_robot_costs: Dict[int, float]
+    formation_type: str
+    spacing: float
+    center: Position
 
 
 class MultiRobotSimulator:
@@ -120,6 +123,7 @@ class MultiRobotSimulator:
         }
         self._clock = pygame.time.Clock()
         self._fps = 0.0
+        self._current_formation_plan: Optional[FormationPlan] = None
 
         self.robot_radius_pixels = (
             self.env.ROBOT_RADIUS_M * 0.8 * self.env.PIXELS_PER_METER
@@ -241,6 +245,8 @@ class MultiRobotSimulator:
         if target is not None and in_meters:
             target = self.meters_to_pixels(*target)
         robot.target = target
+        if target is None:
+            self._current_formation_plan = None
 
     def clear_paths(self) -> None:
         """Remove stored trajectories for every robot."""
@@ -255,6 +261,7 @@ class MultiRobotSimulator:
         self.env.reset(map_type)
         self.clear_paths()
         self._recenter_robots()
+        self._current_formation_plan = None
 
     # ------------------------------------------------------------------
     # Rendering utilities
@@ -279,6 +286,7 @@ class MultiRobotSimulator:
             self._draw_robot(robot)
             if self.show_labels:
                 self._draw_label(robot)
+        self._draw_formation_plan()
         self._draw_parallel_formation()
         self._draw_hud()
         self.env.screen.blit(self.env.robot_and_lidar_layer, (0, 0))
@@ -382,6 +390,116 @@ class MultiRobotSimulator:
             int(self.robot_radius_pixels * 0.6),
             width=2,
         )
+
+    def _draw_formation_plan(self) -> None:
+        plan = self._current_formation_plan
+        if plan is None or not plan.targets or not self.robot_states:
+            return
+
+        target_count = len(plan.targets)
+        if target_count != len(self.robot_states):
+            return
+
+        layer = self.env.robot_and_lidar_layer
+        target_radius = int(max(4, self.robot_radius_pixels * 0.4))
+        connection_color = (72, 61, 139)
+        target_color = (46, 204, 113)
+        center_color = (255, 140, 0)
+        text_color = (30, 30, 30)
+
+        font = pygame.font.SysFont("arial", 14)
+        small_font = pygame.font.SysFont("consolas", 12)
+
+        center_x, center_y = plan.center
+
+        orientation_length = max(self.env.ROBOT_RADIUS_PIXELS * 3.0, plan.spacing)
+        orientation_dx = math.cos(plan.theta) * orientation_length
+        orientation_dy = math.sin(plan.theta) * orientation_length
+        orientation_end = (center_x + orientation_dx, center_y + orientation_dy)
+
+        pygame.draw.circle(layer, center_color, (int(center_x), int(center_y)), 6)
+        pygame.draw.line(
+            layer,
+            center_color,
+            (int(center_x), int(center_y)),
+            (int(orientation_end[0]), int(orientation_end[1])),
+            width=3,
+        )
+
+        arrow_size = 10.0
+        arrow_angle = math.atan2(orientation_dy, orientation_dx)
+        left_angle = arrow_angle + math.pi * 3.0 / 4.0
+        right_angle = arrow_angle - math.pi * 3.0 / 4.0
+        left_point = (
+            orientation_end[0] - arrow_size * math.cos(left_angle),
+            orientation_end[1] - arrow_size * math.sin(left_angle),
+        )
+        right_point = (
+            orientation_end[0] - arrow_size * math.cos(right_angle),
+            orientation_end[1] - arrow_size * math.sin(right_angle),
+        )
+        pygame.draw.polygon(
+            layer,
+            center_color,
+            [
+                (int(orientation_end[0]), int(orientation_end[1])),
+                (int(left_point[0]), int(left_point[1])),
+                (int(right_point[0]), int(right_point[1])),
+            ],
+        )
+
+        angle_label = font.render(f"θ={math.degrees(plan.theta):.1f}°", True, text_color)
+        layer.blit(
+            angle_label,
+            (
+                int(orientation_end[0] - angle_label.get_width() / 2),
+                int(orientation_end[1] - angle_label.get_height() - 6),
+            ),
+        )
+
+        for target_index, position in enumerate(plan.targets):
+            pygame.draw.circle(
+                layer,
+                target_color,
+                (int(position[0]), int(position[1])),
+                target_radius,
+            )
+            label = small_font.render(f"T{target_index}", True, text_color)
+            layer.blit(
+                label,
+                (
+                    int(position[0] - label.get_width() / 2),
+                    int(position[1] - label.get_height() / 2),
+                ),
+            )
+
+        for robot_index, target_index in enumerate(plan.assignment):
+            if not (0 <= target_index < target_count):
+                continue
+            robot = self.robot_states[robot_index]
+            target_position = plan.targets[target_index]
+            pygame.draw.line(
+                layer,
+                connection_color,
+                (int(robot.position[0]), int(robot.position[1])),
+                (int(target_position[0]), int(target_position[1])),
+                width=2,
+            )
+
+            midpoint = (
+                (robot.position[0] + target_position[0]) / 2.0,
+                (robot.position[1] + target_position[1]) / 2.0,
+            )
+            cost_value = plan.per_robot_costs.get(robot_index)
+            if cost_value is not None:
+                cost_label = small_font.render(f"{cost_value:.2f}", True, text_color)
+                layer.blit(
+                    cost_label,
+                    (
+                        int(midpoint[0] - cost_label.get_width() / 2),
+                        int(midpoint[1] - cost_label.get_height() / 2),
+                    ),
+                )
 
     def _draw_path(self, robot: RobotState) -> None:
         points = list(robot.path)
@@ -561,6 +679,48 @@ class MultiRobotSimulator:
                 y_offset += desc_line.get_height() + 2
 
             y_offset += 6
+
+        if self._current_formation_plan is not None and self._current_formation_plan.targets:
+            formation_header = title_font.render(
+                "Formation Plan", True, self.info_panel_text_color
+            )
+            self.display_surface.blit(formation_header, (x_offset, y_offset))
+            y_offset += formation_header.get_height() + 8
+
+            plan = self._current_formation_plan
+            spacing_m = plan.spacing / self.env.PIXELS_PER_METER
+            center_m = self.pixels_to_meters(*plan.center)
+            plan_lines = [
+                f"Formation: {plan.formation_type.title()}",
+                f"Cost: {plan.cost:.3f}",
+                f"Spacing: {spacing_m:.2f} m",
+                f"Heading: {math.degrees(plan.theta):.1f}°",
+                f"Center: ({center_m[0]:.2f}, {center_m[1]:.2f}) m",
+            ]
+            for line in plan_lines:
+                label = value_font.render(line, True, self.info_panel_text_color)
+                self.display_surface.blit(label, (x_offset, y_offset))
+                y_offset += label.get_height() + 4
+
+            y_offset += 4
+
+            for robot_index, target_index in enumerate(plan.assignment):
+                if robot_index >= len(self.robot_states):
+                    continue
+                robot_name = self.robot_states[robot_index].name
+                if 0 <= target_index < len(plan.targets):
+                    cost_value = plan.per_robot_costs.get(robot_index)
+                    if cost_value is not None:
+                        text = f"{robot_name} → T{target_index} ({cost_value:.2f})"
+                    else:
+                        text = f"{robot_name} → T{target_index}"
+                else:
+                    text = f"{robot_name} → --"
+                label = value_font.render(text, True, self.info_panel_text_color)
+                self.display_surface.blit(label, (x_offset + 10, y_offset))
+                y_offset += label.get_height() + 2
+
+            y_offset += 12
 
         robots_header = title_font.render("Robots", True, self.info_panel_text_color)
         self.display_surface.blit(robots_header, (x_offset, y_offset))
@@ -742,6 +902,7 @@ class MultiRobotSimulator:
 
         for robot, target in zip(self.robot_states, target_positions):
             robot.target = target
+        self._current_formation_plan = None
 
     def _invalidate_obstacle_cache(self) -> None:
         self._obstacle_mask = None
@@ -962,6 +1123,9 @@ class MultiRobotSimulator:
             assignment=assignment,
             cost=total_cost,
             per_robot_costs=per_robot_costs,
+            formation_type=formation_type,
+            spacing=spacing,
+            center=center,
         )
 
     def optimize_formation(
@@ -1021,8 +1185,10 @@ class MultiRobotSimulator:
 
         plan = best_plan["plan"]
         if plan is None:
+            self._current_formation_plan = None
             raise ValueError("Unable to find a feasible formation configuration")
 
+        self._current_formation_plan = plan
         if apply:
             for robot_index, target_index in enumerate(plan.assignment):
                 target = plan.targets[target_index]
