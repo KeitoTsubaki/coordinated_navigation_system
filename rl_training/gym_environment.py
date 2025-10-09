@@ -184,10 +184,11 @@ class Env(gym.Env):
         observation = self._get_obs()
         info = {"is_target_reached": is_target_reached}
         reward = self._calculate_reward()
+        print(f"is_target_reached: {is_target_reached}")
 
         # Update s_t and s_z
         if is_target_reached:
-            if self.env.map_type == "trap":
+            if self.env.map_type == "trap_shaped":
                 self.env.count_up_st()
                 self.env.update_pt()
             elif self.env.map_type == "zigzag":
@@ -210,6 +211,7 @@ class Env(gym.Env):
                 pt=self.env.get_pt(), pz=self.env.get_pz()
             )
         # map_type = "empty"
+        print("map_type: ", map_type)
         self.env.reset(map_type=map_type)
         # self.env.reset_path()
         # self.env.render_obstacle_and_robots(map_type=map_type)
