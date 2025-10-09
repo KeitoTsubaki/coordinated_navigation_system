@@ -829,6 +829,8 @@ class MultiRobotSimulator:
             detection_surface, self.env.OBSTACLE_COLOR
         )
         robot.sensor_data = list(raw_sensor_data) if raw_sensor_data else []
+        if robot.sensor_data:
+            self._filter_robot_reflections(robot)
 
         if robot.sensor_data:
             for distance, relative_angle in robot.sensor_data:
@@ -857,6 +859,68 @@ class MultiRobotSimulator:
             )
         else:
             robot.closest_obstacle = (float("inf"), 0.0)
+
+    def _filter_robot_reflections(self, robot: RobotState) -> None:
+        if robot.sensor is None:
+            return
+
+        robot_radius_m = self.env.ROBOT_RADIUS_M
+        lidar_range = robot.sensor.LIDAR_RANGE_M
+        pixels_per_meter = self.env.PIXELS_PER_METER
+        other_robot_filters = []
+
+        for other in self.robot_states:
+            if other is robot:
+                continue
+
+            dx_pixels = other.position[0] - robot.position[0]
+            dy_pixels = other.position[1] - robot.position[1]
+            distance_pixels = math.hypot(dx_pixels, dy_pixels)
+            if distance_pixels == 0:
+                continue
+
+            distance_m = distance_pixels / pixels_per_meter
+            if distance_m > lidar_range + robot_radius_m:
+                continue
+
+            global_angle = math.atan2(-dx_pixels, -dy_pixels)
+            if global_angle < 0:
+                global_angle += 2 * math.pi
+
+            if distance_m <= robot_radius_m:
+                angle_half_width = math.pi
+            else:
+                ratio = min(1.0, robot_radius_m / distance_m)
+                angle_half_width = math.asin(ratio)
+
+            distance_min = max(0.0, distance_m - robot_radius_m)
+            distance_max = distance_m + robot_radius_m
+            other_robot_filters.append(
+                (global_angle, angle_half_width, distance_min, distance_max)
+            )
+
+        if not other_robot_filters:
+            return
+
+        filtered_data: List[Tuple[float, float]] = []
+        theta = robot.theta
+        for distance, relative_angle in robot.sensor_data:
+            global_angle = (theta - math.pi / 2 - relative_angle) % (2 * math.pi)
+            replaced = False
+
+            for angle_center, angle_half_width, distance_min, distance_max in other_robot_filters:
+                angle_diff = abs(global_angle - angle_center)
+                angle_diff = min(angle_diff, 2 * math.pi - angle_diff)
+
+                if angle_diff <= angle_half_width and distance_min <= distance <= distance_max:
+                    filtered_data.append((robot.sensor.out_of_range_value, relative_angle))
+                    replaced = True
+                    break
+
+            if not replaced:
+                filtered_data.append((distance, relative_angle))
+
+        robot.sensor_data = filtered_data
 
     def _select_next_robot(self) -> None:
         if not self.robot_states:
