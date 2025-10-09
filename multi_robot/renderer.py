@@ -393,7 +393,11 @@ class MultiRobotSimulator:
 
     def _draw_formation_plan(self) -> None:
         plan = self._current_formation_plan
-        if plan is None or not plan.targets or not self.robot_states:
+        if plan is None:
+            self._draw_manual_target_overlay()
+            return
+
+        if not plan.targets or not self.robot_states:
             return
 
         target_count = len(plan.targets)
@@ -500,6 +504,44 @@ class MultiRobotSimulator:
                         int(midpoint[1] - cost_label.get_height() / 2),
                     ),
                 )
+
+    def _draw_manual_target_overlay(self) -> None:
+        robots_with_targets = [
+            (index, robot)
+            for index, robot in enumerate(self.robot_states)
+            if robot.target is not None
+        ]
+        if not robots_with_targets:
+            return
+
+        layer = self.env.robot_and_lidar_layer
+        connection_color = (72, 61, 139)
+        text_color = (30, 30, 30)
+        small_font = pygame.font.SysFont("consolas", 12)
+
+        for index, robot in robots_with_targets:
+            assert robot.target is not None
+            start = (int(robot.position[0]), int(robot.position[1]))
+            end = (int(robot.target[0]), int(robot.target[1]))
+
+            pygame.draw.line(layer, connection_color, start, end, width=2)
+
+            midpoint = ((start[0] + end[0]) / 2.0, (start[1] + end[1]) / 2.0)
+            distance_pixels = math.hypot(
+                robot.target[0] - robot.position[0],
+                robot.target[1] - robot.position[1],
+            )
+            distance_m = distance_pixels / self.env.PIXELS_PER_METER
+            label = small_font.render(
+                f"R{index} → target ({distance_m:.2f}m)", True, text_color
+            )
+            layer.blit(
+                label,
+                (
+                    int(midpoint[0] - label.get_width() / 2),
+                    int(midpoint[1] - label.get_height() / 2),
+                ),
+            )
 
     def _draw_path(self, robot: RobotState) -> None:
         points = list(robot.path)
@@ -716,6 +758,32 @@ class MultiRobotSimulator:
                         text = f"{robot_name} → T{target_index}"
                 else:
                     text = f"{robot_name} → --"
+                label = value_font.render(text, True, self.info_panel_text_color)
+                self.display_surface.blit(label, (x_offset + 10, y_offset))
+                y_offset += label.get_height() + 2
+
+            y_offset += 12
+        elif any(robot.target is not None for robot in self.robot_states):
+            formation_header = title_font.render(
+                "Target Assignments", True, self.info_panel_text_color
+            )
+            self.display_surface.blit(formation_header, (x_offset, y_offset))
+            y_offset += formation_header.get_height() + 8
+
+            for robot in self.robot_states:
+                if robot.target is None:
+                    continue
+
+                target_m = self.pixels_to_meters(*robot.target)
+                distance_pixels = math.hypot(
+                    robot.target[0] - robot.position[0],
+                    robot.target[1] - robot.position[1],
+                )
+                distance_m = distance_pixels / self.env.PIXELS_PER_METER
+                text = (
+                    f"{robot.name}: ({target_m[0]:.2f}, {target_m[1]:.2f}) m"
+                    f" / {distance_m:.2f} m away"
+                )
                 label = value_font.render(text, True, self.info_panel_text_color)
                 self.display_surface.blit(label, (x_offset + 10, y_offset))
                 y_offset += label.get_height() + 2
