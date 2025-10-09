@@ -286,6 +286,7 @@ class MultiRobotSimulator:
             self._draw_robot(robot)
             if self.show_labels:
                 self._draw_label(robot)
+        self._update_formation_visualisation()
         self._draw_formation_plan()
         self._draw_parallel_formation()
         self._draw_hud()
@@ -476,6 +477,22 @@ class MultiRobotSimulator:
                     int(position[1] - label.get_height() / 2),
                 ),
             )
+
+    def _update_formation_visualisation(self) -> None:
+        """Refresh the cached formation plan used for visualisation."""
+
+        if not self.robot_states:
+            self._current_formation_plan = None
+            return
+
+        try:
+            # Recompute the optimal formation without assigning the targets so that
+            # the renderer can display the proposed configuration.
+            self.optimize_formation(apply=False)
+        except ValueError:
+            # Optimisation can fail when the formation would intersect obstacles.
+            # In that case we simply fall back to the manual target overlay.
+            self._current_formation_plan = None
 
         for robot_index, target_index in enumerate(plan.assignment):
             if not (0 <= target_index < target_count):
