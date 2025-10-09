@@ -12,13 +12,17 @@ from __future__ import annotations
 import math
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Deque, List, Optional, Sequence, Tuple, Union
+from typing import Deque, Dict, List, Optional, Sequence, Tuple, Union
 
 import importlib
 import importlib.resources
 import importlib.util
 import pygame
 import textwrap
+
+import numpy as np
+from scipy import ndimage
+from scipy.optimize import linear_sum_assignment, minimize_scalar
 
 _SPEC = importlib.util.find_spec("simulation_core.environment")
 if _SPEC is None:
@@ -63,6 +67,17 @@ class RobotState:
     lidar_enabled: bool = True
     last_update_time: Optional[float] = None
     velocity: float = 0.0
+
+
+@dataclass
+class FormationPlan:
+    """Result of the constrained formation optimisation routine."""
+
+    theta: float
+    targets: List[Position]
+    assignment: List[int]
+    cost: float
+    per_robot_costs: Dict[int, float]
 
 
 class MultiRobotSimulator:
@@ -116,6 +131,9 @@ class MultiRobotSimulator:
         self._lidar_detection_surface = pygame.Surface(
             (self.env.SCREEN_W, self.env.SCREEN_H), pygame.SRCALPHA
         )
+
+        self._obstacle_mask: Optional[np.ndarray] = None
+        self._obstacle_distance_map: Optional[np.ndarray] = None
 
         self.robot_states: List[RobotState] = []
         for i in range(num_robots):
@@ -233,6 +251,7 @@ class MultiRobotSimulator:
     def set_map(self, map_type: str) -> None:
         """Regenerate obstacles using the provided map type."""
 
+        self._invalidate_obstacle_cache()
         self.env.reset(map_type)
         self.clear_paths()
         self._recenter_robots()
@@ -723,6 +742,293 @@ class MultiRobotSimulator:
 
         for robot, target in zip(self.robot_states, target_positions):
             robot.target = target
+
+    def _invalidate_obstacle_cache(self) -> None:
+        self._obstacle_mask = None
+        self._obstacle_distance_map = None
+
+    def _get_obstacle_mask(self) -> np.ndarray:
+        if self._obstacle_mask is None:
+            obstacle_surface = self.env.obstacle_layer
+            obstacle_rgb = pygame.surfarray.array3d(obstacle_surface)
+            color_array = np.array(self.obstacle_color_rgb, dtype=obstacle_rgb.dtype)
+            mask = np.all(obstacle_rgb == color_array[None, None, :], axis=2)
+            mask = mask.swapaxes(0, 1)
+            mask[0, :] = True
+            mask[-1, :] = True
+            mask[:, 0] = True
+            mask[:, -1] = True
+            self._obstacle_mask = mask
+        return self._obstacle_mask
+
+    def _get_obstacle_distance_map(self) -> np.ndarray:
+        if self._obstacle_distance_map is None:
+            mask = self._get_obstacle_mask()
+            free_space = ~mask
+            distance_pixels = ndimage.distance_transform_edt(free_space)
+            self._obstacle_distance_map = distance_pixels / self.env.PIXELS_PER_METER
+        return self._obstacle_distance_map
+
+    def _is_point_obstacle(self, point: Position) -> bool:
+        x = int(round(point[0]))
+        y = int(round(point[1]))
+        if not (0 <= x < self.env.SCREEN_W and 0 <= y < self.env.SCREEN_H):
+            return True
+        mask = self._get_obstacle_mask()
+        return bool(mask[y, x])
+
+    def _distance_to_nearest_obstacle(self, point: Position) -> float:
+        x = int(round(point[0]))
+        y = int(round(point[1]))
+        if not (0 <= x < self.env.SCREEN_W and 0 <= y < self.env.SCREEN_H):
+            return 0.0
+        distance_map = self._get_obstacle_distance_map()
+        return float(distance_map[y, x])
+
+    def _is_line_blocked(self, start: Position, end: Position) -> bool:
+        dx = end[0] - start[0]
+        dy = end[1] - start[1]
+        distance = math.hypot(dx, dy)
+        steps = max(int(distance), 1)
+        for step in range(1, steps + 1):
+            t = step / steps
+            x = start[0] + dx * t
+            y = start[1] + dy * t
+            if self._is_point_obstacle((x, y)):
+                return True
+        return False
+
+    def _formation_offsets(
+        self, count: int, formation_type: str, spacing: float
+    ) -> List[Tuple[float, float]]:
+        if count <= 0:
+            return []
+
+        formation_type = formation_type.lower()
+        offsets: List[Tuple[float, float]] = []
+
+        if formation_type in {"line", "parallel"}:
+            center_index = (count - 1) / 2.0
+            offsets = [((i - center_index) * spacing, 0.0) for i in range(count)]
+        elif formation_type == "triangle":
+            remaining = count
+            row = 1
+            spacing_y = spacing * math.sin(math.pi / 3)
+            while remaining > 0:
+                row_count = min(row, remaining)
+                x_start = -(row_count - 1) / 2.0 * spacing
+                y_offset = (row - 1) * spacing_y
+                for i in range(row_count):
+                    offsets.append((x_start + i * spacing, y_offset))
+                remaining -= row_count
+                row += 1
+        elif formation_type in {"square", "grid"}:
+            rows, columns = self._compute_formation_layout(count, None, spacing)
+            for row_index in range(rows):
+                y_offset = (row_index - (rows - 1) / 2.0) * spacing
+                for column_index in range(columns):
+                    if len(offsets) >= count:
+                        break
+                    x_offset = (column_index - (columns - 1) / 2.0) * spacing
+                    offsets.append((x_offset, y_offset))
+                if len(offsets) >= count:
+                    break
+        else:
+            raise ValueError(f"Unsupported formation type: {formation_type}")
+
+        if not offsets:
+            return []
+
+        mean_x = sum(x for x, _ in offsets) / len(offsets)
+        mean_y = sum(y for _, y in offsets) / len(offsets)
+        return [(x - mean_x, y - mean_y) for x, y in offsets]
+
+    @staticmethod
+    def _formation_angle_bounds(formation_type: str) -> Tuple[float, float]:
+        formation_type = formation_type.lower()
+        if formation_type in {"line", "parallel"}:
+            return 0.0, math.pi
+        if formation_type == "triangle":
+            return 0.0, 2.0 * math.pi / 3.0
+        if formation_type in {"square", "grid"}:
+            return 0.0, math.pi / 2.0
+        raise ValueError(f"Unsupported formation type: {formation_type}")
+
+    def _generate_formation_targets(
+        self,
+        center: Position,
+        theta: float,
+        formation_type: str,
+        spacing: float,
+    ) -> List[Position]:
+        offsets = self._formation_offsets(len(self.robot_states), formation_type, spacing)
+        if not offsets:
+            return []
+
+        cos_theta = math.cos(theta)
+        sin_theta = math.sin(theta)
+        targets: List[Position] = []
+        for offset_x, offset_y in offsets:
+            rotated_x = offset_x * cos_theta - offset_y * sin_theta
+            rotated_y = offset_x * sin_theta + offset_y * cos_theta
+            targets.append((center[0] + rotated_x, center[1] + rotated_y))
+        return targets
+
+    def _evaluate_formation_plan(
+        self,
+        center: Position,
+        theta: float,
+        formation_type: str,
+        spacing: float,
+        weights: Sequence[float],
+        ego_index: Optional[int],
+        penalty: float,
+    ) -> Optional[FormationPlan]:
+        targets = self._generate_formation_targets(center, theta, formation_type, spacing)
+        robot_count = len(self.robot_states)
+        if robot_count == 0 or not targets:
+            return None
+
+        weights = tuple(weights)
+        if len(weights) != 4:
+            raise ValueError("weights must contain four elements")
+
+        cost_matrix = np.full((robot_count, robot_count), penalty, dtype=float)
+        per_robot_costs: Dict[int, float] = {}
+
+        for robot_index, robot in enumerate(self.robot_states):
+            for target_index, target in enumerate(targets):
+                if self._is_point_obstacle(target):
+                    continue
+                if ego_index is None or robot_index == ego_index:
+                    if self._is_line_blocked(robot.position, target):
+                        continue
+
+                distance_to_obstacle = self._distance_to_nearest_obstacle(target)
+                dx = target[0] - robot.position[0]
+                dy = target[1] - robot.position[1]
+                distance_pixels = math.hypot(dx, dy)
+                distance_robot_target = distance_pixels / self.env.PIXELS_PER_METER
+
+                if robot.target is not None:
+                    previous_dx = target[0] - robot.target[0]
+                    previous_dy = target[1] - robot.target[1]
+                    distance_previous = (
+                        math.hypot(previous_dx, previous_dy)
+                        / self.env.PIXELS_PER_METER
+                    )
+                else:
+                    distance_previous = 0.0
+
+                heading_vector = (-math.sin(robot.theta), -math.cos(robot.theta))
+                heading_norm = math.hypot(*heading_vector)
+                heading_norm = heading_norm or 1.0
+                target_norm = distance_pixels or 1.0
+                dot_product = heading_vector[0] * dx + heading_vector[1] * dy
+                cos_angle = max(-1.0, min(1.0, dot_product / (heading_norm * target_norm)))
+                relative_angle = math.acos(cos_angle)
+
+                c1 = max(2.0 - distance_to_obstacle, 0.0)
+                c2 = distance_robot_target
+                c3 = distance_previous
+                c4 = relative_angle / math.pi
+
+                total_cost = (
+                    weights[0] * c1
+                    + weights[1] * c2
+                    + weights[2] * c3
+                    + weights[3] * c4
+                )
+
+                cost_matrix[robot_index, target_index] = total_cost
+
+        if np.all(cost_matrix >= penalty):
+            return None
+
+        row_ind, col_ind = linear_sum_assignment(cost_matrix)
+        assignment = [0] * robot_count
+        total_cost = 0.0
+        for r, c in zip(row_ind, col_ind):
+            cost = cost_matrix[r, c]
+            if cost >= penalty:
+                return None
+            assignment[r] = c
+            per_robot_costs[r] = cost
+            total_cost += cost
+
+        return FormationPlan(
+            theta=theta,
+            targets=targets,
+            assignment=assignment,
+            cost=total_cost,
+            per_robot_costs=per_robot_costs,
+        )
+
+    def optimize_formation(
+        self,
+        formation_type: str = "line",
+        *,
+        weights: Optional[Sequence[float]] = None,
+        ego_index: Optional[int] = None,
+        spacing: Optional[float] = None,
+        apply: bool = True,
+    ) -> FormationPlan:
+        """Solve the constrained optimisation that assigns formation targets."""
+
+        if not self.robot_states:
+            raise ValueError("No robots available for formation optimisation")
+
+        center_x = sum(robot.position[0] for robot in self.robot_states) / len(
+            self.robot_states
+        )
+        center_y = sum(robot.position[1] for robot in self.robot_states) / len(
+            self.robot_states
+        )
+        center = (center_x, center_y)
+
+        if spacing is None:
+            spacing = self.env.ROBOT_RADIUS_PIXELS * 3.0
+
+        weights = weights or (1.0, 1.0, 0.5, 0.3)
+        ego_index = ego_index if ego_index is not None else self.selected_robot_index
+        if ego_index is not None and not (0 <= ego_index < len(self.robot_states)):
+            raise IndexError("ego_index is out of range")
+
+        angle_min, angle_max = self._formation_angle_bounds(formation_type)
+        penalty = 1e6
+        best_plan: Dict[str, Optional[FormationPlan]] = {"plan": None}
+
+        def objective(theta: float) -> float:
+            plan = self._evaluate_formation_plan(
+                center,
+                theta,
+                formation_type,
+                spacing,
+                weights,
+                ego_index,
+                penalty,
+            )
+            if plan is None:
+                return penalty
+            if best_plan["plan"] is None or plan.cost < best_plan["plan"].cost:
+                best_plan["plan"] = plan
+            return plan.cost
+
+        result = minimize_scalar(objective, bounds=(angle_min, angle_max), method="bounded")
+        objective(float(result.x))
+        objective(angle_min)
+        objective(angle_max)
+
+        plan = best_plan["plan"]
+        if plan is None:
+            raise ValueError("Unable to find a feasible formation configuration")
+
+        if apply:
+            for robot_index, target_index in enumerate(plan.assignment):
+                target = plan.targets[target_index]
+                self.robot_states[robot_index].target = target
+
+        return plan
 
     def _compute_formation_layout(
         self,
