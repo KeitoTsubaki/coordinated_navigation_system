@@ -112,8 +112,7 @@ class MultiRobotSimulator:
         self.robot_frame_radius = self.env.ROBOT_RADIUS_M * self.env.PIXELS_PER_METER
         self.obstacle_color_rgb = _to_rgb(self.env.OBSTACLE_COLOR)
         self.lidar_line_color = _to_rgb(self.env.LIDAR_LINE_COLOR)
-        self.lidar_points_color = _to_rgb(self.env.LIDAR_POINTS_COLOR)
-        self.lidar_filtered_points_color: Color = (255, 102, 0)
+        self.lidar_filtered_points_color: Color = (64, 224, 208)
         self._lidar_detection_surface = pygame.Surface(
             (self.env.SCREEN_W, self.env.SCREEN_H), pygame.SRCALPHA
         )
@@ -844,7 +843,7 @@ class MultiRobotSimulator:
                     )
 
             for distance, relative_angle in robot.sensor_data:
-                color = self.lidar_points_color
+                color = robot.color
                 if filtered_counts.get(relative_angle):
                     filtered_counts[relative_angle] -= 1
                     color = self.lidar_filtered_points_color
