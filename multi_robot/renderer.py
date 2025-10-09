@@ -904,6 +904,7 @@ class MultiRobotSimulator:
 
         filtered_data: List[Tuple[float, float]] = []
         theta = robot.theta
+        buffer = 1.1
         for distance, relative_angle in robot.sensor_data:
             global_angle = (theta - math.pi / 2 - relative_angle) % (2 * math.pi)
             replaced = False
@@ -912,7 +913,7 @@ class MultiRobotSimulator:
                 angle_diff = abs(global_angle - angle_center)
                 angle_diff = min(angle_diff, 2 * math.pi - angle_diff)
 
-                if angle_diff <= angle_half_width and distance_min <= distance <= distance_max:
+                if angle_diff <= angle_half_width * buffer and distance_min * (2-buffer) <= distance <= distance_max * buffer:
                     filtered_data.append((robot.sensor.out_of_range_value, relative_angle))
                     replaced = True
                     break
