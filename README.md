@@ -78,6 +78,39 @@ uv pip install -e .
 
 ## Usage
 
+### Run the pygame renderer demo
+1. Install the dependencies (at minimum `pygame` is required for the demo). If
+   you are using the provided requirements file, run:
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. Launch the interactive viewer from the project root:
+
+   ```bash
+   python -m multi_robot.renderer
+   ```
+
+   The window starts with two robots and an example map. You can experiment
+   with different behaviours by editing `multi_robot/renderer/core.py` or by
+   instantiating `MultiRobotSimulator` from your own scripts.
+
+3. Use the following keyboard shortcuts while the window is focused:
+
+   | Key | Action |
+   | --- | ------ |
+   | `W` | Move the selected robot forward |
+   | `Q` / `E` | Rotate the selected robot left / right |
+   | `TAB` | Cycle through robots |
+   | `1`&ndash;`9` (`0` for the 10th) | Jump to a specific robot |
+   | `C` | Load the next map layout |
+   | `SPACE` | Reset the current map |
+   | `L` | Toggle the LiDAR beams for the selected robot |
+   | `ESC` | Quit the simulator |
+
+   The simulator records each robot's path and displays HUD information in the
+   side panel to help with debugging formations and sensor data.
 
 ## Modules
 
