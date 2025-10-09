@@ -679,10 +679,13 @@ class MultiRobotSimulator:
             return
 
         start_spawn_area, target_spawn_area = self._get_spawn_areas()
-        robot_positions: List[Position] = []
 
-        for robot in self.robot_states:
-            position = self._sample_robot_spawn(start_spawn_area, robot_positions)
+        formation_spacing = self.env.ROBOT_RADIUS_PIXELS * 1.5
+        robot_positions = self._generate_formation_positions(
+            start_spawn_area, len(self.robot_states), formation_spacing
+        )
+
+        for robot, position in zip(self.robot_states, robot_positions):
             robot.position = (float(position[0]), float(position[1]))
             robot.theta = 0.0
             robot.path.clear()
@@ -690,9 +693,8 @@ class MultiRobotSimulator:
             robot.closest_obstacle = (float("inf"), 0.0)
             robot.last_update_time = None
             robot.velocity = 0.0
-            robot_positions.append(position)
 
-        self._assign_random_targets(target_spawn_area, robot_positions)
+        self._assign_formation_targets(target_spawn_area, len(robot_positions))
 
     def _get_spawn_areas(self) -> Tuple[Optional[Sequence[float]], Optional[Sequence[float]]]:
         screen_center_xy = (self.env.SCREEN_CENTER_X, self.env.SCREEN_CENTER_Y)
@@ -705,93 +707,105 @@ class MultiRobotSimulator:
         )
         return start_spawn_area, target_spawn_area
 
-    def _sample_robot_spawn(
-        self,
-        spawn_area: Optional[Sequence[float]],
-        existing_positions: Sequence[Position],
-    ) -> Position:
-        min_clearance = self.env.ROBOT_RADIUS_PIXELS * 2.5
-        max_attempts = 512
-
-        for _ in range(max_attempts):
-            candidate = self.env.randomize_position(spawn_area)
-            if all(
-                math.hypot(candidate[0] - other[0], candidate[1] - other[1]) >= min_clearance
-                for other in existing_positions
-            ):
-                return float(candidate[0]), float(candidate[1])
-
-        fallback = self.env.randomize_position(spawn_area)
-        return float(fallback[0]), float(fallback[1])
-
-    def _assign_random_targets(
+    def _assign_formation_targets(
         self,
         target_spawn_area: Optional[Sequence[float]],
-        robot_positions: Sequence[Position],
+        count: int,
     ) -> None:
         if target_spawn_area is None:
             for robot in self.robot_states:
                 robot.target = None
             return
 
-        min_target_distance = self._minimum_target_distance_pixels()
-        assigned_targets: List[Position] = []
+        formation_spacing = self.env.ROBOT_RADIUS_PIXELS * 1.5
+        target_positions = self._generate_formation_positions(
+            target_spawn_area, count, formation_spacing
+        )
 
-        for robot, robot_position in zip(self.robot_states, robot_positions):
-            target = self._sample_target_position(
-                target_spawn_area,
-                robot_position,
-                assigned_targets,
-                robot_positions,
-                min_target_distance,
-            )
+        for robot, target in zip(self.robot_states, target_positions):
             robot.target = target
-            assigned_targets.append(target)
 
-    def _sample_target_position(
+    def _generate_formation_positions(
         self,
-        spawn_area: Sequence[float],
-        robot_position: Position,
-        assigned_targets: Sequence[Position],
-        robot_positions: Sequence[Position],
-        min_robot_distance: float,
-    ) -> Position:
-        min_clearance = self.env.ROBOT_RADIUS_PIXELS * 2.0
-        max_attempts = 512
+        spawn_area: Optional[Sequence[float]],
+        count: int,
+        spacing: float,
+    ) -> List[Position]:
+        if count <= 0:
+            return []
 
-        for _ in range(max_attempts):
-            candidate = self.env.randomize_position(spawn_area)
-            candidate_pos = (float(candidate[0]), float(candidate[1]))
+        if spawn_area is None:
+            center_x = self.env.SCREEN_CENTER_X
+            center_y = self.env.SCREEN_CENTER_Y
+            min_x = center_x
+            max_x = center_x
+            min_y = center_y
+            max_y = center_y
+        else:
+            min_x, max_x, min_y, max_y = spawn_area
+            center_x = (min_x + max_x) / 2.0
+            center_y = (min_y + max_y) / 2.0
 
-            if math.hypot(candidate_pos[0] - robot_position[0], candidate_pos[1] - robot_position[1]) < min_robot_distance:
-                continue
+        available_width = max_x - min_x
+        available_height = max_y - min_y
 
-            if any(
-                math.hypot(candidate_pos[0] - other[0], candidate_pos[1] - other[1]) < min_clearance
-                for other in assigned_targets
-            ):
-                continue
+        if spawn_area is None:
+            columns = math.ceil(math.sqrt(count))
+            rows = math.ceil(count / columns)
+        else:
+            max_columns = max(1, int(available_width // spacing) + 1)
+            max_rows = max(1, int(available_height // spacing) + 1)
 
-            if any(
-                math.hypot(candidate_pos[0] - other[0], candidate_pos[1] - other[1]) < min_clearance
-                for other in robot_positions
-                if other is not robot_position
-            ):
-                continue
+            columns = min(count, max_columns)
+            rows = math.ceil(count / columns)
 
-            return candidate_pos
+            while rows > max_rows and columns > 1:
+                columns -= 1
+                rows = math.ceil(count / columns)
 
-        fallback = self.env.randomize_position(spawn_area)
-        return float(fallback[0]), float(fallback[1])
+            rows = max(rows, 1)
 
-    def _minimum_target_distance_pixels(self) -> float:
-        map_specific_thresholds = {
-            "trap_shaped": self.env.T_DT_M_TRAP_SHAPED,
-            "zigzag": self.env.T_DT_M_ZIGZAG,
-            "random": self.env.T_DT_M_RANDOM,
-            "empty": self.env.T_DT_M_EMPTY,
-        }
-        return map_specific_thresholds.get(self.env.map_type, 0.0) * self.env.PIXELS_PER_METER
+        formation_positions: List[Position] = []
+        row_offsets = [
+            (row - (rows - 1) / 2.0) * spacing for row in range(rows)
+        ]
+        column_offsets = [
+            (col - (columns - 1) / 2.0) * spacing for col in range(columns)
+        ]
+
+        idx = 0
+        for row_offset in row_offsets:
+            for col_offset in column_offsets:
+                if idx >= count:
+                    break
+                x = center_x + col_offset
+                y = center_y + row_offset
+
+                if spawn_area is not None:
+                    if available_width <= 0:
+                        x = center_x
+                    else:
+                        margin = spacing / 2.0
+                        if min_x + margin > max_x - margin:
+                            x = center_x
+                        else:
+                            x = min(max(x, min_x + margin), max_x - margin)
+
+                    if available_height <= 0:
+                        y = center_y
+                    else:
+                        margin = spacing / 2.0
+                        if min_y + margin > max_y - margin:
+                            y = center_y
+                        else:
+                            y = min(max(y, min_y + margin), max_y - margin)
+
+                formation_positions.append((float(x), float(y)))
+                idx += 1
+            if idx >= count:
+                break
+
+        return formation_positions
 
     def _cycle_map(self) -> None:
         next_map_type = _utils_module.switch_map_type(
