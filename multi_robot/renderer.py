@@ -497,6 +497,8 @@ class MultiRobotSimulator:
         for robot_index, target_index in enumerate(plan.assignment):
             if not (0 <= target_index < target_count):
                 continue
+            if robot_index >= len(self.robot_states):
+                continue
             robot = self.robot_states[robot_index]
             target_position = plan.targets[target_index]
             pygame.draw.line(
@@ -521,6 +523,25 @@ class MultiRobotSimulator:
                         int(midpoint[1] - cost_label.get_height() / 2),
                     ),
                 )
+
+    def _update_formation_visualisation(self) -> None:
+        """Refresh the cached formation plan used for visualisation."""
+
+        if not self.robot_states:
+            self._current_formation_plan = None
+            return
+
+        try:
+            # Recompute the optimal formation without assigning the targets so that
+            # the renderer can display the proposed configuration.
+            plan = self.optimize_formation(apply=False)
+        except ValueError:
+            # Optimisation can fail when the formation would intersect obstacles.
+            # In that case we simply fall back to the manual target overlay.
+            self._current_formation_plan = None
+            return
+
+        self._current_formation_plan = plan
 
     def _draw_manual_target_overlay(self) -> None:
         robots_with_targets = [
