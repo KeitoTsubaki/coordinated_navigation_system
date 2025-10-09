@@ -810,16 +810,44 @@ class MultiRobotSimulator:
         if rows == 0 or columns == 0:
             return []
 
-        center = self._sample_formation_center(spawn_area, spacing, rows, columns)
-        return self._generate_formation_positions(
+        max_attempts = 32 if spawn_area is not None else 8
+        fallback_positions: Optional[List[Position]] = None
+
+        for _ in range(max_attempts):
+            center = self._sample_formation_center(spawn_area, spacing, rows, columns)
+            positions = self._generate_formation_positions(
+                spawn_area,
+                count,
+                spacing,
+                rows=rows,
+                columns=columns,
+                center=center,
+                enforce_bounds=False,
+            )
+
+            if self._are_spawn_positions_valid(positions, spawn_area):
+                return positions
+
+            if fallback_positions is None:
+                fallback_positions = positions
+
+        enforced_positions = self._generate_formation_positions(
             spawn_area,
             count,
             spacing,
             rows=rows,
             columns=columns,
-            center=center,
-            enforce_bounds=False,
+            center=None,
+            enforce_bounds=True,
         )
+
+        if self._are_spawn_positions_valid(enforced_positions, spawn_area):
+            return enforced_positions
+
+        if fallback_positions is not None:
+            return fallback_positions
+
+        return enforced_positions
 
     def _generate_formation_positions(
         self,
@@ -882,6 +910,28 @@ class MultiRobotSimulator:
                 break
 
         return formation_positions
+
+    def _are_spawn_positions_valid(
+        self, positions: Sequence[Position], spawn_area: Optional[Sequence[float]]
+    ) -> bool:
+        if not positions:
+            return True
+
+        if spawn_area is None:
+            min_x = float(self.env.ROBOT_RADIUS_PIXELS)
+            max_x = float(self.env.SCREEN_W - self.env.ROBOT_RADIUS_PIXELS)
+            min_y = float(self.env.ROBOT_RADIUS_PIXELS)
+            max_y = float(self.env.SCREEN_H - self.env.ROBOT_RADIUS_PIXELS)
+        else:
+            min_x, max_x, min_y, max_y = spawn_area
+
+        for x, y in positions:
+            if not (min_x <= x <= max_x and min_y <= y <= max_y):
+                return False
+            if self.env.is_collision((x, y)):
+                return False
+
+        return True
 
     def _cycle_map(self) -> None:
         next_map_type = _utils_module.switch_map_type(
