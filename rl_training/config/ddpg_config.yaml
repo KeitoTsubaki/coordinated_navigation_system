@@ -1,5 +1,5 @@
 reward:
-  r_arrival: 3
+  r_arrival: 10 # 3 -> 10
   r_collision: -10
   eta_r: 1.8
   rho_0: 1.5
