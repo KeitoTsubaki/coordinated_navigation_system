@@ -58,6 +58,7 @@ class RobotState:
     path: Deque[Tuple[Position, float]] = field(default_factory=deque)
     sensor: Optional[LiDARSensor] = None
     sensor_data: List[Tuple[float, float]] = field(default_factory=list)
+    filtered_sensor_data: List[Tuple[float, float]] = field(default_factory=list)
     closest_obstacle: Tuple[float, float] = (float("inf"), 0.0)
     lidar_enabled: bool = True
     last_update_time: Optional[float] = None
@@ -112,6 +113,7 @@ class MultiRobotSimulator:
         self.obstacle_color_rgb = _to_rgb(self.env.OBSTACLE_COLOR)
         self.lidar_line_color = _to_rgb(self.env.LIDAR_LINE_COLOR)
         self.lidar_points_color = _to_rgb(self.env.LIDAR_POINTS_COLOR)
+        self.lidar_filtered_points_color: Color = (255, 102, 0)
         self._lidar_detection_surface = pygame.Surface(
             (self.env.SCREEN_W, self.env.SCREEN_H), pygame.SRCALPHA
         )
@@ -829,14 +831,32 @@ class MultiRobotSimulator:
             detection_surface, self.env.OBSTACLE_COLOR
         )
         robot.sensor_data = list(raw_sensor_data) if raw_sensor_data else []
+        robot.filtered_sensor_data = []
         if robot.sensor_data:
             self._filter_robot_reflections(robot)
 
         if robot.sensor_data:
+            filtered_map: dict[float, Deque[float]] = {}
+            if robot.filtered_sensor_data:
+                for distance, relative_angle in robot.filtered_sensor_data:
+                    filtered_map.setdefault(relative_angle, deque()).append(distance)
+
             for distance, relative_angle in robot.sensor_data:
+                display_distance = distance
+                color = robot.color
+                if filtered_map:
+                    original_distances = filtered_map.get(relative_angle)
+                    if original_distances:
+                        # Render the substituted measurements at their original distance,
+                        # but use a highlight color so they stand out.  Multiple readings
+                        # can share the same relative angle, therefore we consume them in
+                        # FIFO order from the deque created above.
+                        display_distance = original_distances.popleft()
+                        color = self.lidar_filtered_points_color
+
                 obstacle_angle = robot.theta - math.pi / 2 - relative_angle
                 point = _utils_module.AD2pos(
-                    distance,
+                    display_distance,
                     obstacle_angle,
                     robot.position,
                     self.env.PIXELS_PER_METER,
@@ -850,7 +870,7 @@ class MultiRobotSimulator:
                 # )
                 pygame.draw.circle(
                     self.env.robot_and_lidar_layer,
-                    robot.color,
+                    color,
                     (int(point[0]), int(point[1])),
                     2,
                 )
@@ -903,6 +923,7 @@ class MultiRobotSimulator:
             return
 
         filtered_data: List[Tuple[float, float]] = []
+        replaced_measurements: List[Tuple[float, float]] = []
         theta = robot.theta
         for distance, relative_angle in robot.sensor_data:
             global_angle = (theta - math.pi / 2 - relative_angle) % (2 * math.pi)
@@ -913,6 +934,7 @@ class MultiRobotSimulator:
                 angle_diff = min(angle_diff, 2 * math.pi - angle_diff)
 
                 if angle_diff <= angle_half_width and distance_min <= distance <= distance_max:
+                    replaced_measurements.append((distance, relative_angle))
                     filtered_data.append((robot.sensor.out_of_range_value, relative_angle))
                     replaced = True
                     break
@@ -921,6 +943,7 @@ class MultiRobotSimulator:
                 filtered_data.append((distance, relative_angle))
 
         robot.sensor_data = filtered_data
+        robot.filtered_sensor_data = replaced_measurements
 
     def _select_next_robot(self) -> None:
         if not self.robot_states:
