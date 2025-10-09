@@ -303,6 +303,8 @@ class Env(gym.Env):
         k_7 = self.ddpg_config["reward"]["k_7"]
         k_8 = self.ddpg_config["reward"]["k_8"]
         k_9 = self.ddpg_config["reward"]["k_9"]
+        minor_penalty = self.ddpg_config["reward"]["minor_penalty"]
+
 
         r_s = 0.0
         r_d = 0.0
@@ -367,7 +369,7 @@ class Env(gym.Env):
         r_v = r_v_v + r_v_omega
 
         # r_m: minor penalty to encourage the robot to actively explore the environment and shorten the trajectory. penalty for time passage
-        r_m = -0.001
+        r_m = minor_penalty
 
         r_d = r_g + r_c + r_v + r_m
 
