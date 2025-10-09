@@ -847,10 +847,6 @@ class MultiRobotSimulator:
                 if filtered_map:
                     original_distances = filtered_map.get(relative_angle)
                     if original_distances:
-                        # Render the substituted measurements at their original distance,
-                        # but use a highlight color so they stand out.  Multiple readings
-                        # can share the same relative angle, therefore we consume them in
-                        # FIFO order from the deque created above.
                         display_distance = original_distances.popleft()
                         color = self.lidar_filtered_points_color
 
