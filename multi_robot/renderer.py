@@ -680,9 +680,8 @@ class MultiRobotSimulator:
 
         start_spawn_area, target_spawn_area = self._get_spawn_areas()
 
-        formation_spacing = self.env.ROBOT_RADIUS_PIXELS * 2.5
-        robot_positions = self._generate_formation_positions(
-            start_spawn_area, len(self.robot_states), formation_spacing
+        robot_positions = self._generate_random_positions(
+            start_spawn_area, len(self.robot_states)
         )
 
         for robot, position in zip(self.robot_states, robot_positions):
@@ -694,7 +693,7 @@ class MultiRobotSimulator:
             robot.last_update_time = None
             robot.velocity = 0.0
 
-        self._assign_formation_targets(target_spawn_area, len(robot_positions))
+        self._assign_random_targets(target_spawn_area, robot_positions)
 
     def _get_spawn_areas(self) -> Tuple[Optional[Sequence[float]], Optional[Sequence[float]]]:
         screen_center_xy = (self.env.SCREEN_CENTER_X, self.env.SCREEN_CENTER_Y)
@@ -707,23 +706,108 @@ class MultiRobotSimulator:
         )
         return start_spawn_area, target_spawn_area
 
-    def _assign_formation_targets(
+    def _assign_random_targets(
         self,
         target_spawn_area: Optional[Sequence[float]],
-        count: int,
+        robot_positions: Sequence[Position],
     ) -> None:
-        if target_spawn_area is None:
-            for robot in self.robot_states:
-                robot.target = None
+        if not self.robot_states:
             return
 
-        formation_spacing = self.env.ROBOT_RADIUS_PIXELS * 2.5
-        target_positions = self._generate_formation_positions(
-            target_spawn_area, count, formation_spacing
-        )
+        min_distance_pixels = self._target_min_distance_pixels()
+        clearance = self.robot_frame_radius * 2
+        assigned_targets: List[Position] = []
 
-        for robot, target in zip(self.robot_states, target_positions):
+        for robot, start_position in zip(self.robot_states, robot_positions):
+            target = self._sample_target_position(
+                target_spawn_area,
+                assigned_targets,
+                start_position,
+                min_distance_pixels,
+                clearance,
+            )
+            assigned_targets.append(target)
             robot.target = target
+
+    def _generate_random_positions(
+        self,
+        spawn_area: Optional[Sequence[float]],
+        count: int,
+    ) -> List[Position]:
+        if count <= 0:
+            return []
+
+        clearance = self.robot_frame_radius * 2
+        positions: List[Position] = []
+        max_attempts = max(1000, count * 200)
+        attempts = 0
+
+        while len(positions) < count and attempts < max_attempts:
+            candidate = self.env.randomize_position(spawn_area)
+            if all(
+                math.hypot(candidate[0] - pos[0], candidate[1] - pos[1])
+                >= clearance
+                for pos in positions
+            ):
+                positions.append((float(candidate[0]), float(candidate[1])))
+            attempts += 1
+
+        while len(positions) < count:
+            candidate = self.env.randomize_position(spawn_area)
+            positions.append((float(candidate[0]), float(candidate[1])))
+
+        return positions
+
+    def _sample_target_position(
+        self,
+        spawn_area: Optional[Sequence[float]],
+        assigned_targets: Sequence[Position],
+        start_position: Position,
+        min_distance_pixels: float,
+        clearance: float,
+    ) -> Position:
+        max_attempts = 1000
+
+        def _is_valid(candidate: Position, *, enforce_min_distance: bool) -> bool:
+            if enforce_min_distance and min_distance_pixels > 0:
+                if (
+                    math.hypot(
+                        candidate[0] - start_position[0],
+                        candidate[1] - start_position[1],
+                    )
+                    < min_distance_pixels
+                ):
+                    return False
+            return all(
+                math.hypot(candidate[0] - pos[0], candidate[1] - pos[1]) >= clearance
+                for pos in assigned_targets
+            )
+
+        for enforce_min_distance in (True, False):
+            attempts = 0
+            while attempts < max_attempts:
+                candidate = self.env.randomize_position(spawn_area)
+                candidate_position = (float(candidate[0]), float(candidate[1]))
+                if _is_valid(candidate_position, enforce_min_distance=enforce_min_distance):
+                    return candidate_position
+                attempts += 1
+
+        fallback = self.env.randomize_position(spawn_area)
+        return (float(fallback[0]), float(fallback[1]))
+
+    def _target_min_distance_pixels(self) -> float:
+        map_type = self.env.map_type
+        if map_type == "trap_shaped":
+            threshold_m = self.env.T_DT_M_TRAP_SHAPED
+        elif map_type == "zigzag":
+            threshold_m = self.env.T_DT_M_ZIGZAG
+        elif map_type == "random":
+            threshold_m = self.env.T_DT_M_RANDOM
+        elif map_type == "empty":
+            threshold_m = self.env.T_DT_M_EMPTY
+        else:
+            threshold_m = 0.0
+        return threshold_m * self.env.PIXELS_PER_METER
 
     def _generate_formation_positions(
         self,
