@@ -184,7 +184,8 @@ class Env(gym.Env):
         observation = self._get_obs()
         info = {"is_target_reached": is_target_reached}
         reward = self._calculate_reward()
-        print(f"is_target_reached: {is_target_reached}")
+        if terminated:
+            print(f"is_target_reached: {is_target_reached}")
 
         # Update s_t and s_z
         if is_target_reached:
