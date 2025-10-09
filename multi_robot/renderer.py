@@ -260,6 +260,7 @@ class MultiRobotSimulator:
             self._draw_robot(robot)
             if self.show_labels:
                 self._draw_label(robot)
+        self._draw_parallel_formation()
         self._draw_hud()
         self.env.screen.blit(self.env.robot_and_lidar_layer, (0, 0))
 
@@ -409,6 +410,69 @@ class MultiRobotSimulator:
         for index, text in enumerate(hud_lines):
             label = font.render(text, True, (0, 0, 0))
             self.env.robot_and_lidar_layer.blit(label, (10, 10 + index * 20))
+
+    def _draw_parallel_formation(self) -> None:
+        if len(self.robot_states) < 2:
+            return
+
+        formation_color = (30, 144, 255)
+        center_color = (255, 140, 0)
+        text_color = (25, 25, 25)
+        font = pygame.font.SysFont("arial", 14)
+
+        sorted_states = sorted(self.robot_states, key=lambda robot: robot.position[0])
+        positions = [robot.position for robot in sorted_states]
+
+        center_x = sum(position[0] for position in positions) / len(positions)
+        center_y = sum(position[1] for position in positions) / len(positions)
+        pygame.draw.circle(
+            self.env.robot_and_lidar_layer,
+            center_color,
+            (int(center_x), int(center_y)),
+            6,
+        )
+
+        for first, second in zip(sorted_states[:-1], sorted_states[1:]):
+            start = first.position
+            end = second.position
+
+            pygame.draw.line(
+                self.env.robot_and_lidar_layer,
+                formation_color,
+                (int(start[0]), int(start[1])),
+                (int(end[0]), int(end[1])),
+                width=2,
+            )
+
+            dx = end[0] - start[0]
+            dy = end[1] - start[1]
+            distance_pixels = math.hypot(dx, dy)
+            if distance_pixels == 0:
+                continue
+
+            midpoint = ((start[0] + end[0]) / 2, (start[1] + end[1]) / 2)
+            normal_x = -dy / distance_pixels
+            normal_y = dx / distance_pixels
+
+            distance_m = distance_pixels / self.env.PIXELS_PER_METER
+            distance_label = font.render(f"{distance_m:.2f}m", True, text_color)
+
+            angle_rad = math.atan2(-(dy), dx)
+            angle_deg = (math.degrees(angle_rad) + 360.0) % 360.0
+            angle_label = font.render(f"{angle_deg:.1f}°", True, text_color)
+
+            offset = 12
+            distance_position = (
+                int(midpoint[0] + normal_x * offset - distance_label.get_width() / 2),
+                int(midpoint[1] + normal_y * offset - distance_label.get_height() / 2),
+            )
+            angle_position = (
+                int(midpoint[0] - normal_x * offset - angle_label.get_width() / 2),
+                int(midpoint[1] - normal_y * offset - angle_label.get_height() / 2),
+            )
+
+            self.env.robot_and_lidar_layer.blit(distance_label, distance_position)
+            self.env.robot_and_lidar_layer.blit(angle_label, angle_position)
 
     def _draw_info_panel(self) -> None:
         panel_left = self.env.SCREEN_W
