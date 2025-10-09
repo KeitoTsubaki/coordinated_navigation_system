@@ -680,7 +680,7 @@ class MultiRobotSimulator:
 
         start_spawn_area, target_spawn_area = self._get_spawn_areas()
 
-        formation_spacing = self.env.ROBOT_RADIUS_PIXELS * 1.5
+        formation_spacing = self.env.ROBOT_RADIUS_PIXELS * 2.5
         robot_positions = self._generate_formation_positions(
             start_spawn_area, len(self.robot_states), formation_spacing
         )
@@ -717,7 +717,7 @@ class MultiRobotSimulator:
                 robot.target = None
             return
 
-        formation_spacing = self.env.ROBOT_RADIUS_PIXELS * 1.5
+        formation_spacing = self.env.ROBOT_RADIUS_PIXELS * 2.5
         target_positions = self._generate_formation_positions(
             target_spawn_area, count, formation_spacing
         )
