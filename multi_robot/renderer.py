@@ -124,6 +124,7 @@ class MultiRobotSimulator:
         self._clock = pygame.time.Clock()
         self._fps = 0.0
         self._current_formation_plan: Optional[FormationPlan] = None
+        self._formation_plan_candidates: Dict[int, FormationPlan] = {}
 
         self.robot_radius_pixels = (
             self.env.ROBOT_RADIUS_M * 0.8 * self.env.PIXELS_PER_METER
@@ -246,7 +247,7 @@ class MultiRobotSimulator:
             target = self.meters_to_pixels(*target)
         robot.target = target
         if target is None:
-            self._current_formation_plan = None
+            self._clear_formation_visualisation()
 
     def clear_paths(self) -> None:
         """Remove stored trajectories for every robot."""
@@ -261,7 +262,13 @@ class MultiRobotSimulator:
         self.env.reset(map_type)
         self.clear_paths()
         self._recenter_robots()
+        self._clear_formation_visualisation()
+
+    def _clear_formation_visualisation(self) -> None:
+        """Reset cached formation plans used for rendering overlays."""
+
         self._current_formation_plan = None
+        self._formation_plan_candidates.clear()
 
     # ------------------------------------------------------------------
     # Rendering utilities
@@ -393,45 +400,98 @@ class MultiRobotSimulator:
         )
 
     def _draw_formation_plan(self) -> None:
-        plan = self._current_formation_plan
-        if plan is None:
+        if not self._formation_plan_candidates:
             self._draw_manual_target_overlay()
             return
 
-        if not plan.targets or not self.robot_states:
-            return
-
-        target_count = len(plan.targets)
-        if target_count != len(self.robot_states):
-            return
-
-        layer = self.env.robot_and_lidar_layer
         target_radius = int(max(4, self.robot_radius_pixels * 0.4))
-        connection_color = (72, 61, 139)
-        target_color = (46, 204, 113)
-        center_color = (255, 140, 0)
-        text_color = (30, 30, 30)
-
         font = pygame.font.SysFont("arial", 14)
         small_font = pygame.font.SysFont("consolas", 12)
 
-        center_x, center_y = plan.center
+        highlight_queue: List[Tuple[int, FormationPlan, Color]] = []
 
+        for ego_index in sorted(self._formation_plan_candidates):
+            plan = self._formation_plan_candidates[ego_index]
+            if not plan.targets or not self.robot_states:
+                continue
+            if len(plan.targets) != len(self.robot_states):
+                continue
+
+            if 0 <= ego_index < len(self.robot_states):
+                base_color = self.robot_states[ego_index].color
+            else:
+                base_color = (72, 61, 139)
+
+            highlight = plan is self._current_formation_plan
+            if highlight:
+                highlight_queue.append((ego_index, plan, base_color))
+                continue
+
+            self._draw_single_formation_plan(
+                plan,
+                ego_index=ego_index,
+                target_radius=target_radius,
+                base_color=base_color,
+                highlight=False,
+                font=font,
+                small_font=small_font,
+            )
+
+        for ego_index, plan, base_color in highlight_queue:
+            self._draw_single_formation_plan(
+                plan,
+                ego_index=ego_index,
+                target_radius=target_radius,
+                base_color=base_color,
+                highlight=True,
+                font=font,
+                small_font=small_font,
+            )
+
+    def _draw_single_formation_plan(
+        self,
+        plan: FormationPlan,
+        *,
+        ego_index: int,
+        target_radius: int,
+        base_color: Color,
+        highlight: bool,
+        font: "pygame.font.Font",
+        small_font: "pygame.font.Font",
+    ) -> None:
+        layer = self.env.robot_and_lidar_layer
+
+        connection_color = base_color if highlight else self._with_alpha(base_color, 0.5)
+        target_color = (
+            self._brighten_color(base_color)
+            if highlight
+            else self._with_alpha(self._brighten_color(base_color), 0.5)
+        )
+        center_color = (
+            self._brighten_color(base_color)
+            if highlight
+            else self._with_alpha(self._brighten_color(base_color), 0.7)
+        )
+        text_color = (30, 30, 30) if highlight else (90, 90, 90)
+
+        center_x, center_y = plan.center
         orientation_length = max(self.env.ROBOT_RADIUS_PIXELS * 3.0, plan.spacing)
         orientation_dx = math.cos(plan.theta) * orientation_length
         orientation_dy = math.sin(plan.theta) * orientation_length
         orientation_end = (center_x + orientation_dx, center_y + orientation_dy)
 
-        pygame.draw.circle(layer, center_color, (int(center_x), int(center_y)), 6)
+        radius = 6 if highlight else 4
+        line_width = 3 if highlight else 2
+        pygame.draw.circle(layer, center_color, (int(center_x), int(center_y)), radius)
         pygame.draw.line(
             layer,
             center_color,
             (int(center_x), int(center_y)),
             (int(orientation_end[0]), int(orientation_end[1])),
-            width=3,
+            width=line_width,
         )
 
-        arrow_size = 10.0
+        arrow_size = 10.0 if highlight else 8.0
         arrow_angle = math.atan2(orientation_dy, orientation_dx)
         left_angle = arrow_angle + math.pi * 3.0 / 4.0
         right_angle = arrow_angle - math.pi * 3.0 / 4.0
@@ -453,7 +513,11 @@ class MultiRobotSimulator:
             ],
         )
 
-        angle_label = font.render(f"θ={math.degrees(plan.theta):.1f}°", True, text_color)
+        if highlight:
+            label_text = f"θ={math.degrees(plan.theta):.1f}°"
+        else:
+            label_text = f"R{ego_index}: {math.degrees(plan.theta):.1f}°"
+        angle_label = font.render(label_text, True, text_color)
         layer.blit(
             angle_label,
             (
@@ -463,42 +527,38 @@ class MultiRobotSimulator:
         )
 
         for target_index, position in enumerate(plan.targets):
+            draw_kwargs = {}
+            if highlight:
+                draw_kwargs["width"] = 0
+            else:
+                draw_kwargs["width"] = 1
             pygame.draw.circle(
                 layer,
                 target_color,
                 (int(position[0]), int(position[1])),
                 target_radius,
-            )
-            label = small_font.render(f"T{target_index}", True, text_color)
-            layer.blit(
-                label,
-                (
-                    int(position[0] - label.get_width() / 2),
-                    int(position[1] - label.get_height() / 2),
-                ),
+                **draw_kwargs,
             )
 
-    def _update_formation_visualisation(self) -> None:
-        """Refresh the cached formation plan used for visualisation."""
+            if highlight:
+                label = small_font.render(f"T{target_index}", True, text_color)
+                layer.blit(
+                    label,
+                    (
+                        int(position[0] - label.get_width() / 2),
+                        int(position[1] - label.get_height() / 2),
+                    ),
+                )
 
-        if not self.robot_states:
-            self._current_formation_plan = None
+        if not plan.assignment:
             return
 
-        try:
-            # Recompute the optimal formation without assigning the targets so that
-            # the renderer can display the proposed configuration.
-            self.optimize_formation(apply=False)
-        except ValueError:
-            # Optimisation can fail when the formation would intersect obstacles.
-            # In that case we simply fall back to the manual target overlay.
-            self._current_formation_plan = None
-
         for robot_index, target_index in enumerate(plan.assignment):
-            if not (0 <= target_index < target_count):
+            if not (0 <= target_index < len(plan.targets)):
                 continue
             if robot_index >= len(self.robot_states):
                 continue
+
             robot = self.robot_states[robot_index]
             target_position = plan.targets[target_index]
             pygame.draw.line(
@@ -506,8 +566,11 @@ class MultiRobotSimulator:
                 connection_color,
                 (int(robot.position[0]), int(robot.position[1])),
                 (int(target_position[0]), int(target_position[1])),
-                width=2,
+                width=2 if highlight else 1,
             )
+
+            if not highlight:
+                continue
 
             midpoint = (
                 (robot.position[0] + target_position[0]) / 2.0,
@@ -525,23 +588,35 @@ class MultiRobotSimulator:
                 )
 
     def _update_formation_visualisation(self) -> None:
-        """Refresh the cached formation plan used for visualisation."""
+        """Refresh the cached formation plans used for visualisation."""
 
         if not self.robot_states:
+            self._clear_formation_visualisation()
+            return
+
+        self._formation_plan_candidates.clear()
+        selected_plan: Optional[FormationPlan] = None
+
+        for ego_index in range(len(self.robot_states)):
+            try:
+                plan = self.optimize_formation(ego_index=ego_index, apply=False)
+            except ValueError:
+                continue
+
+            self._formation_plan_candidates[ego_index] = plan
+            if ego_index == self.selected_robot_index:
+                selected_plan = plan
+
+        if not self._formation_plan_candidates:
             self._current_formation_plan = None
             return
 
-        try:
-            # Recompute the optimal formation without assigning the targets so that
-            # the renderer can display the proposed configuration.
-            plan = self.optimize_formation(apply=False)
-        except ValueError:
-            # Optimisation can fail when the formation would intersect obstacles.
-            # In that case we simply fall back to the manual target overlay.
-            self._current_formation_plan = None
-            return
-
-        self._current_formation_plan = plan
+        if selected_plan is not None:
+            self._current_formation_plan = selected_plan
+        else:
+            self._current_formation_plan = next(
+                iter(self._formation_plan_candidates.values())
+            )
 
     def _draw_manual_target_overlay(self) -> None:
         robots_with_targets = [
@@ -760,47 +835,83 @@ class MultiRobotSimulator:
 
             y_offset += 6
 
-        if self._current_formation_plan is not None and self._current_formation_plan.targets:
+        if self._formation_plan_candidates:
             formation_header = title_font.render(
-                "Formation Plan", True, self.info_panel_text_color
+                "Formation Plans", True, self.info_panel_text_color
             )
             self.display_surface.blit(formation_header, (x_offset, y_offset))
             y_offset += formation_header.get_height() + 8
 
-            plan = self._current_formation_plan
-            spacing_m = plan.spacing / self.env.PIXELS_PER_METER
-            center_m = self.pixels_to_meters(*plan.center)
-            plan_lines = [
-                f"Formation: {plan.formation_type.title()}",
-                f"Cost: {plan.cost:.3f}",
-                f"Spacing: {spacing_m:.2f} m",
-                f"Heading: {math.degrees(plan.theta):.1f}°",
-                f"Center: ({center_m[0]:.2f}, {center_m[1]:.2f}) m",
-            ]
-            for line in plan_lines:
-                label = value_font.render(line, True, self.info_panel_text_color)
-                self.display_surface.blit(label, (x_offset, y_offset))
-                y_offset += label.get_height() + 4
-
-            y_offset += 4
-
-            for robot_index, target_index in enumerate(plan.assignment):
-                if robot_index >= len(self.robot_states):
+            for ego_index in sorted(self._formation_plan_candidates):
+                plan = self._formation_plan_candidates[ego_index]
+                if not plan.targets:
                     continue
-                robot_name = self.robot_states[robot_index].name
-                if 0 <= target_index < len(plan.targets):
-                    cost_value = plan.per_robot_costs.get(robot_index)
-                    if cost_value is not None:
-                        text = f"{robot_name} → T{target_index} ({cost_value:.2f})"
-                    else:
-                        text = f"{robot_name} → T{target_index}"
-                else:
-                    text = f"{robot_name} → --"
-                label = value_font.render(text, True, self.info_panel_text_color)
-                self.display_surface.blit(label, (x_offset + 10, y_offset))
-                y_offset += label.get_height() + 2
 
-            y_offset += 12
+                robot_name = (
+                    self.robot_states[ego_index].name
+                    if 0 <= ego_index < len(self.robot_states)
+                    else f"Robot {ego_index}"
+                )
+                spacing_m = plan.spacing / self.env.PIXELS_PER_METER
+                center_m = self.pixels_to_meters(*plan.center)
+                heading_deg = math.degrees(plan.theta)
+                cost_text = f"{plan.cost:.3f}" if plan.cost != float("inf") else "∞"
+
+                highlight = plan is self._current_formation_plan
+                indicator = "▶" if highlight else "•"
+                if highlight and 0 <= ego_index < len(self.robot_states):
+                    robot_color = self.robot_states[ego_index].color
+                    summary_color = tuple(
+                        min(255, int(tc * 0.5 + rc * 0.5))
+                        for tc, rc in zip(self.info_panel_text_color, robot_color)
+                    )
+                else:
+                    summary_color = self.info_panel_text_color
+
+                summary = (
+                    f"{indicator} {robot_name}: {plan.formation_type.title()}"
+                    f" θ={heading_deg:.1f}° cost={cost_text}"
+                )
+                summary_label = value_font.render(summary, True, summary_color)
+                self.display_surface.blit(summary_label, (x_offset, y_offset))
+                y_offset += summary_label.get_height() + 2
+
+                if highlight:
+                    detail_lines = [
+                        f"Spacing: {spacing_m:.2f} m",
+                        f"Center: ({center_m[0]:.2f}, {center_m[1]:.2f}) m",
+                    ]
+                    for line in detail_lines:
+                        label = value_font.render(line, True, self.info_panel_text_color)
+                        self.display_surface.blit(label, (x_offset + 10, y_offset))
+                        y_offset += label.get_height() + 2
+
+                    assign_header = value_font.render(
+                        "Assignments:", True, self.info_panel_text_color
+                    )
+                    self.display_surface.blit(assign_header, (x_offset + 10, y_offset))
+                    y_offset += assign_header.get_height() + 2
+
+                    for robot_index, target_index in enumerate(plan.assignment):
+                        if robot_index >= len(self.robot_states):
+                            continue
+                        robot_label = self.robot_states[robot_index].name
+                        if 0 <= target_index < len(plan.targets):
+                            cost_value = plan.per_robot_costs.get(robot_index)
+                            if cost_value is not None:
+                                text = (
+                                    f"{robot_label} → T{target_index}"
+                                    f" ({cost_value:.2f})"
+                                )
+                            else:
+                                text = f"{robot_label} → T{target_index}"
+                        else:
+                            text = f"{robot_label} → --"
+                        label = value_font.render(text, True, self.info_panel_text_color)
+                        self.display_surface.blit(label, (x_offset + 20, y_offset))
+                        y_offset += label.get_height() + 2
+
+                y_offset += 8
         elif any(robot.target is not None for robot in self.robot_states):
             formation_header = title_font.render(
                 "Target Assignments", True, self.info_panel_text_color
@@ -1008,7 +1119,7 @@ class MultiRobotSimulator:
 
         for robot, target in zip(self.robot_states, target_positions):
             robot.target = target
-        self._current_formation_plan = None
+        self._clear_formation_visualisation()
 
     def _invalidate_obstacle_cache(self) -> None:
         self._obstacle_mask = None
@@ -1291,14 +1402,16 @@ class MultiRobotSimulator:
 
         plan = best_plan["plan"]
         if plan is None:
-            self._current_formation_plan = None
+            self._clear_formation_visualisation()
             raise ValueError("Unable to find a feasible formation configuration")
 
-        self._current_formation_plan = plan
         if apply:
             for robot_index, target_index in enumerate(plan.assignment):
                 target = plan.targets[target_index]
                 self.robot_states[robot_index].target = target
+            self._current_formation_plan = plan
+            if ego_index is not None:
+                self._formation_plan_candidates[ego_index] = plan
 
         return plan
 
