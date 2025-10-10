@@ -95,6 +95,7 @@ class MultiRobotSimulator:
         path_history: int = 256,
         show_labels: bool = True,
         manual_control: bool = True,
+        show_info_panel: bool = True,
     ) -> None:
         if config_path is None:
             config_path = str(
@@ -111,6 +112,8 @@ class MultiRobotSimulator:
         self.manual_rotation_step = 0.1
         self.info_panel_min_width = 320
         self.info_panel_width = max(self.info_panel_min_width, int(self.env.SCREEN_W * 0.4))
+        self._last_info_panel_width = self.info_panel_width
+        self.info_panel_visible = True
         self.info_panel_background = (245, 245, 245)
         self.info_panel_text_color = (32, 32, 32)
         self.info_panel_highlight = (220, 235, 250)
@@ -174,6 +177,9 @@ class MultiRobotSimulator:
         # Create the first map.  By default we use the same map type as the
         # single robot simulator so that existing scenarios work out of the box.
         self.set_map(self.env.map_type)
+
+        if not show_info_panel:
+            self.set_info_panel_visible(False)
 
     # ------------------------------------------------------------------
     # Coordinate conversion helpers
@@ -306,7 +312,8 @@ class MultiRobotSimulator:
 
         self.display_surface.fill(self.env.BACKGROUND_COLOR)
         self.display_surface.blit(self.simulation_surface, (0, 0))
-        self._draw_info_panel()
+        if self.info_panel_visible:
+            self._draw_info_panel()
 
         if self.env.render_mode == "human":
             pygame.display.flip()
@@ -349,6 +356,8 @@ class MultiRobotSimulator:
                 elif event.key == pygame.K_p:
                     robot = self.robot_states[self.selected_robot_index]
                     robot.path_enabled = not robot.path_enabled
+                elif event.key == pygame.K_i:
+                    self.toggle_info_panel()
             elif event.type == pygame.MOUSEWHEEL:
                 mouse_x, _ = pygame.mouse.get_pos()
                 if mouse_x >= self.env.SCREEN_W:
@@ -785,7 +794,31 @@ class MultiRobotSimulator:
             self.env.robot_and_lidar_layer.blit(distance_label, distance_position)
             self.env.robot_and_lidar_layer.blit(angle_label, angle_position)
 
+    def toggle_info_panel(self) -> None:
+        """Toggle the visibility of the information panel."""
+
+        self.set_info_panel_visible(not self.info_panel_visible)
+
+    def set_info_panel_visible(self, visible: bool) -> None:
+        """Set the visibility of the information panel."""
+
+        if self.info_panel_visible == visible:
+            return
+
+        if visible:
+            target_width = max(self.info_panel_min_width, self._last_info_panel_width)
+            self.info_panel_visible = True
+            self._resize_display_surface(target_width)
+        else:
+            self._last_info_panel_width = max(self.info_panel_min_width, self.info_panel_width)
+            self.info_panel_visible = False
+            self._resize_display_surface(0)
+            self.info_panel_scroll = 0
+
     def _draw_info_panel(self) -> None:
+        if not self.info_panel_visible:
+            return
+
         while True:
             required_inner_width, required_height = self._render_info_panel(resize_only=True)
             target_width = max(
