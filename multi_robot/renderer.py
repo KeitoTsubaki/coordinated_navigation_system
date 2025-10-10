@@ -18,7 +18,6 @@ import importlib
 import importlib.resources
 import importlib.util
 import pygame
-import textwrap
 
 import numpy as np
 from scipy import ndimage
@@ -110,7 +109,8 @@ class MultiRobotSimulator:
         self.selected_robot_index = 0
         self.manual_step_pixels = 5
         self.manual_rotation_step = 0.1
-        self.info_panel_width = max(280, int(self.env.SCREEN_W * 0.4))
+        self.info_panel_min_width = 320
+        self.info_panel_width = max(self.info_panel_min_width, int(self.env.SCREEN_W * 0.4))
         self.info_panel_background = (245, 245, 245)
         self.info_panel_text_color = (32, 32, 32)
         self.info_panel_highlight = (220, 235, 250)
@@ -772,16 +772,30 @@ class MultiRobotSimulator:
             self.env.robot_and_lidar_layer.blit(angle_label, angle_position)
 
     def _draw_info_panel(self) -> None:
+        while True:
+            required_inner_width = self._render_info_panel(resize_only=True)
+            target_width = max(
+                self.info_panel_min_width,
+                required_inner_width + 2 * self.info_padding,
+            )
+            if target_width == self.info_panel_width:
+                break
+            self._resize_display_surface(target_width)
+
+        self._render_info_panel(resize_only=False)
+
+    def _render_info_panel(self, *, resize_only: bool) -> int:
         panel_left = self.env.SCREEN_W
-        panel_rect = pygame.Rect(panel_left, 0, self.info_panel_width, self.env.SCREEN_H)
-        pygame.draw.rect(self.display_surface, self.info_panel_background, panel_rect)
-        pygame.draw.line(
-            self.display_surface,
-            self.info_panel_divider,
-            (panel_left, 0),
-            (panel_left, self.env.SCREEN_H),
-            width=2,
-        )
+        if not resize_only:
+            panel_rect = pygame.Rect(panel_left, 0, self.info_panel_width, self.env.SCREEN_H)
+            pygame.draw.rect(self.display_surface, self.info_panel_background, panel_rect)
+            pygame.draw.line(
+                self.display_surface,
+                self.info_panel_divider,
+                (panel_left, 0),
+                (panel_left, self.env.SCREEN_H),
+                width=2,
+            )
 
         title_font = pygame.font.SysFont("arial", 20, bold=True)
         name_font = pygame.font.SysFont("arial", 18, bold=True)
@@ -789,10 +803,27 @@ class MultiRobotSimulator:
 
         x_offset = panel_left + self.info_padding
         y_offset = self.info_padding
+        max_required_inner_width = 0
 
-        title = title_font.render("Simulation Info", True, self.info_panel_text_color)
-        self.display_surface.blit(title, (x_offset, y_offset))
-        y_offset += title.get_height() + 10
+        def render_line(
+            text: str,
+            font: pygame.font.Font,
+            color: Color,
+            *,
+            indent: int = 0,
+            spacing: int = 4,
+        ) -> None:
+            nonlocal y_offset, max_required_inner_width
+            if not text:
+                return
+            width, height = font.size(text)
+            max_required_inner_width = max(max_required_inner_width, indent + width)
+            if not resize_only:
+                label = font.render(text, True, color)
+                self.display_surface.blit(label, (x_offset + indent, y_offset))
+            y_offset += height + spacing
+
+        render_line("Simulation Info", title_font, self.info_panel_text_color, spacing=10)
 
         selected_name = (
             self.robot_states[self.selected_robot_index].name
@@ -805,15 +836,11 @@ class MultiRobotSimulator:
             f"Selected: {selected_name}",
         ]
         for line in general_lines:
-            label = value_font.render(line, True, self.info_panel_text_color)
-            self.display_surface.blit(label, (x_offset, y_offset))
-            y_offset += label.get_height() + 4
+            render_line(line, value_font, self.info_panel_text_color, spacing=4)
 
         y_offset += 10
 
-        map_header = title_font.render("Map", True, self.info_panel_text_color)
-        self.display_surface.blit(map_header, (x_offset, y_offset))
-        y_offset += map_header.get_height() + 8
+        render_line("Map", title_font, self.info_panel_text_color, spacing=8)
 
         map_width_m = self.env.SCREEN_W / self.env.PIXELS_PER_METER
         map_height_m = self.env.SCREEN_H / self.env.PIXELS_PER_METER
@@ -822,30 +849,26 @@ class MultiRobotSimulator:
             f"Size: {map_width_m:.1f}m x {map_height_m:.1f}m",
         ]
         for line in map_lines:
-            label = value_font.render(line, True, self.info_panel_text_color)
-            self.display_surface.blit(label, (x_offset, y_offset))
-            y_offset += label.get_height() + 4
+            render_line(line, value_font, self.info_panel_text_color, spacing=4)
 
         description = self.map_descriptions.get(self.env.map_type)
         if description:
-            desc_label = value_font.render("Description:", True, self.info_panel_text_color)
-            self.display_surface.blit(desc_label, (x_offset, y_offset))
-            y_offset += desc_label.get_height() + 4
-
-            wrap_width = max(1, (self.info_panel_width - 2 * self.info_padding) // 8)
-            for line in textwrap.wrap(description, width=wrap_width):
-                desc_line = value_font.render(line, True, self.info_panel_text_color)
-                self.display_surface.blit(desc_line, (x_offset + 10, y_offset))
-                y_offset += desc_line.get_height() + 2
+            render_line("Description:", value_font, self.info_panel_text_color, spacing=4)
+            desc_indent = 10
+            wrap_width = max(10, self.info_panel_width - 2 * self.info_padding - desc_indent)
+            for line in self._wrap_text_by_pixels(value_font, description, wrap_width):
+                render_line(
+                    line,
+                    value_font,
+                    self.info_panel_text_color,
+                    indent=desc_indent,
+                    spacing=2,
+                )
 
             y_offset += 6
 
         if self._formation_plan_candidates:
-            formation_header = title_font.render(
-                "Formation Plans", True, self.info_panel_text_color
-            )
-            self.display_surface.blit(formation_header, (x_offset, y_offset))
-            y_offset += formation_header.get_height() + 8
+            render_line("Formation Plans", title_font, self.info_panel_text_color, spacing=8)
 
             for ego_index in sorted(self._formation_plan_candidates):
                 plan = self._formation_plan_candidates[ego_index]
@@ -877,9 +900,7 @@ class MultiRobotSimulator:
                     f"{indicator} {robot_name}: {plan.formation_type.title()}"
                     f" θ={heading_deg:.1f}° cost={cost_text}"
                 )
-                summary_label = value_font.render(summary, True, summary_color)
-                self.display_surface.blit(summary_label, (x_offset, y_offset))
-                y_offset += summary_label.get_height() + 2
+                render_line(summary, value_font, summary_color, spacing=2)
 
                 if highlight:
                     detail_lines = [
@@ -887,15 +908,21 @@ class MultiRobotSimulator:
                         f"Center: ({center_m[0]:.2f}, {center_m[1]:.2f}) m",
                     ]
                     for line in detail_lines:
-                        label = value_font.render(line, True, self.info_panel_text_color)
-                        self.display_surface.blit(label, (x_offset + 10, y_offset))
-                        y_offset += label.get_height() + 2
+                        render_line(
+                            line,
+                            value_font,
+                            self.info_panel_text_color,
+                            indent=10,
+                            spacing=2,
+                        )
 
-                    assign_header = value_font.render(
-                        "Assignments:", True, self.info_panel_text_color
+                    render_line(
+                        "Assignments:",
+                        value_font,
+                        self.info_panel_text_color,
+                        indent=10,
+                        spacing=2,
                     )
-                    self.display_surface.blit(assign_header, (x_offset + 10, y_offset))
-                    y_offset += assign_header.get_height() + 2
 
                     for robot_index, target_index in enumerate(plan.assignment):
                         if robot_index >= len(self.robot_states):
@@ -905,24 +932,23 @@ class MultiRobotSimulator:
                             cost_value = plan.per_robot_costs.get(robot_index)
                             if cost_value is not None:
                                 text = (
-                                    f"{robot_label} → T{target_index}"
-                                    f" ({cost_value:.2f})"
+                                    f"{robot_label} → T{target_index}" f" ({cost_value:.2f})"
                                 )
                             else:
                                 text = f"{robot_label} → T{target_index}"
                         else:
                             text = f"{robot_label} → --"
-                        label = value_font.render(text, True, self.info_panel_text_color)
-                        self.display_surface.blit(label, (x_offset + 20, y_offset))
-                        y_offset += label.get_height() + 2
+                        render_line(
+                            text,
+                            value_font,
+                            self.info_panel_text_color,
+                            indent=20,
+                            spacing=2,
+                        )
 
                 y_offset += 8
         elif any(robot.target is not None for robot in self.robot_states):
-            formation_header = title_font.render(
-                "Target Assignments", True, self.info_panel_text_color
-            )
-            self.display_surface.blit(formation_header, (x_offset, y_offset))
-            y_offset += formation_header.get_height() + 8
+            render_line("Target Assignments", title_font, self.info_panel_text_color, spacing=8)
 
             for robot in self.robot_states:
                 if robot.target is None:
@@ -938,34 +964,36 @@ class MultiRobotSimulator:
                     f"{robot.name}: ({target_m[0]:.2f}, {target_m[1]:.2f}) m"
                     f" / {distance_m:.2f} m away"
                 )
-                label = value_font.render(text, True, self.info_panel_text_color)
-                self.display_surface.blit(label, (x_offset + 10, y_offset))
-                y_offset += label.get_height() + 2
+                render_line(
+                    text,
+                    value_font,
+                    self.info_panel_text_color,
+                    indent=10,
+                    spacing=2,
+                )
 
             y_offset += 12
 
-        robots_header = title_font.render("Robots", True, self.info_panel_text_color)
-        self.display_surface.blit(robots_header, (x_offset, y_offset))
-        y_offset += robots_header.get_height() + 8
+        render_line("Robots", title_font, self.info_panel_text_color, spacing=8)
 
         if not self.robot_states:
-            empty_label = value_font.render("No robots", True, self.info_panel_text_color)
-            self.display_surface.blit(empty_label, (x_offset, y_offset))
-            return
+            render_line("No robots", value_font, self.info_panel_text_color, spacing=4)
+            return max_required_inner_width
+
+        line_height = value_font.get_height() + 4
 
         for index, robot in enumerate(self.robot_states):
-            robot_name = name_font.render(robot.name, True, self.info_panel_text_color)
-            metrics: List[str] = []
+            robot_name_text = robot.name
             pos_m = self.pixels_to_meters(*robot.position)
-            metrics.append(f"Pos: ({pos_m[0]:.2f}, {pos_m[1]:.2f}) m")
-            metrics.append(f"Theta: {math.degrees(robot.theta):.1f}°")
-            metrics.append(f"Speed: {robot.velocity:.2f} m/s")
+            metrics: List[str] = [
+                f"Pos: ({pos_m[0]:.2f}, {pos_m[1]:.2f}) m",
+                f"Theta: {math.degrees(robot.theta):.1f}°",
+                f"Speed: {robot.velocity:.2f} m/s",
+            ]
 
             if robot.target is not None:
                 target_m = self.pixels_to_meters(*robot.target)
-                distance = math.hypot(
-                    target_m[0] - pos_m[0], target_m[1] - pos_m[1]
-                )
+                distance = math.hypot(target_m[0] - pos_m[0], target_m[1] - pos_m[1])
                 metrics.append(f"Target dist: {distance:.2f} m")
             else:
                 metrics.append("Target: None")
@@ -978,44 +1006,135 @@ class MultiRobotSimulator:
             metrics.append(f"LiDAR: {'On' if robot.lidar_enabled else 'Off'}")
             metrics.append(f"Path: {'On' if robot.path_enabled else 'Off'}")
 
-            line_height = value_font.get_height() + 4
-            block_height = robot_name.get_height() + 4 + len(metrics) * line_height + 12
+            name_width, name_height = name_font.size(robot_name_text)
+            block_height = name_height + 4 + len(metrics) * line_height + 12
             block_rect = pygame.Rect(
                 panel_left + 8,
                 y_offset - 6,
                 self.info_panel_width - 16,
                 block_height,
             )
-            background_color = (
-                self.info_panel_highlight
-                if index == self.selected_robot_index
-                else self.info_panel_background
-            )
-            pygame.draw.rect(
-                self.display_surface,
-                background_color,
-                block_rect,
-                border_radius=8,
-            )
-            pygame.draw.rect(
-                self.display_surface,
-                self.info_panel_divider,
-                block_rect,
-                width=1,
-                border_radius=8,
-            )
 
-            text_x = block_rect.x + 10
-            text_y = y_offset
-            self.display_surface.blit(robot_name, (text_x, text_y))
-            text_y += robot_name.get_height() + 4
-
+            text_indent = max(0, (block_rect.x + 10) - x_offset)
+            max_required_inner_width = max(max_required_inner_width, text_indent + name_width)
             for metric in metrics:
-                metric_label = value_font.render(metric, True, self.info_panel_text_color)
-                self.display_surface.blit(metric_label, (text_x, text_y))
-                text_y += line_height
+                metric_width, _ = value_font.size(metric)
+                max_required_inner_width = max(
+                    max_required_inner_width, text_indent + metric_width
+                )
+
+            if not resize_only:
+                background_color = (
+                    self.info_panel_highlight
+                    if index == self.selected_robot_index
+                    else self.info_panel_background
+                )
+                pygame.draw.rect(
+                    self.display_surface,
+                    background_color,
+                    block_rect,
+                    border_radius=8,
+                )
+                pygame.draw.rect(
+                    self.display_surface,
+                    self.info_panel_divider,
+                    block_rect,
+                    width=1,
+                    border_radius=8,
+                )
+
+                text_x = block_rect.x + 10
+                text_y = y_offset
+                robot_name_surface = name_font.render(
+                    robot_name_text, True, self.info_panel_text_color
+                )
+                self.display_surface.blit(robot_name_surface, (text_x, text_y))
+                text_y += robot_name_surface.get_height() + 4
+
+                for metric in metrics:
+                    metric_label = value_font.render(metric, True, self.info_panel_text_color)
+                    self.display_surface.blit(metric_label, (text_x, text_y))
+                    text_y += line_height
 
             y_offset = block_rect.bottom + 10
+
+        return max_required_inner_width
+
+    def _resize_display_surface(self, new_info_panel_width: int) -> None:
+        self.info_panel_width = new_info_panel_width
+        total_width = self.env.SCREEN_W + self.info_panel_width
+        if self.env.render_mode == "human":
+            pygame.display.set_mode((total_width, self.env.SCREEN_H))
+            self.display_surface = pygame.display.get_surface()
+        else:
+            self.display_surface = pygame.Surface((total_width, self.env.SCREEN_H))
+
+        self.display_surface.fill(self.env.BACKGROUND_COLOR)
+        self.display_surface.blit(self.simulation_surface, (0, 0))
+
+    def _wrap_text_by_pixels(
+        self, font: pygame.font.Font, text: str, max_width: int
+    ) -> List[str]:
+        if max_width <= 0:
+            return [text]
+
+        words = text.split()
+        if not words:
+            return []
+
+        lines: List[str] = []
+
+        first_word = words[0]
+        if font.size(first_word)[0] > max_width:
+            segments = self._break_word_by_pixels(font, first_word, max_width)
+            if segments:
+                lines.extend(segments[:-1])
+                current = segments[-1]
+            else:
+                current = first_word
+        else:
+            current = first_word
+
+        for word in words[1:]:
+            candidate = f"{current} {word}"
+            if font.size(candidate)[0] <= max_width:
+                current = candidate
+            else:
+                lines.append(current)
+                if font.size(word)[0] <= max_width:
+                    current = word
+                else:
+                    oversized = self._break_word_by_pixels(font, word, max_width)
+                    if oversized:
+                        lines.extend(oversized[:-1])
+                        current = oversized[-1]
+                    else:
+                        current = word
+
+        lines.append(current)
+        return lines
+
+    def _break_word_by_pixels(
+        self, font: pygame.font.Font, word: str, max_width: int
+    ) -> List[str]:
+        if max_width <= 0:
+            return [word]
+
+        segments: List[str] = []
+        current = ""
+
+        for char in word:
+            candidate = current + char
+            if not current or font.size(candidate)[0] <= max_width:
+                current = candidate
+            else:
+                segments.append(current)
+                current = char
+
+        if current:
+            segments.append(current)
+
+        return segments
 
     # ------------------------------------------------------------------
     # Utility helpers
