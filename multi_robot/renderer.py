@@ -116,6 +116,9 @@ class MultiRobotSimulator:
         self.info_panel_highlight = (220, 235, 250)
         self.info_panel_divider = (200, 200, 200)
         self.info_padding = 16
+        self.info_panel_scroll = 0
+        self.info_panel_scroll_speed = 40
+        self._info_panel_content_height = self.env.SCREEN_H
         self.map_descriptions = {
             "trap_shaped": "Trap-shaped course with a narrow passage leading to the target zone.",
             "zigzag": "Zigzag corridors that require repeated tight turns to reach the goal.",
@@ -166,6 +169,7 @@ class MultiRobotSimulator:
         else:
             self.display_surface = pygame.Surface((total_width, self.env.SCREEN_H))
         self.simulation_surface = self.env.screen
+        self.info_panel_surface = pygame.Surface((self.info_panel_width, self.env.SCREEN_H))
 
         # Create the first map.  By default we use the same map type as the
         # single robot simulator so that existing scenarios work out of the box.
@@ -345,6 +349,16 @@ class MultiRobotSimulator:
                 elif event.key == pygame.K_p:
                     robot = self.robot_states[self.selected_robot_index]
                     robot.path_enabled = not robot.path_enabled
+            elif event.type == pygame.MOUSEWHEEL:
+                mouse_x, _ = pygame.mouse.get_pos()
+                if mouse_x >= self.env.SCREEN_W:
+                    self._scroll_info_panel(-event.y * self.info_panel_scroll_speed)
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button in (4, 5):
+                    direction = -1 if event.button == 4 else 1
+                    mouse_x, _ = pygame.mouse.get_pos()
+                    if mouse_x >= self.env.SCREEN_W:
+                        self._scroll_info_panel(direction * self.info_panel_scroll_speed)
 
 
         if self.manual_control and self.robot_states:
@@ -773,7 +787,7 @@ class MultiRobotSimulator:
 
     def _draw_info_panel(self) -> None:
         while True:
-            required_inner_width = self._render_info_panel(resize_only=True)
+            required_inner_width, required_height = self._render_info_panel(resize_only=True)
             target_width = max(
                 self.info_panel_min_width,
                 required_inner_width + 2 * self.info_padding,
@@ -782,18 +796,38 @@ class MultiRobotSimulator:
                 break
             self._resize_display_surface(target_width)
 
-        self._render_info_panel(resize_only=False)
+        panel_height = max(self.env.SCREEN_H, required_height + self.info_padding)
+        if (
+            self.info_panel_surface.get_width() != self.info_panel_width
+            or self.info_panel_surface.get_height() != panel_height
+        ):
+            self.info_panel_surface = pygame.Surface((self.info_panel_width, panel_height))
 
-    def _render_info_panel(self, *, resize_only: bool) -> int:
+        self._info_panel_content_height = panel_height
+        self._render_info_panel(resize_only=False, surface=self.info_panel_surface)
+
+        max_scroll = max(0, panel_height - self.env.SCREEN_H)
+        self.info_panel_scroll = max(0, min(self.info_panel_scroll, max_scroll))
+
         panel_left = self.env.SCREEN_W
+        dest_rect = pygame.Rect(panel_left, 0, self.info_panel_width, self.env.SCREEN_H)
+        src_rect = pygame.Rect(0, self.info_panel_scroll, self.info_panel_width, self.env.SCREEN_H)
+        self.display_surface.blit(self.info_panel_surface, dest_rect, src_rect)
+
+    def _render_info_panel(
+        self, *, resize_only: bool, surface: Optional[pygame.Surface] = None
+    ) -> Tuple[int, int]:
+        if not resize_only and surface is None:
+            raise ValueError("surface must be provided when resize_only is False")
+
         if not resize_only:
-            panel_rect = pygame.Rect(panel_left, 0, self.info_panel_width, self.env.SCREEN_H)
-            pygame.draw.rect(self.display_surface, self.info_panel_background, panel_rect)
+            assert surface is not None
+            surface.fill(self.info_panel_background)
             pygame.draw.line(
-                self.display_surface,
+                surface,
                 self.info_panel_divider,
-                (panel_left, 0),
-                (panel_left, self.env.SCREEN_H),
+                (0, 0),
+                (0, surface.get_height()),
                 width=2,
             )
 
@@ -801,7 +835,7 @@ class MultiRobotSimulator:
         name_font = pygame.font.SysFont("arial", 18, bold=True)
         value_font = pygame.font.SysFont("consolas", 16)
 
-        x_offset = panel_left + self.info_padding
+        x_offset = self.info_padding
         y_offset = self.info_padding
         max_required_inner_width = 0
 
@@ -818,9 +852,9 @@ class MultiRobotSimulator:
                 return
             width, height = font.size(text)
             max_required_inner_width = max(max_required_inner_width, indent + width)
-            if not resize_only:
+            if not resize_only and surface is not None:
                 label = font.render(text, True, color)
-                self.display_surface.blit(label, (x_offset + indent, y_offset))
+                surface.blit(label, (x_offset + indent, y_offset))
             y_offset += height + spacing
 
         render_line("Simulation Info", title_font, self.info_panel_text_color, spacing=10)
@@ -978,7 +1012,7 @@ class MultiRobotSimulator:
 
         if not self.robot_states:
             render_line("No robots", value_font, self.info_panel_text_color, spacing=4)
-            return max_required_inner_width
+            return max_required_inner_width, y_offset
 
         line_height = value_font.get_height() + 4
 
@@ -1009,7 +1043,7 @@ class MultiRobotSimulator:
             name_width, name_height = name_font.size(robot_name_text)
             block_height = name_height + 4 + len(metrics) * line_height + 12
             block_rect = pygame.Rect(
-                panel_left + 8,
+                8,
                 y_offset - 6,
                 self.info_panel_width - 16,
                 block_height,
@@ -1030,13 +1064,13 @@ class MultiRobotSimulator:
                     else self.info_panel_background
                 )
                 pygame.draw.rect(
-                    self.display_surface,
+                    surface,
                     background_color,
                     block_rect,
                     border_radius=8,
                 )
                 pygame.draw.rect(
-                    self.display_surface,
+                    surface,
                     self.info_panel_divider,
                     block_rect,
                     width=1,
@@ -1048,17 +1082,17 @@ class MultiRobotSimulator:
                 robot_name_surface = name_font.render(
                     robot_name_text, True, self.info_panel_text_color
                 )
-                self.display_surface.blit(robot_name_surface, (text_x, text_y))
+                surface.blit(robot_name_surface, (text_x, text_y))
                 text_y += robot_name_surface.get_height() + 4
 
                 for metric in metrics:
                     metric_label = value_font.render(metric, True, self.info_panel_text_color)
-                    self.display_surface.blit(metric_label, (text_x, text_y))
+                    surface.blit(metric_label, (text_x, text_y))
                     text_y += line_height
 
             y_offset = block_rect.bottom + 10
 
-        return max_required_inner_width
+        return max_required_inner_width, y_offset
 
     def _resize_display_surface(self, new_info_panel_width: int) -> None:
         self.info_panel_width = new_info_panel_width
@@ -1071,6 +1105,12 @@ class MultiRobotSimulator:
 
         self.display_surface.fill(self.env.BACKGROUND_COLOR)
         self.display_surface.blit(self.simulation_surface, (0, 0))
+        panel_height = max(self.env.SCREEN_H, self._info_panel_content_height)
+        self.info_panel_surface = pygame.Surface((self.info_panel_width, panel_height))
+
+    def _scroll_info_panel(self, delta: float) -> None:
+        max_scroll = max(0, self._info_panel_content_height - self.env.SCREEN_H)
+        self.info_panel_scroll = max(0, min(self.info_panel_scroll + int(delta), max_scroll))
 
     def _wrap_text_by_pixels(
         self, font: pygame.font.Font, text: str, max_width: int
