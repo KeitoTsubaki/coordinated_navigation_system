@@ -65,6 +65,7 @@ class RobotState:
     filtered_sensor_data: List[Tuple[float, float]] = field(default_factory=list)
     closest_obstacle: Tuple[float, float] = (float("inf"), 0.0)
     lidar_enabled: bool = True
+    path_enabled: bool = True
     last_update_time: Optional[float] = None
     velocity: float = 0.0
 
@@ -286,7 +287,7 @@ class MultiRobotSimulator:
         self.env.clear_robot_and_lidar_layer()
         for robot in self.robot_states:
             self._update_lidar(robot)
-            if robot.path:
+            if robot.path and robot.path_enabled:
                 self._draw_path(robot)
             if robot.target is not None:
                 self._draw_target(robot)
@@ -341,6 +342,10 @@ class MultiRobotSimulator:
                 elif event.key == pygame.K_l:
                     robot = self.robot_states[self.selected_robot_index]
                     robot.lidar_enabled = not robot.lidar_enabled
+                elif event.key == pygame.K_p:
+                    robot = self.robot_states[self.selected_robot_index]
+                    robot.path_enabled = not robot.path_enabled
+
 
         if self.manual_control and self.robot_states:
             self._operate_moving()
@@ -483,13 +488,13 @@ class MultiRobotSimulator:
         radius = 6 if highlight else 4
         line_width = 3 if highlight else 2
         pygame.draw.circle(layer, center_color, (int(center_x), int(center_y)), radius)
-        pygame.draw.line(
-            layer,
-            center_color,
-            (int(center_x), int(center_y)),
-            (int(orientation_end[0]), int(orientation_end[1])),
-            width=line_width,
-        )
+        # pygame.draw.line(
+        #     layer,
+        #     center_color,
+        #     (int(center_x), int(center_y)),
+        #     (int(orientation_end[0]), int(orientation_end[1])),
+        #     width=line_width,
+        # )
 
         arrow_size = 10.0 if highlight else 8.0
         arrow_angle = math.atan2(orientation_dy, orientation_dx)
@@ -503,28 +508,28 @@ class MultiRobotSimulator:
             orientation_end[0] - arrow_size * math.cos(right_angle),
             orientation_end[1] - arrow_size * math.sin(right_angle),
         )
-        pygame.draw.polygon(
-            layer,
-            center_color,
-            [
-                (int(orientation_end[0]), int(orientation_end[1])),
-                (int(left_point[0]), int(left_point[1])),
-                (int(right_point[0]), int(right_point[1])),
-            ],
-        )
+        # pygame.draw.polygon(
+        #     layer,
+        #     center_color,
+        #     [
+        #         (int(orientation_end[0]), int(orientation_end[1])),
+        #         (int(left_point[0]), int(left_point[1])),
+        #         (int(right_point[0]), int(right_point[1])),
+        #     ],
+        # )
 
         if highlight:
             label_text = f"θ={math.degrees(plan.theta):.1f}°"
         else:
             label_text = f"R{ego_index}: {math.degrees(plan.theta):.1f}°"
         angle_label = font.render(label_text, True, text_color)
-        layer.blit(
-            angle_label,
-            (
-                int(orientation_end[0] - angle_label.get_width() / 2),
-                int(orientation_end[1] - angle_label.get_height() - 6),
-            ),
-        )
+        # layer.blit(
+        #     angle_label,
+        #     (
+        #         int(orientation_end[0] - angle_label.get_width() / 2),
+        #         int(orientation_end[1] - angle_label.get_height() - 6),
+        #     ),
+        # )
 
         for target_index, position in enumerate(plan.targets):
             draw_kwargs = {}
@@ -542,13 +547,13 @@ class MultiRobotSimulator:
 
             if highlight:
                 label = small_font.render(f"T{target_index}", True, text_color)
-                layer.blit(
-                    label,
-                    (
-                        int(position[0] - label.get_width() / 2),
-                        int(position[1] - label.get_height() / 2),
-                    ),
-                )
+                # layer.blit(
+                #     label,
+                #     (
+                #         int(position[0] - label.get_width() / 2),
+                #         int(position[1] - label.get_height() / 2),
+                #     ),
+                # )
 
         if not plan.assignment:
             return
@@ -579,13 +584,13 @@ class MultiRobotSimulator:
             cost_value = plan.per_robot_costs.get(robot_index)
             if cost_value is not None:
                 cost_label = small_font.render(f"{cost_value:.2f}", True, text_color)
-                layer.blit(
-                    cost_label,
-                    (
-                        int(midpoint[0] - cost_label.get_width() / 2),
-                        int(midpoint[1] - cost_label.get_height() / 2),
-                    ),
-                )
+                # layer.blit(
+                #     cost_label,
+                #     (
+                #         int(midpoint[0] - cost_label.get_width() / 2),
+                #         int(midpoint[1] - cost_label.get_height() / 2),
+                #     ),
+                # )
 
     def _update_formation_visualisation(self) -> None:
         """Refresh the cached formation plans used for visualisation."""
@@ -728,13 +733,13 @@ class MultiRobotSimulator:
             start = first.position
             end = second.position
 
-            pygame.draw.line(
-                self.env.robot_and_lidar_layer,
-                formation_color,
-                (int(start[0]), int(start[1])),
-                (int(end[0]), int(end[1])),
-                width=2,
-            )
+            # pygame.draw.line(
+            #     self.env.robot_and_lidar_layer,
+            #     formation_color,
+            #     (int(start[0]), int(start[1])),
+            #     (int(end[0]), int(end[1])),
+            #     width=2,
+            # )
 
             dx = end[0] - start[0]
             dy = end[1] - start[1]
@@ -858,7 +863,7 @@ class MultiRobotSimulator:
                 cost_text = f"{plan.cost:.3f}" if plan.cost != float("inf") else "∞"
 
                 highlight = plan is self._current_formation_plan
-                indicator = "▶" if highlight else "•"
+                indicator = "*" if highlight else "•"
                 if highlight and 0 <= ego_index < len(self.robot_states):
                     robot_color = self.robot_states[ego_index].color
                     summary_color = tuple(
@@ -971,6 +976,7 @@ class MultiRobotSimulator:
                 metrics.append("Closest obs: --")
 
             metrics.append(f"LiDAR: {'On' if robot.lidar_enabled else 'Off'}")
+            metrics.append(f"Path: {'On' if robot.path_enabled else 'Off'}")
 
             line_height = value_font.get_height() + 4
             block_height = robot_name.get_height() + 4 + len(metrics) * line_height + 12
@@ -1347,7 +1353,7 @@ class MultiRobotSimulator:
 
     def optimize_formation(
         self,
-        formation_type: str = "line",
+        formation_type: str = "triangle",
         *,
         weights: Optional[Sequence[float]] = None,
         ego_index: Optional[int] = None,
@@ -1846,7 +1852,7 @@ class MultiRobotSimulator:
 def demo() -> None:
     """Simple interactive demo used for manual testing."""
 
-    simulator = MultiRobotSimulator(num_robots=2, render_mode="human", show_labels=False)
+    simulator = MultiRobotSimulator(num_robots=3, render_mode="human", show_labels=False)
     simulator.set_robot_target(0, simulator.meters_to_pixels(1.0, 1.0))
     simulator.set_robot_target(1, simulator.meters_to_pixels(-1.0, -1.0))
 
