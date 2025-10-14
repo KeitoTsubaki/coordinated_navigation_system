@@ -1,5 +1,10 @@
 """Utilities for rendering multi-robot simulations."""
 
-from .renderer import MultiRobotSimulator, RobotState
+from .renderer import FormationPlan, MultiRobotSimulator, PolicyController, RobotState
 
-__all__ = ["MultiRobotSimulator", "RobotState"]
+__all__ = [
+    "FormationPlan",
+    "MultiRobotSimulator",
+    "PolicyController",
+    "RobotState",
+]
