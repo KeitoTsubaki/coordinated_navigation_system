@@ -1,7 +1,8 @@
 from stable_baselines3.td3.policies import TD3Policy
-from lidar_network import LiDARNetwork
-from actor import CustomActor
-from critic import CustomCritic
+
+from .lidar_network import LiDARNetwork
+from .actor import CustomActor
+from .critic import CustomCritic
 
 
 class CustomDDPGPolicy(TD3Policy):
