@@ -30,7 +30,7 @@ class MultiRobotSimulator:
         path_history: int = 256,
         show_labels: bool = True,
         manual_control: bool = True,
-        policy_model_path: Optional[str] = "./model_ep11200.zip",
+        policy_model_path: Optional[str] = "multi_robot/model_ep11200.zip",
         show_info_panel: bool = True,
     ) -> None:
         if config_path is None:
