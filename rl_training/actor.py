@@ -2,8 +2,8 @@ import torch
 from torch import nn
 from stable_baselines3.common.policies import BasePolicy
 
-from lidar_network import LiDARNetwork
-from utils import split_obs
+from .lidar_network import LiDARNetwork
+from .utils import split_obs
 
 
 class CustomActor(BasePolicy):

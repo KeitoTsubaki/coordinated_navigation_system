@@ -11,11 +11,14 @@ from __future__ import annotations
 
 import math
 import os
+import sys
 from collections import deque
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Deque, Dict, List, Optional, Sequence, Tuple, Union
 
 import importlib
+import importlib.abc
 import importlib.resources
 import importlib.util
 import pygame
@@ -43,6 +46,22 @@ LiDARSensor = _sensor_module.LiDARSensor
 
 Color = Tuple[int, int, int]
 Position = Tuple[float, float]
+
+
+def _ensure_repo_root_on_path() -> Path:
+    """Ensure the repository root is available on ``sys.path``.
+
+    When the renderer is executed as a standalone script the project root is
+    not always part of the module search path, which prevents importing the
+    local ``rl_training`` package.  Adding it explicitly mirrors the behaviour
+    of running the project as a module while keeping site-packages untouched.
+    """
+
+    repo_root = Path(__file__).resolve().parents[1]
+    repo_root_str = str(repo_root)
+    if repo_root_str not in sys.path:
+        sys.path.insert(0, repo_root_str)
+    return repo_root
 
 
 def _to_rgb(color: Union[Color, str]) -> Color:
@@ -197,15 +216,39 @@ class PolicyController:
     # Internal helpers
     # ------------------------------------------------------------------
     def _load_policy_config(self) -> None:
+        config: Optional[Dict[str, object]] = None
+        last_exc: Optional[Exception] = None
+        package_files: Optional[importlib.abc.Traversable] = None
+
         try:
-            config_path = importlib.resources.files("rl_training").joinpath(
-                "config", "ddpg_config.yaml"
-            )
-            with importlib.resources.as_file(config_path) as path:
-                with open(path, "r", encoding="utf-8") as handle:
-                    config = yaml.safe_load(handle)
-        except Exception as exc:  # pragma: no cover - defensive path
-            self._last_error = f"Failed to read DDPG config: {exc}"
+            package_files = importlib.resources.files("rl_training")
+        except ModuleNotFoundError:
+            repo_root = _ensure_repo_root_on_path()
+            try:
+                package_files = importlib.resources.files("rl_training")
+            except ModuleNotFoundError:
+                fallback = repo_root / "rl_training" / "config" / "ddpg_config.yaml"
+                if fallback.exists():
+                    try:
+                        with open(fallback, "r", encoding="utf-8") as handle:
+                            config = yaml.safe_load(handle)
+                    except Exception as exc:  # pragma: no cover - defensive path
+                        last_exc = exc
+                else:
+                    last_exc = FileNotFoundError(fallback)
+
+        if config is None and package_files is not None:
+            try:
+                config_path = package_files.joinpath("config", "ddpg_config.yaml")
+                with importlib.resources.as_file(config_path) as path:
+                    with open(path, "r", encoding="utf-8") as handle:
+                        config = yaml.safe_load(handle)
+            except Exception as exc:  # pragma: no cover - defensive path
+                last_exc = exc
+
+        if config is None:
+            message = "unknown error" if last_exc is None else str(last_exc)
+            self._last_error = f"Failed to read DDPG config: {message}"
             return
 
         lidar_cfg = config.get("lidar", {}) if isinstance(config, dict) else {}
@@ -239,6 +282,18 @@ class PolicyController:
 
         try:
             from rl_training import custom_ddpg_policy  # noqa: F401
+        except ModuleNotFoundError:
+            _ensure_repo_root_on_path()
+            try:
+                from rl_training import custom_ddpg_policy  # type: ignore  # noqa: F401
+            except ModuleNotFoundError as exc:  # pragma: no cover - missing dependency
+                self._last_error = (
+                    "The rl_training package is required to load the policy model."
+                    f" ({exc})"
+                )
+                return
+
+        try:
             self._model = DDPG.load(self.model_path, device=self._model_device)
             self._model.policy.set_training_mode(False)
             self._last_error = None
