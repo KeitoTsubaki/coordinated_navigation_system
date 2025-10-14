@@ -83,46 +83,52 @@ class PolicyController:
         if not self.simulator.robot_states:
             return
 
-        robot_index = self.simulator.selected_robot_index
-        if not (0 <= robot_index < len(self.simulator.robot_states)):
-            return
-
         now = pygame.time.get_ticks() / 1000.0 if pygame.get_init() else None
         if now is not None and self._last_action_timestamp is not None:
             if now - self._last_action_timestamp < self._dt:
                 return
 
-        robot = self.simulator.robot_states[robot_index]
-        control_state = self._control_state.setdefault(
-            robot_index,
-            PolicyRobotControlState(lidar_history=deque(maxlen=self._lidar_history_len)),
-        )
+        robot_states = self.simulator.robot_states
 
-        self.simulator._update_lidar(robot)
-        observation = self._build_observation(robot, control_state)
-        if observation is None:
-            return
+        stale_indices = [
+            index for index in self._control_state if index >= len(robot_states)
+        ]
+        for index in stale_indices:
+            del self._control_state[index]
 
-        action, _ = self._model.predict(observation, deterministic=True)
-        action = np.asarray(action, dtype=np.float32).reshape(-1)
-        if action.size != 2:
-            self._last_error = (
-                f"Unexpected action dimension {action.shape}; expected size 2"
+        for robot_index, robot in enumerate(robot_states):
+            control_state = self._control_state.setdefault(
+                robot_index,
+                PolicyRobotControlState(
+                    lidar_history=deque(maxlen=self._lidar_history_len)
+                ),
             )
-            return
 
-        v_e, omega_e = self._action_to_executable_action(action, control_state)
-        moved = self._apply_motion(robot, v_e, omega_e)
+            self.simulator._update_lidar(robot)
+            observation = self._build_observation(robot, control_state)
+            if observation is None:
+                continue
 
-        control_state.current_v = v_e if moved else 0.0
-        control_state.current_omega = omega_e
-        control_state.previous_v = control_state.current_v
-        control_state.previous_omega = control_state.current_omega
+            action, _ = self._model.predict(observation, deterministic=True)
+            action = np.asarray(action, dtype=np.float32).reshape(-1)
+            if action.size != 2:
+                self._last_error = (
+                    f"Unexpected action dimension {action.shape}; expected size 2"
+                )
+                continue
 
-        if self.simulator.path_history != 0 and moved:
-            robot.path.append((robot.position, robot.theta))
+            v_e, omega_e = self._action_to_executable_action(action, control_state)
+            moved = self._apply_motion(robot, v_e, omega_e)
 
-        self.simulator._update_lidar(robot)
+            control_state.current_v = v_e if moved else 0.0
+            control_state.current_omega = omega_e
+            control_state.previous_v = control_state.current_v
+            control_state.previous_omega = control_state.current_omega
+
+            if self.simulator.path_history != 0 and moved:
+                robot.path.append((robot.position, robot.theta))
+
+            self.simulator._update_lidar(robot)
 
         if now is not None:
             self._last_action_timestamp = now
