@@ -104,7 +104,7 @@ class PolicyController:
         self.model_path = model_path
         self.active = False
         self._model = None
-        self._model_device = "cpu"
+        self._model_device = "cuda"
         self._last_error: Optional[str] = None
         self._last_action_timestamp: Optional[float] = None
         self._dt = 0.1  # Matches rl_training.gym_environment.Env.DT
@@ -372,7 +372,7 @@ class MultiRobotSimulator:
         path_history: int = 256,
         show_labels: bool = True,
         manual_control: bool = True,
-        policy_model_path: Optional[str] = None,
+        policy_model_path: Optional[str] = "./model_ep11200.zip",
         show_info_panel: bool = True,
     ) -> None:
         if config_path is None:
@@ -2378,7 +2378,7 @@ class MultiRobotSimulator:
 def demo() -> None:
     """Simple interactive demo used for manual testing."""
 
-    simulator = MultiRobotSimulator(num_robots=3, render_mode="human", show_labels=False)
+    simulator = MultiRobotSimulator(num_robots=2, render_mode="human", show_labels=False)
     simulator.set_robot_target(0, simulator.meters_to_pixels(1.0, 1.0))
     simulator.set_robot_target(1, simulator.meters_to_pixels(-1.0, -1.0))
 
