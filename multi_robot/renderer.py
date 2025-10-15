@@ -191,6 +191,10 @@ class PolicyController:
                 ),
             )
 
+            if self._has_reached_target(robot):
+                self._deactivate_policy_control()
+                return
+
             self.simulator._update_lidar(robot)
             observation = self._build_observation(robot, control_state)
             if observation is None:
@@ -407,6 +411,22 @@ class PolicyController:
         angle_to_target = global_angle_to_target - robot_global_angle
         angle_to_target = (angle_to_target + math.pi) % (2 * math.pi) - math.pi
         return distance_m, angle_to_target
+
+    def _has_reached_target(self, robot: RobotState) -> bool:
+        if robot.target is None:
+            return False
+
+        distance_to_target, _ = self._compute_goal_info(robot)
+        return distance_to_target < self.simulator.env.ROBOT_RADIUS_M
+
+    def _deactivate_policy_control(self) -> None:
+        if not self.active:
+            return
+
+        self.active = False
+        self._last_action_timestamp = None
+        self._control_state.clear()
+        self.simulator._on_policy_deactivated()
 class MultiRobotSimulator:
     """Utility that renders multiple differential drive robots using pygame."""
 
@@ -743,6 +763,12 @@ class MultiRobotSimulator:
         """Shut down pygame resources."""
 
         pygame.quit()
+
+    def _on_policy_deactivated(self) -> None:
+        """Restore manual control when policy-driven motion stops."""
+
+        self.policy_control_active = False
+        self.manual_control = self._manual_control_enabled
 
     # ------------------------------------------------------------------
     # Drawing helpers
