@@ -131,6 +131,8 @@ class FormationManager:
             6,
         )
 
+        debug_text = simulator.show_debug_text
+
         for first, second in zip(sorted_states[:-1], sorted_states[1:]):
             start = first.position
             end = second.position
@@ -144,6 +146,9 @@ class FormationManager:
             midpoint = ((start[0] + end[0]) / 2, (start[1] + end[1]) / 2)
             normal_x = -dy / distance_pixels
             normal_y = dx / distance_pixels
+
+            if not debug_text:
+                continue
 
             distance_m = distance_pixels / simulator.env.PIXELS_PER_METER
             distance_label = font.render(f"{distance_m:.2f}m", True, text_color)
@@ -333,6 +338,8 @@ class FormationManager:
             label_text = f"R{ego_index}: {math.degrees(plan.theta):.1f}°"
         angle_label = font.render(label_text, True, text_color)
 
+        debug_text = simulator.show_debug_text
+
         for target_index, position in enumerate(plan.targets):
             draw_kwargs = {"width": 0 if highlight else 1}
             pygame.draw.circle(
@@ -343,7 +350,7 @@ class FormationManager:
                 **draw_kwargs,
             )
 
-            if highlight:
+            if highlight and debug_text:
                 label = small_font.render(f"T{target_index}", True, text_color)
                 label_pos = (
                     int(position[0] - label.get_width() / 2),
@@ -378,7 +385,7 @@ class FormationManager:
                 (robot.position[1] + target_position[1]) / 2.0,
             )
             cost_value = plan.per_robot_costs.get(robot_index)
-            if cost_value is not None:
+            if cost_value is not None and debug_text:
                 cost_label = small_font.render(f"{cost_value:.2f}", True, text_color)
                 layer.blit(
                     cost_label,
@@ -403,12 +410,17 @@ class FormationManager:
         text_color = (30, 30, 30)
         small_font = pygame.font.SysFont("consolas", 12)
 
+        debug_text = simulator.show_debug_text
+
         for index, robot in robots_with_targets:
             assert robot.target is not None
             start = (int(robot.position[0]), int(robot.position[1]))
             end = (int(robot.target[0]), int(robot.target[1]))
 
             pygame.draw.line(layer, connection_color, start, end, width=2)
+
+            if not debug_text:
+                continue
 
             midpoint = ((start[0] + end[0]) / 2.0, (start[1] + end[1]) / 2.0)
             distance_pixels = math.hypot(
