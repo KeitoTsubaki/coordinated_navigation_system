@@ -230,9 +230,13 @@ class FormationManager:
             raise ValueError("Unable to find a feasible formation configuration")
 
         if apply:
-            for robot_index, target_index in enumerate(plan.assignment):
-                target = plan.targets[target_index]
-                simulator.robot_states[robot_index].target = target
+            # NOTE:
+            #   The previous behaviour updated each robot's target with the
+            #   generated formation target. For the current testing workflow we
+            #   keep the original (direct) goals assigned to the robots even
+            #   when a formation plan is available. Therefore the optimisation
+            #   result is stored for visualisation purposes only, without
+            #   overriding ``robot.target``.
             self.current_plan = plan
             if ego_index is not None:
                 self.plan_candidates[ego_index] = plan
@@ -395,6 +399,42 @@ class FormationManager:
                     ),
                 )
 
+        marker_radius = max(2, target_radius - 2)
+        robots_with_targets = [
+            (index, robot)
+            for index, robot in enumerate(simulator.robot_states)
+            if robot.target is not None
+        ]
+        if not robots_with_targets:
+            return
+
+        label_targets = highlight and debug_text
+
+        for index, robot in robots_with_targets:
+            assert robot.target is not None
+            vivid_color = brighten_color(robot.color)
+            if highlight:
+                line_color = vivid_color
+                marker_color = vivid_color
+                line_width = 2
+            else:
+                line_color = with_alpha(vivid_color, 0.6)
+                marker_color = with_alpha(vivid_color, 0.6)
+                line_width = 1
+
+            self._draw_robot_target_indicator(
+                layer,
+                robot,
+                robot_index=index,
+                line_color=line_color,
+                marker_color=marker_color,
+                line_width=line_width,
+                marker_radius=marker_radius,
+                show_label=label_targets,
+                text_color=text_color,
+                font=small_font,
+            )
+
     def _draw_manual_target_overlay(self) -> None:
         simulator = self.simulator
         robots_with_targets = [
@@ -406,38 +446,137 @@ class FormationManager:
             return
 
         layer = simulator.env.robot_and_lidar_layer
-        connection_color = (72, 61, 139)
         text_color = (30, 30, 30)
         small_font = pygame.font.SysFont("consolas", 12)
 
+        marker_radius = max(2, int(simulator.robot_radius_pixels * 0.35))
         debug_text = simulator.show_debug_text
 
         for index, robot in robots_with_targets:
             assert robot.target is not None
-            start = (int(robot.position[0]), int(robot.position[1]))
-            end = (int(robot.target[0]), int(robot.target[1]))
+            vivid_color = brighten_color(robot.color)
+            line_color = with_alpha(vivid_color, 0.85)
+            marker_color = vivid_color
 
-            pygame.draw.line(layer, connection_color, start, end, width=2)
+            self._draw_robot_target_indicator(
+                layer,
+                robot,
+                robot_index=index,
+                line_color=line_color,
+                marker_color=marker_color,
+                line_width=2,
+                marker_radius=marker_radius,
+                show_label=debug_text,
+                text_color=text_color,
+                font=small_font,
+            )
 
-            if not debug_text:
-                continue
+    def _draw_robot_target_indicator(
+        self,
+        layer: "pygame.Surface",
+        robot,
+        *,
+        robot_index: int,
+        line_color: Color,
+        marker_color: Color,
+        line_width: int,
+        marker_radius: int,
+        show_label: bool,
+        text_color: Color,
+        font: "pygame.font.Font",
+    ) -> None:
+        if robot.target is None:
+            return
 
-            midpoint = ((start[0] + end[0]) / 2.0, (start[1] + end[1]) / 2.0)
-            distance_pixels = math.hypot(
-                robot.target[0] - robot.position[0],
-                robot.target[1] - robot.position[1],
+        start = (float(robot.position[0]), float(robot.position[1]))
+        end = (float(robot.target[0]), float(robot.target[1]))
+
+        marker_radius = max(1, int(marker_radius))
+        line_width = max(1, int(line_width))
+
+        self._draw_dashed_line(
+            layer,
+            line_color,
+            start,
+            end,
+            width=line_width,
+        )
+
+        pygame.draw.circle(
+            layer,
+            marker_color,
+            (int(end[0]), int(end[1])),
+            marker_radius,
+            width=1,
+        )
+
+        if not show_label:
+            return
+
+        midpoint = ((start[0] + end[0]) / 2.0, (start[1] + end[1]) / 2.0)
+        distance_pixels = math.hypot(end[0] - start[0], end[1] - start[1])
+        distance_m = distance_pixels / self.simulator.env.PIXELS_PER_METER
+        label = font.render(
+            f"R{robot_index} → target ({distance_m:.2f}m)", True, text_color
+        )
+        layer.blit(
+            label,
+            (
+                int(midpoint[0] - label.get_width() / 2),
+                int(midpoint[1] - label.get_height() / 2),
+            ),
+        )
+
+    @staticmethod
+    def _draw_dashed_line(
+        surface: "pygame.Surface",
+        color: Color,
+        start: Position,
+        end: Position,
+        *,
+        width: int = 1,
+        dash_length: float = 8.0,
+        gap_length: float = 4.0,
+    ) -> None:
+        dash_length = max(1.0, float(dash_length))
+        gap_length = max(1.0, float(gap_length))
+
+        dx = end[0] - start[0]
+        dy = end[1] - start[1]
+        distance = math.hypot(dx, dy)
+        if distance < 1e-2:
+            # Too short to meaningfully draw a dashed line; draw a single segment.
+            pygame.draw.line(
+                surface,
+                color,
+                (int(round(start[0])), int(round(start[1]))),
+                (int(round(end[0])), int(round(end[1]))),
+                max(1, int(width)),
             )
-            distance_m = distance_pixels / simulator.env.PIXELS_PER_METER
-            label = small_font.render(
-                f"R{index} → target ({distance_m:.2f}m)", True, text_color
+            return
+
+        direction = (dx / distance, dy / distance)
+        progress = 0.0
+        width = max(1, int(width))
+
+        while progress < distance:
+            dash_end = min(progress + dash_length, distance)
+            start_pos = (
+                start[0] + direction[0] * progress,
+                start[1] + direction[1] * progress,
             )
-            layer.blit(
-                label,
-                (
-                    int(midpoint[0] - label.get_width() / 2),
-                    int(midpoint[1] - label.get_height() / 2),
-                ),
+            end_pos = (
+                start[0] + direction[0] * dash_end,
+                start[1] + direction[1] * dash_end,
             )
+            pygame.draw.line(
+                surface,
+                color,
+                (int(round(start_pos[0])), int(round(start_pos[1]))),
+                (int(round(end_pos[0])), int(round(end_pos[1]))),
+                width,
+            )
+            progress += dash_length + gap_length
 
     def _formation_offsets(
         self, count: int, formation_type: str, spacing: float
