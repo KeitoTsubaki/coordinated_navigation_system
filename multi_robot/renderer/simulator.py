@@ -499,7 +499,7 @@ class MultiRobotSimulator:
             robot.last_update_time = None
             robot.velocity = 0.0
 
-        self._apply_global_target(target_spawn_area)
+        self._assign_random_targets(target_spawn_area)
 
     def _get_spawn_areas(self) -> Tuple[Optional[Sequence[float]], Optional[Sequence[float]]]:
         screen_center_xy = (self.env.SCREEN_CENTER_X, self.env.SCREEN_CENTER_Y)
@@ -512,29 +512,22 @@ class MultiRobotSimulator:
         )
         return start_spawn_area, target_spawn_area
 
-    def _apply_global_target(
+    def _assign_random_targets(
         self, target_spawn_area: Optional[Sequence[float]]
     ) -> None:
         if not self.robot_states:
             return
 
-        target_position = getattr(self.env, "target_position", None)
-        if target_position is None and target_spawn_area is not None:
-            spacing = self.env.ROBOT_RADIUS_PIXELS * 2.5
-            candidates = self.formation.generate_randomized_positions(
-                target_spawn_area, 1, spacing
-            )
-            target_position = candidates[0] if candidates else None
+        spacing = self.env.ROBOT_RADIUS_PIXELS * 2.5
+        target_positions = self.formation.generate_randomized_positions(
+            target_spawn_area, len(self.robot_states), spacing
+        )
 
-        if target_position is None:
-            for robot in self.robot_states:
-                robot.target = None
-            self.formation.clear()
+        if not target_positions:
             return
 
-        global_target = (float(target_position[0]), float(target_position[1]))
-        for robot in self.robot_states:
-            robot.target = global_target
+        for robot, target in zip(self.robot_states, target_positions):
+            robot.target = target
         self.formation.clear()
 
     def _invalidate_obstacle_cache(self) -> None:

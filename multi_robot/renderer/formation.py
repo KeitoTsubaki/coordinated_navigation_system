@@ -230,6 +230,9 @@ class FormationManager:
             raise ValueError("Unable to find a feasible formation configuration")
 
         if apply:
+            for robot_index, target_index in enumerate(plan.assignment):
+                target = plan.targets[target_index]
+                simulator.robot_states[robot_index].target = target
             self.current_plan = plan
             if ego_index is not None:
                 self.plan_candidates[ego_index] = plan
