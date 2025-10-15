@@ -23,6 +23,9 @@ class FormationManager:
         self.simulator = simulator
         self.current_plan: Optional[FormationPlan] = None
         self.plan_candidates: Dict[int, FormationPlan] = {}
+        self._direct_targets: Dict[int, Optional[Position]] = {}
+        self._formation_targets: Dict[int, Position] = {}
+        self.follow_formation_targets: bool = False
 
     # ------------------------------------------------------------------
     # Public API
@@ -30,6 +33,7 @@ class FormationManager:
     def clear(self) -> None:
         self.current_plan = None
         self.plan_candidates.clear()
+        self._formation_targets.clear()
 
     def update_visualisation(self) -> None:
         simulator = self.simulator
@@ -37,6 +41,9 @@ class FormationManager:
             self.clear()
             return
 
+        if not self.follow_formation_targets:
+            self._enforce_direct_targets()
+            self._formation_targets.clear()
         self.plan_candidates.clear()
         selected_plan: Optional[FormationPlan] = None
 
@@ -52,12 +59,22 @@ class FormationManager:
 
         if not self.plan_candidates:
             self.current_plan = None
+            if self.follow_formation_targets:
+                self._formation_targets.clear()
+                self._enforce_direct_targets()
             return
 
         if selected_plan is not None:
             self.current_plan = selected_plan
         else:
             self.current_plan = next(iter(self.plan_candidates.values()))
+
+        if self.follow_formation_targets:
+            if self.current_plan is not None:
+                self._apply_plan_targets(self.current_plan)
+            else:
+                self._formation_targets.clear()
+                self._enforce_direct_targets()
 
     def draw(self) -> None:
         if not self.plan_candidates:
@@ -201,6 +218,7 @@ class FormationManager:
 
         angle_min, angle_max = self._formation_angle_bounds(formation_type)
         penalty = 1e6
+        self._prune_direct_target_cache()
         best_plan: Dict[str, Optional[FormationPlan]] = {"plan": None}
 
         def objective(theta: float) -> float:
@@ -230,14 +248,107 @@ class FormationManager:
             raise ValueError("Unable to find a feasible formation configuration")
 
         if apply:
-            for robot_index, target_index in enumerate(plan.assignment):
-                target = plan.targets[target_index]
-                simulator.robot_states[robot_index].target = target
+            if self.follow_formation_targets:
+                self._apply_plan_targets(plan)
+            else:
+                self._enforce_direct_targets()
             self.current_plan = plan
             if ego_index is not None:
                 self.plan_candidates[ego_index] = plan
 
         return plan
+
+    def register_direct_target(self, robot_index: int, target: Optional[Position]) -> None:
+        if target is None:
+            self._direct_targets[robot_index] = None
+            return
+
+        self._direct_targets[robot_index] = (float(target[0]), float(target[1]))
+        self._formation_targets.pop(robot_index, None)
+
+    def _prune_direct_target_cache(self) -> None:
+        robot_count = len(self.simulator.robot_states)
+        stale_indices = [index for index in self._direct_targets if index >= robot_count]
+        for index in stale_indices:
+            del self._direct_targets[index]
+
+    def _prune_formation_target_cache(self) -> None:
+        robot_count = len(self.simulator.robot_states)
+        stale_indices = [index for index in self._formation_targets if index >= robot_count]
+        for index in stale_indices:
+            del self._formation_targets[index]
+
+    def _enforce_direct_targets(self) -> None:
+        self._prune_direct_target_cache()
+        self._prune_formation_target_cache()
+        self._formation_targets.clear()
+        for index, robot in enumerate(self.simulator.robot_states):
+            if index not in self._direct_targets:
+                continue
+
+            direct_target = self._direct_targets[index]
+
+            if direct_target is None:
+                if robot.target is not None:
+                    robot.target = None
+                continue
+
+            if robot.target is None or (
+                abs(robot.target[0] - direct_target[0]) > 1e-6
+                or abs(robot.target[1] - direct_target[1]) > 1e-6
+            ):
+                robot.target = (float(direct_target[0]), float(direct_target[1]))
+
+    def toggle_follow_formation(self) -> bool:
+        self.follow_formation_targets = not self.follow_formation_targets
+        if self.follow_formation_targets:
+            self.update_visualisation()
+            if self.current_plan is None:
+                self.follow_formation_targets = False
+                self._enforce_direct_targets()
+        else:
+            self._enforce_direct_targets()
+        return self.follow_formation_targets
+
+    def _apply_plan_targets(self, plan: FormationPlan) -> None:
+        simulator = self.simulator
+        robot_states = simulator.robot_states
+        if len(plan.targets) < len(robot_states) or len(plan.assignment) < len(robot_states):
+            self._formation_targets.clear()
+            return
+
+        new_targets: Dict[int, Position] = {}
+
+        for robot_index, robot in enumerate(robot_states):
+            target_index = plan.assignment[robot_index]
+            if not (0 <= target_index < len(plan.targets)):
+                continue
+
+            target = plan.targets[target_index]
+            new_targets[robot_index] = (float(target[0]), float(target[1]))
+
+        self._prune_formation_target_cache()
+        self._formation_targets = new_targets
+
+    def get_navigation_target(
+        self,
+        robot_index: int,
+        *,
+        fallback: Optional[Position] = None,
+    ) -> Optional[Position]:
+        self._prune_formation_target_cache()
+        if fallback is None and 0 <= robot_index < len(self.simulator.robot_states):
+            fallback = self.simulator.robot_states[robot_index].target
+
+        if self.follow_formation_targets:
+            if robot_index in self._formation_targets:
+                target = self._formation_targets[robot_index]
+                return (float(target[0]), float(target[1]))
+
+        if fallback is None:
+            return None
+
+        return (float(fallback[0]), float(fallback[1]))
 
     def generate_randomized_positions(
         self,
@@ -395,49 +506,185 @@ class FormationManager:
                     ),
                 )
 
+        marker_radius = max(2, target_radius - 2)
+        robots_with_targets = []
+        for index, robot in enumerate(simulator.robot_states):
+            target = self.get_navigation_target(index, fallback=robot.target)
+            if target is not None:
+                robots_with_targets.append((index, robot, target))
+        if not robots_with_targets:
+            return
+
+        label_targets = highlight and debug_text
+
+        for index, robot, target in robots_with_targets:
+            vivid_color = brighten_color(robot.color)
+            if highlight:
+                line_color = vivid_color
+                marker_color = vivid_color
+                line_width = 2
+            else:
+                line_color = with_alpha(vivid_color, 0.6)
+                marker_color = with_alpha(vivid_color, 0.6)
+                line_width = 1
+
+            self._draw_robot_target_indicator(
+                layer,
+                robot,
+                target,
+                robot_index=index,
+                line_color=line_color,
+                marker_color=marker_color,
+                line_width=line_width,
+                marker_radius=marker_radius,
+                show_label=label_targets,
+                text_color=text_color,
+                font=small_font,
+            )
+
     def _draw_manual_target_overlay(self) -> None:
         simulator = self.simulator
-        robots_with_targets = [
-            (index, robot)
-            for index, robot in enumerate(simulator.robot_states)
-            if robot.target is not None
-        ]
+        robots_with_targets = []
+        for index, robot in enumerate(simulator.robot_states):
+            target = self.get_navigation_target(index, fallback=robot.target)
+            if target is not None:
+                robots_with_targets.append((index, robot, target))
         if not robots_with_targets:
             return
 
         layer = simulator.env.robot_and_lidar_layer
-        connection_color = (72, 61, 139)
         text_color = (30, 30, 30)
         small_font = pygame.font.SysFont("consolas", 12)
 
+        marker_radius = max(2, int(simulator.robot_radius_pixels * 0.35))
         debug_text = simulator.show_debug_text
 
-        for index, robot in robots_with_targets:
-            assert robot.target is not None
-            start = (int(robot.position[0]), int(robot.position[1]))
-            end = (int(robot.target[0]), int(robot.target[1]))
+        for index, robot, target in robots_with_targets:
+            vivid_color = brighten_color(robot.color)
+            line_color = with_alpha(vivid_color, 0.85)
+            marker_color = vivid_color
 
-            pygame.draw.line(layer, connection_color, start, end, width=2)
+            self._draw_robot_target_indicator(
+                layer,
+                robot,
+                target,
+                robot_index=index,
+                line_color=line_color,
+                marker_color=marker_color,
+                line_width=2,
+                marker_radius=marker_radius,
+                show_label=debug_text,
+                text_color=text_color,
+                font=small_font,
+            )
 
-            if not debug_text:
-                continue
+    def _draw_robot_target_indicator(
+        self,
+        layer: "pygame.Surface",
+        robot,
+        target: Optional[Position],
+        *,
+        robot_index: int,
+        line_color: Color,
+        marker_color: Color,
+        line_width: int,
+        marker_radius: int,
+        show_label: bool,
+        text_color: Color,
+        font: "pygame.font.Font",
+    ) -> None:
+        if target is None:
+            return
 
-            midpoint = ((start[0] + end[0]) / 2.0, (start[1] + end[1]) / 2.0)
-            distance_pixels = math.hypot(
-                robot.target[0] - robot.position[0],
-                robot.target[1] - robot.position[1],
+        start = (float(robot.position[0]), float(robot.position[1]))
+        end = (float(target[0]), float(target[1]))
+
+        marker_radius = max(1, int(marker_radius))
+        line_width = max(1, int(line_width))
+
+        self._draw_dashed_line(
+            layer,
+            line_color,
+            start,
+            end,
+            width=line_width,
+        )
+
+        pygame.draw.circle(
+            layer,
+            marker_color,
+            (int(end[0]), int(end[1])),
+            marker_radius,
+            width=1,
+        )
+
+        if not show_label:
+            return
+
+        midpoint = ((start[0] + end[0]) / 2.0, (start[1] + end[1]) / 2.0)
+        distance_pixels = math.hypot(end[0] - start[0], end[1] - start[1])
+        distance_m = distance_pixels / self.simulator.env.PIXELS_PER_METER
+        label = font.render(
+            f"R{robot_index} → target ({distance_m:.2f}m)", True, text_color
+        )
+        layer.blit(
+            label,
+            (
+                int(midpoint[0] - label.get_width() / 2),
+                int(midpoint[1] - label.get_height() / 2),
+            ),
+        )
+
+    @staticmethod
+    def _draw_dashed_line(
+        surface: "pygame.Surface",
+        color: Color,
+        start: Position,
+        end: Position,
+        *,
+        width: int = 1,
+        dash_length: float = 8.0,
+        gap_length: float = 4.0,
+    ) -> None:
+        dash_length = max(1.0, float(dash_length))
+        gap_length = max(1.0, float(gap_length))
+
+        dx = end[0] - start[0]
+        dy = end[1] - start[1]
+        distance = math.hypot(dx, dy)
+        if distance < 1e-2:
+            # Too short to meaningfully draw a dashed line; draw a single segment.
+            pygame.draw.line(
+                surface,
+                color,
+                (int(round(start[0])), int(round(start[1]))),
+                (int(round(end[0])), int(round(end[1]))),
+                max(1, int(width)),
             )
-            distance_m = distance_pixels / simulator.env.PIXELS_PER_METER
-            label = small_font.render(
-                f"R{index} → target ({distance_m:.2f}m)", True, text_color
+            return
+
+        direction = (dx / distance, dy / distance)
+        progress = 0.0
+        width = max(1, int(width))
+
+        while progress < distance:
+            dash_end = min(progress + dash_length, distance)
+            start_pos = (
+                start[0] + direction[0] * progress,
+                start[1] + direction[1] * progress,
             )
-            layer.blit(
-                label,
-                (
-                    int(midpoint[0] - label.get_width() / 2),
-                    int(midpoint[1] - label.get_height() / 2),
-                ),
+            end_pos = (
+                start[0] + direction[0] * dash_end,
+                start[1] + direction[1] * dash_end,
             )
+            pygame.draw.line(
+                surface,
+                color,
+                (int(round(start_pos[0])), int(round(start_pos[1]))),
+                (int(round(end_pos[0])), int(round(end_pos[1]))),
+                width,
+            )
+            progress += dash_length + gap_length
 
     def _formation_offsets(
         self, count: int, formation_type: str, spacing: float
@@ -555,9 +802,12 @@ class FormationManager:
                 distance_pixels = math.hypot(dx, dy)
                 distance_robot_target = distance_pixels / simulator.env.PIXELS_PER_METER
 
-                if robot.target is not None:
-                    previous_dx = target[0] - robot.target[0]
-                    previous_dy = target[1] - robot.target[1]
+                previous_target = self.get_navigation_target(
+                    robot_index, fallback=robot.target
+                )
+                if previous_target is not None:
+                    previous_dx = target[0] - previous_target[0]
+                    previous_dy = target[1] - previous_target[1]
                     distance_previous = (
                         math.hypot(previous_dx, previous_dy)
                         / simulator.env.PIXELS_PER_METER
