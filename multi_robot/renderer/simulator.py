@@ -50,6 +50,7 @@ class MultiRobotSimulator:
         self.selected_robot_index = 0
         self.manual_step_pixels = 5
         self.manual_rotation_step = 0.1
+        self.show_debug_text = True
 
         self._clock = pygame.time.Clock()
         self._fps = 0.0
@@ -233,7 +234,7 @@ class MultiRobotSimulator:
             if robot.target is not None:
                 self._draw_target(robot)
             self._draw_robot(robot)
-            if self.show_labels:
+            if self.show_labels and self.show_debug_text:
                 self._draw_label(robot)
         self.formation.update_visualisation()
         self.formation.draw()
@@ -277,6 +278,8 @@ class MultiRobotSimulator:
                         self.selected_robot_index = index
                 elif event.key == pygame.K_0 and len(self.robot_states) >= 10:
                     self.selected_robot_index = 9
+                elif event.key == pygame.K_d:
+                    self.show_debug_text = not self.show_debug_text
                 elif event.key == pygame.K_l:
                     robot = self.robot_states[self.selected_robot_index]
                     robot.lidar_enabled = not robot.lidar_enabled
@@ -414,7 +417,7 @@ class MultiRobotSimulator:
             return
         font = pygame.font.SysFont("arial", 16)
         hud_lines = [
-            "Controls: TAB/0-9 select, W move forward, Q/E rotate, C cycle map, SPACE reset, L toggle LiDAR, P toggle path, I toggle info panel",
+            "Controls: TAB/0-9 select, W move forward, Q/E rotate, C cycle map, SPACE reset, L toggle LiDAR, P toggle path, I toggle info panel, D toggle debug text",
         ]
         for index, text in enumerate(hud_lines):
             label = font.render(text, True, (0, 0, 0))
