@@ -48,6 +48,7 @@ class PolicyController:
         self._last_action_timestamp: Optional[float] = None
         self._dt = 0.1  # Matches rl_training.gym_environment.Env.DT
         self._control_state: Dict[int, PolicyRobotControlState] = {}
+        self._completed_robots: set[int] = set()
         self._lidar_history_len = 1
         self._n_l = 0
         self._n_e = 0
@@ -71,9 +72,11 @@ class PolicyController:
         self.active = not self.active
         if self.active:
             self._control_state.clear()
+            self._completed_robots.clear()
             self._last_action_timestamp = None
         else:
             self._last_action_timestamp = None
+            self._completed_robots.clear()
         return self.active
 
     def step(self) -> None:
@@ -95,6 +98,7 @@ class PolicyController:
         ]
         for index in stale_indices:
             del self._control_state[index]
+            self._completed_robots.discard(index)
 
         for robot_index, robot in enumerate(robot_states):
             control_state = self._control_state.setdefault(
@@ -104,9 +108,22 @@ class PolicyController:
                 ),
             )
 
+            if robot_index in self._completed_robots:
+                if self._has_reached_target(robot):
+                    robot.velocity = 0.0
+                    control_state.current_v = 0.0
+                    control_state.current_omega = 0.0
+                    continue
+                self._completed_robots.discard(robot_index)
+
             if self._has_reached_target(robot):
-                self._deactivate_policy_control()
-                return
+                self._completed_robots.add(robot_index)
+                robot.velocity = 0.0
+                control_state.current_v = 0.0
+                control_state.current_omega = 0.0
+                control_state.previous_v = 0.0
+                control_state.previous_omega = 0.0
+                continue
 
             self.simulator._update_lidar(robot)
             observation = self._build_observation(robot, control_state)
@@ -137,6 +154,9 @@ class PolicyController:
         if now is not None:
             self._last_action_timestamp = now
 
+        if self._completed_robots and len(self._completed_robots) == len(robot_states):
+            self._deactivate_policy_control()
+
     def _deactivate_policy_control(self) -> None:
         if not self.active:
             return
@@ -144,6 +164,7 @@ class PolicyController:
         self.active = False
         self._last_action_timestamp = None
         self._control_state.clear()
+        self._completed_robots.clear()
         self.simulator.policy_control_active = False
         self.simulator.manual_control = self.simulator._manual_control_enabled
 
