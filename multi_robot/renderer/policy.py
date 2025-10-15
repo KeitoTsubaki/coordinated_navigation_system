@@ -110,14 +110,14 @@ class PolicyController:
             )
 
             if robot_index in self._completed_robots:
-                if self._has_reached_target(robot):
+                if self._has_reached_target(robot_index, robot):
                     robot.velocity = 0.0
                     control_state.current_v = 0.0
                     control_state.current_omega = 0.0
                     continue
                 self._completed_robots.discard(robot_index)
 
-            if self._has_reached_target(robot):
+            if self._has_reached_target(robot_index, robot):
                 self._completed_robots.add(robot_index)
                 robot.velocity = 0.0
                 control_state.current_v = 0.0
@@ -127,7 +127,7 @@ class PolicyController:
                 continue
 
             self.simulator._update_lidar(robot)
-            observation = self._build_observation(robot, control_state)
+            observation = self._build_observation(robot_index, robot, control_state)
             if observation is None:
                 continue
 
@@ -283,7 +283,10 @@ class PolicyController:
             self._model = None
 
     def _build_observation(
-        self, robot: RobotState, control_state: PolicyRobotControlState
+        self,
+        robot_index: int,
+        robot: RobotState,
+        control_state: PolicyRobotControlState,
     ) -> Optional[Dict[str, np.ndarray]]:
         lidar_measurement = self._process_lidar_data(robot)
         control_state.lidar_history.append(lidar_measurement)
@@ -296,7 +299,7 @@ class PolicyController:
         history = history[-self._lidar_history_len :]
         obs_lidar = np.array(history, dtype=np.float32)
 
-        distance_to_target, angle_to_target = self._compute_goal_info(robot)
+        distance_to_target, angle_to_target = self._compute_goal_info(robot_index, robot)
         goal_angle_n = float(np.clip(angle_to_target / math.pi, -1.0, 1.0))
         obs_goal = np.array([distance_to_target, goal_angle_n], dtype=np.float32)
 
@@ -451,13 +454,18 @@ class PolicyController:
 
         return filtered_data, replaced_measurements
 
-    def _compute_goal_info(self, robot: RobotState) -> Tuple[float, float]:
+    def _compute_goal_info(
+        self, robot_index: int, robot: RobotState
+    ) -> Tuple[float, float]:
         env = self.simulator.env
-        if robot.target is None:
+        target = self.simulator.formation.get_navigation_target(
+            robot_index, fallback=robot.target
+        )
+        if target is None:
             return 0.0, 0.0
 
-        dx_pixels = robot.target[0] - robot.position[0]
-        dy_pixels = robot.target[1] - robot.position[1]
+        dx_pixels = target[0] - robot.position[0]
+        dy_pixels = target[1] - robot.position[1]
         distance_pixels = math.hypot(dx_pixels, dy_pixels)
         dy = -dy_pixels
         distance_m = distance_pixels / env.PIXELS_PER_METER
@@ -468,12 +476,15 @@ class PolicyController:
         angle_to_target = (angle_to_target + math.pi) % (2 * math.pi) - math.pi
         return distance_m, angle_to_target
 
-    def _has_reached_target(self, robot: RobotState) -> bool:
-        if robot.target is None:
+    def _has_reached_target(self, robot_index: int, robot: RobotState) -> bool:
+        target = self.simulator.formation.get_navigation_target(
+            robot_index, fallback=robot.target
+        )
+        if target is None:
             return False
 
-        dx_pixels = robot.target[0] - robot.position[0]
-        dy_pixels = robot.target[1] - robot.position[1]
+        dx_pixels = target[0] - robot.position[0]
+        dy_pixels = target[1] - robot.position[1]
         distance_pixels = math.hypot(dx_pixels, dy_pixels)
         distance_m = distance_pixels / self.simulator.env.PIXELS_PER_METER
         return distance_m < self.simulator.env.ROBOT_RADIUS_M

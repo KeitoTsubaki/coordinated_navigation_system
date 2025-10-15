@@ -258,24 +258,51 @@ class InfoPanelRenderer:
 
                     y_offset += 8
 
-        elif any(robot.target is not None for robot in self.simulator.robot_states):
-            render_line("Target Assignments", title_font, self.text_color, spacing=8)
-
-            for robot in self.simulator.robot_states:
-                if robot.target is None:
-                    continue
-
-                target_m = self.simulator.pixels_to_meters(*robot.target)
-                distance_pixels = math.hypot(
-                    robot.target[0] - robot.position[0],
-                    robot.target[1] - robot.position[1],
+        else:
+            active_targets = [
+                self.simulator.formation.get_navigation_target(
+                    index, fallback=robot.target
                 )
-                distance_m = distance_pixels / self.simulator.env.PIXELS_PER_METER
-                text = (
-                    f"{robot.name}: ({target_m[0]:.2f}, {target_m[1]:.2f}) m"
-                    f" / {distance_m:.2f} m away"
-                )
-                render_line(text, value_font, self.text_color, indent=10, spacing=2)
+                for index, robot in enumerate(self.simulator.robot_states)
+            ]
+            if any(target is not None for target in active_targets):
+                render_line("Target Assignments", title_font, self.text_color, spacing=8)
+
+                for index, robot in enumerate(self.simulator.robot_states):
+                    target = active_targets[index]
+                    if target is None:
+                        continue
+
+                    target_m = self.simulator.pixels_to_meters(*target)
+                    distance_pixels = math.hypot(
+                        target[0] - robot.position[0],
+                        target[1] - robot.position[1],
+                    )
+                    distance_m = distance_pixels / self.simulator.env.PIXELS_PER_METER
+                    text = (
+                        f"{robot.name}: ({target_m[0]:.2f}, {target_m[1]:.2f}) m"
+                        f" / {distance_m:.2f} m away"
+                    )
+
+                    direct_target = robot.target
+                    if direct_target is not None and (
+                        abs(direct_target[0] - target[0]) > 1e-6
+                        or abs(direct_target[1] - target[1]) > 1e-6
+                    ):
+                        direct_m = self.simulator.pixels_to_meters(*direct_target)
+                        direct_distance = math.hypot(
+                            direct_target[0] - robot.position[0],
+                            direct_target[1] - robot.position[1],
+                        )
+                        direct_distance_m = (
+                            direct_distance / self.simulator.env.PIXELS_PER_METER
+                        )
+                        text += (
+                            f" | Direct: ({direct_m[0]:.2f}, {direct_m[1]:.2f}) m"
+                            f" / {direct_distance_m:.2f} m"
+                        )
+
+                    render_line(text, value_font, self.text_color, indent=10, spacing=2)
 
             y_offset += 12
 
@@ -296,12 +323,28 @@ class InfoPanelRenderer:
                 f"Speed: {robot.velocity:.2f} m/s",
             ]
 
-            if robot.target is not None:
-                target_m = self.simulator.pixels_to_meters(*robot.target)
-                distance = math.hypot(target_m[0] - pos_m[0], target_m[1] - pos_m[1])
-                metrics.append(f"Target dist: {distance:.2f} m")
-            else:
+            active_target = self.simulator.formation.get_navigation_target(
+                index, fallback=robot.target
+            )
+            if active_target is None:
                 metrics.append("Target: None")
+            else:
+                active_m = self.simulator.pixels_to_meters(*active_target)
+                distance_active = math.hypot(
+                    active_m[0] - pos_m[0], active_m[1] - pos_m[1]
+                )
+                metrics.append(f"Active target dist: {distance_active:.2f} m")
+
+                direct_target = robot.target
+                if direct_target is not None and (
+                    abs(direct_target[0] - active_target[0]) > 1e-6
+                    or abs(direct_target[1] - active_target[1]) > 1e-6
+                ):
+                    direct_m = self.simulator.pixels_to_meters(*direct_target)
+                    distance_direct = math.hypot(
+                        direct_m[0] - pos_m[0], direct_m[1] - pos_m[1]
+                    )
+                    metrics.append(f"Direct target dist: {distance_direct:.2f} m")
 
             if robot.closest_obstacle[0] != float("inf"):
                 metrics.append(f"Closest obs: {robot.closest_obstacle[0]:.2f} m")

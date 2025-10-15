@@ -24,6 +24,7 @@ class FormationManager:
         self.current_plan: Optional[FormationPlan] = None
         self.plan_candidates: Dict[int, FormationPlan] = {}
         self._direct_targets: Dict[int, Optional[Position]] = {}
+        self._formation_targets: Dict[int, Position] = {}
         self.follow_formation_targets: bool = False
 
     # ------------------------------------------------------------------
@@ -32,6 +33,7 @@ class FormationManager:
     def clear(self) -> None:
         self.current_plan = None
         self.plan_candidates.clear()
+        self._formation_targets.clear()
 
     def update_visualisation(self) -> None:
         simulator = self.simulator
@@ -41,6 +43,7 @@ class FormationManager:
 
         if not self.follow_formation_targets:
             self._enforce_direct_targets()
+            self._formation_targets.clear()
         self.plan_candidates.clear()
         selected_plan: Optional[FormationPlan] = None
 
@@ -57,6 +60,7 @@ class FormationManager:
         if not self.plan_candidates:
             self.current_plan = None
             if self.follow_formation_targets:
+                self._formation_targets.clear()
                 self._enforce_direct_targets()
             return
 
@@ -69,6 +73,7 @@ class FormationManager:
             if self.current_plan is not None:
                 self._apply_plan_targets(self.current_plan)
             else:
+                self._formation_targets.clear()
                 self._enforce_direct_targets()
 
     def draw(self) -> None:
@@ -259,6 +264,7 @@ class FormationManager:
             return
 
         self._direct_targets[robot_index] = (float(target[0]), float(target[1]))
+        self._formation_targets.pop(robot_index, None)
 
     def _prune_direct_target_cache(self) -> None:
         robot_count = len(self.simulator.robot_states)
@@ -266,8 +272,16 @@ class FormationManager:
         for index in stale_indices:
             del self._direct_targets[index]
 
+    def _prune_formation_target_cache(self) -> None:
+        robot_count = len(self.simulator.robot_states)
+        stale_indices = [index for index in self._formation_targets if index >= robot_count]
+        for index in stale_indices:
+            del self._formation_targets[index]
+
     def _enforce_direct_targets(self) -> None:
         self._prune_direct_target_cache()
+        self._prune_formation_target_cache()
+        self._formation_targets.clear()
         for index, robot in enumerate(self.simulator.robot_states):
             if index not in self._direct_targets:
                 continue
@@ -300,7 +314,10 @@ class FormationManager:
         simulator = self.simulator
         robot_states = simulator.robot_states
         if len(plan.targets) < len(robot_states) or len(plan.assignment) < len(robot_states):
+            self._formation_targets.clear()
             return
+
+        new_targets: Dict[int, Position] = {}
 
         for robot_index, robot in enumerate(robot_states):
             target_index = plan.assignment[robot_index]
@@ -308,11 +325,30 @@ class FormationManager:
                 continue
 
             target = plan.targets[target_index]
-            if robot.target is None or (
-                abs(robot.target[0] - target[0]) > 1e-6
-                or abs(robot.target[1] - target[1]) > 1e-6
-            ):
-                robot.target = (float(target[0]), float(target[1]))
+            new_targets[robot_index] = (float(target[0]), float(target[1]))
+
+        self._prune_formation_target_cache()
+        self._formation_targets = new_targets
+
+    def get_navigation_target(
+        self,
+        robot_index: int,
+        *,
+        fallback: Optional[Position] = None,
+    ) -> Optional[Position]:
+        self._prune_formation_target_cache()
+        if fallback is None and 0 <= robot_index < len(self.simulator.robot_states):
+            fallback = self.simulator.robot_states[robot_index].target
+
+        if self.follow_formation_targets:
+            if robot_index in self._formation_targets:
+                target = self._formation_targets[robot_index]
+                return (float(target[0]), float(target[1]))
+
+        if fallback is None:
+            return None
+
+        return (float(fallback[0]), float(fallback[1]))
 
     def generate_randomized_positions(
         self,
@@ -471,18 +507,17 @@ class FormationManager:
                 )
 
         marker_radius = max(2, target_radius - 2)
-        robots_with_targets = [
-            (index, robot)
-            for index, robot in enumerate(simulator.robot_states)
-            if robot.target is not None
-        ]
+        robots_with_targets = []
+        for index, robot in enumerate(simulator.robot_states):
+            target = self.get_navigation_target(index, fallback=robot.target)
+            if target is not None:
+                robots_with_targets.append((index, robot, target))
         if not robots_with_targets:
             return
 
         label_targets = highlight and debug_text
 
-        for index, robot in robots_with_targets:
-            assert robot.target is not None
+        for index, robot, target in robots_with_targets:
             vivid_color = brighten_color(robot.color)
             if highlight:
                 line_color = vivid_color
@@ -496,6 +531,7 @@ class FormationManager:
             self._draw_robot_target_indicator(
                 layer,
                 robot,
+                target,
                 robot_index=index,
                 line_color=line_color,
                 marker_color=marker_color,
@@ -508,11 +544,11 @@ class FormationManager:
 
     def _draw_manual_target_overlay(self) -> None:
         simulator = self.simulator
-        robots_with_targets = [
-            (index, robot)
-            for index, robot in enumerate(simulator.robot_states)
-            if robot.target is not None
-        ]
+        robots_with_targets = []
+        for index, robot in enumerate(simulator.robot_states):
+            target = self.get_navigation_target(index, fallback=robot.target)
+            if target is not None:
+                robots_with_targets.append((index, robot, target))
         if not robots_with_targets:
             return
 
@@ -523,8 +559,7 @@ class FormationManager:
         marker_radius = max(2, int(simulator.robot_radius_pixels * 0.35))
         debug_text = simulator.show_debug_text
 
-        for index, robot in robots_with_targets:
-            assert robot.target is not None
+        for index, robot, target in robots_with_targets:
             vivid_color = brighten_color(robot.color)
             line_color = with_alpha(vivid_color, 0.85)
             marker_color = vivid_color
@@ -532,6 +567,7 @@ class FormationManager:
             self._draw_robot_target_indicator(
                 layer,
                 robot,
+                target,
                 robot_index=index,
                 line_color=line_color,
                 marker_color=marker_color,
@@ -546,6 +582,7 @@ class FormationManager:
         self,
         layer: "pygame.Surface",
         robot,
+        target: Optional[Position],
         *,
         robot_index: int,
         line_color: Color,
@@ -556,11 +593,11 @@ class FormationManager:
         text_color: Color,
         font: "pygame.font.Font",
     ) -> None:
-        if robot.target is None:
+        if target is None:
             return
 
         start = (float(robot.position[0]), float(robot.position[1]))
-        end = (float(robot.target[0]), float(robot.target[1]))
+        end = (float(target[0]), float(target[1]))
 
         marker_radius = max(1, int(marker_radius))
         line_width = max(1, int(line_width))
@@ -765,9 +802,12 @@ class FormationManager:
                 distance_pixels = math.hypot(dx, dy)
                 distance_robot_target = distance_pixels / simulator.env.PIXELS_PER_METER
 
-                if robot.target is not None:
-                    previous_dx = target[0] - robot.target[0]
-                    previous_dy = target[1] - robot.target[1]
+                previous_target = self.get_navigation_target(
+                    robot_index, fallback=robot.target
+                )
+                if previous_target is not None:
+                    previous_dx = target[0] - previous_target[0]
+                    previous_dy = target[1] - previous_target[1]
                     distance_previous = (
                         math.hypot(previous_dx, previous_dy)
                         / simulator.env.PIXELS_PER_METER
