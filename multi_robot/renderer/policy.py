@@ -18,7 +18,7 @@ import yaml
 from typing import TYPE_CHECKING
 
 from .types import RobotState
-from .utils import ensure_repo_root_on_path
+from .utils import ensure_repo_root_on_path, process_lidar_for_observation
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from .simulator import MultiRobotSimulator
@@ -222,7 +222,7 @@ class PolicyController:
     def _build_observation(
         self, robot: RobotState, control_state: PolicyRobotControlState
     ) -> Optional[Dict[str, np.ndarray]]:
-        lidar_measurement = self._process_lidar_data(robot.sensor_data)
+        lidar_measurement = self._process_lidar_data(robot)
         control_state.lidar_history.append(lidar_measurement)
         history = list(control_state.lidar_history)
         if not history:
@@ -292,32 +292,101 @@ class PolicyController:
         robot.theta = (robot.theta + omega_e * self._dt + math.pi) % (2 * math.pi) - math.pi
         return moved
 
-    def _process_lidar_data(self, sensor_data: Sequence[Tuple[float, float]]) -> np.ndarray:
+    def _process_lidar_data(self, robot: RobotState) -> np.ndarray:
         env = self.simulator.env
-        max_range = env.LIDAR_RANGE_M
-        if not sensor_data:
-            return np.full(self._n_l + self._n_e, max_range, dtype=np.float32)
+        sensor_data: Sequence[Tuple[float, float]] = robot.sensor_data
 
-        processed: List[float] = []
-        for distance, _ in sensor_data:
-            if distance < max_range:
-                processed.append(distance / max_range)
+        if sensor_data:
+            filtered_data, replaced_measurements = self._filter_robot_reflections(
+                robot, sensor_data
+            )
+            robot.sensor_data = list(filtered_data)
+            sensor_data = robot.sensor_data
+            robot.filtered_sensor_data = list(replaced_measurements)
+        else:
+            robot.filtered_sensor_data = []
+
+        return process_lidar_for_observation(
+            sensor_data,
+            self._n_l,
+            self._n_e,
+            env.LIDAR_RANGE_M,
+        )
+
+    def _filter_robot_reflections(
+        self,
+        robot: RobotState,
+        sensor_data: Sequence[Tuple[float, float]],
+    ) -> Tuple[list[Tuple[float, float]], list[Tuple[float, float]]]:
+        sensor = robot.sensor
+        if sensor is None:
+            return list(sensor_data), []
+
+        env = self.simulator.env
+        robot_radius_m = env.ROBOT_RADIUS_M
+        lidar_range = sensor.LIDAR_RANGE_M
+        pixels_per_meter = env.PIXELS_PER_METER
+        other_robot_filters: list[Tuple[float, float, float, float]] = []
+
+        for other in self.simulator.robot_states:
+            if other is robot:
+                continue
+
+            dx_pixels = other.position[0] - robot.position[0]
+            dy_pixels = other.position[1] - robot.position[1]
+            distance_pixels = math.hypot(dx_pixels, dy_pixels)
+            if distance_pixels == 0:
+                continue
+
+            distance_m = distance_pixels / pixels_per_meter
+            if distance_m > lidar_range + robot_radius_m:
+                continue
+
+            global_angle = math.atan2(-dx_pixels, -dy_pixels)
+            if global_angle < 0:
+                global_angle += 2 * math.pi
+
+            if distance_m <= robot_radius_m:
+                angle_half_width = math.pi
             else:
-                processed.append(max_range * 100.0 / max_range)
+                ratio = min(1.0, robot_radius_m / distance_m)
+                angle_half_width = math.asin(ratio)
 
-        if len(processed) < self._n_l:
-            processed.extend(
-                [processed[-1] if processed else max_range] * (self._n_l - len(processed))
+            distance_min = max(0.0, distance_m - robot_radius_m)
+            distance_max = distance_m + robot_radius_m
+            other_robot_filters.append(
+                (global_angle, angle_half_width, distance_min, distance_max)
             )
 
-        extended = processed[: self._n_l] + processed[: self._n_e]
-        if len(extended) < self._n_l + self._n_e:
-            extended.extend(
-                [extended[-1] if extended else max_range]
-                * (self._n_l + self._n_e - len(extended))
-            )
+        if not other_robot_filters:
+            return list(sensor_data), []
 
-        return np.array(extended, dtype=np.float32)
+        filtered_data: list[Tuple[float, float]] = []
+        replaced_measurements: list[Tuple[float, float]] = []
+        theta = robot.theta
+        buffer = 1.1
+
+        for distance, relative_angle in sensor_data:
+            global_angle = (theta - math.pi / 2 - relative_angle) % (2 * math.pi)
+            replaced = False
+
+            for angle_center, angle_half_width, distance_min, distance_max in other_robot_filters:
+                angle_diff = abs(global_angle - angle_center)
+                angle_diff = min(angle_diff, 2 * math.pi - angle_diff)
+
+                if (
+                    angle_diff <= angle_half_width * buffer
+                    and distance_min * (2 - buffer) <= distance <= distance_max * buffer
+                ):
+                    replaced_measurements.append((distance, relative_angle))
+                    filtered_data.append((sensor.out_of_range_value, relative_angle))
+                    replaced = True
+                    break
+
+            if not replaced:
+                filtered_data.append((distance, relative_angle))
+
+        return filtered_data, replaced_measurements
 
     def _compute_goal_info(self, robot: RobotState) -> Tuple[float, float]:
         env = self.simulator.env

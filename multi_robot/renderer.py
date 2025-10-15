@@ -28,6 +28,8 @@ from scipy import ndimage
 from scipy.optimize import linear_sum_assignment, minimize_scalar
 import yaml
 
+from multi_robot.renderer.utils import process_lidar_for_observation
+
 _SPEC = importlib.util.find_spec("simulation_core.environment")
 if _SPEC is None:
     _SPEC = importlib.util.find_spec("simulation_core.simulation_core.environment")
@@ -382,28 +384,12 @@ class PolicyController:
 
     def _process_lidar_data(self, sensor_data: Sequence[Tuple[float, float]]) -> np.ndarray:
         env = self.simulator.env
-        max_range = env.LIDAR_RANGE_M
-        if not sensor_data:
-            return np.full(self._n_l + self._n_e, max_range, dtype=np.float32)
-
-        processed: List[float] = []
-        for distance, _ in sensor_data:
-            if distance < max_range:
-                processed.append(distance / max_range)
-            else:
-                processed.append(max_range * 100.0 / max_range)
-
-        if len(processed) < self._n_l:
-            processed.extend([processed[-1] if processed else max_range] * (self._n_l - len(processed)))
-
-        extended = processed[: self._n_l] + processed[: self._n_e]
-        if len(extended) < self._n_l + self._n_e:
-            extended.extend(
-                [extended[-1] if extended else max_range]
-                * (self._n_l + self._n_e - len(extended))
-            )
-
-        return np.array(extended, dtype=np.float32)
+        return process_lidar_for_observation(
+            sensor_data,
+            self._n_l,
+            self._n_e,
+            env.LIDAR_RANGE_M,
+        )
 
     def _compute_goal_info(self, robot: RobotState) -> Tuple[float, float]:
         env = self.simulator.env
