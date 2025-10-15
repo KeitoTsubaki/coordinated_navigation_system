@@ -66,7 +66,7 @@ class FormationManager:
 
         simulator = self.simulator
         layer = simulator.env.robot_and_lidar_layer
-        target_radius = int(max(4, simulator.robot_radius_pixels * 0.4))
+        target_radius = max(1, int(round(simulator.robot_radius_pixels)))
         font = pygame.font.SysFont("arial", 14)
         small_font = pygame.font.SysFont("consolas", 12)
 

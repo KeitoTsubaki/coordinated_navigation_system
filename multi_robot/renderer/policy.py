@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import math
-import os
 from collections import deque
 from dataclasses import dataclass
 from typing import Deque, Dict, List, Optional, Sequence, Tuple
@@ -11,6 +10,7 @@ from typing import Deque, Dict, List, Optional, Sequence, Tuple
 import importlib
 import importlib.abc
 import importlib.resources
+from pathlib import Path
 import numpy as np
 import pygame
 import yaml
@@ -53,6 +53,7 @@ class PolicyController:
         self._n_l = 0
         self._n_e = 0
         self._load_policy_config()
+        self._initialise_model()
 
     @property
     def is_available(self) -> bool:
@@ -220,9 +221,36 @@ class PolicyController:
             self._last_error = "No policy model path has been provided."
             return
 
-        if not os.path.exists(self.model_path):
+        original_path = Path(self.model_path)
+        candidate_paths: List[Path] = []
+
+        if original_path.is_absolute():
+            candidate_paths.append(original_path)
+        else:
+            candidate_paths.append(original_path)
+            package_root = Path(__file__).resolve().parents[1]
+            candidate_paths.append(package_root / original_path)
+            candidate_paths.append(package_root / original_path.name)
+            try:
+                repo_root = ensure_repo_root_on_path()
+            except Exception:  # pragma: no cover - defensive path
+                repo_root = None
+            if repo_root is not None:
+                repo_root = Path(repo_root)
+                candidate_paths.append(repo_root / original_path)
+                candidate_paths.append(repo_root / original_path.name)
+
+        resolved_path: Optional[Path] = None
+        for candidate in candidate_paths:
+            if candidate.exists():
+                resolved_path = candidate
+                break
+
+        if resolved_path is None:
             self._last_error = f"Policy model not found: {self.model_path}"
             return
+
+        self.model_path = str(resolved_path)
 
         try:
             from stable_baselines3 import DDPG

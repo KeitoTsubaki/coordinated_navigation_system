@@ -373,7 +373,7 @@ class MultiRobotSimulator:
             self.env.robot_and_lidar_layer,
             color,
             (int(robot.target[0]), int(robot.target[1])),
-            int(self.robot_radius_pixels * 0.6),
+            max(1, int(round(self.robot_radius_pixels))),
             width=2,
         )
 
