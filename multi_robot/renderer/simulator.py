@@ -201,6 +201,7 @@ class MultiRobotSimulator:
         if target is not None and in_meters:
             target = self.meters_to_pixels(*target)
         robot.target = target
+        self.formation.register_direct_target(robot_index, target)
         if target is None:
             self.formation.clear()
 
@@ -278,6 +279,12 @@ class MultiRobotSimulator:
                         self.selected_robot_index = index
                 elif event.key == pygame.K_0 and len(self.robot_states) >= 10:
                     self.selected_robot_index = 9
+                elif event.key == pygame.K_f:
+                    enabled = self.formation.toggle_follow_formation()
+                    if enabled:
+                        print("Formation following enabled: robots will pursue formation targets.")
+                    else:
+                        print("Formation following disabled: robots will pursue direct goals.")
                 elif event.key == pygame.K_d:
                     self.show_debug_text = not self.show_debug_text
                 elif event.key == pygame.K_l:
@@ -526,8 +533,9 @@ class MultiRobotSimulator:
         if not target_positions:
             return
 
-        for robot, target in zip(self.robot_states, target_positions):
+        for index, (robot, target) in enumerate(zip(self.robot_states, target_positions)):
             robot.target = target
+            self.formation.register_direct_target(index, target)
         self.formation.clear()
 
     def _invalidate_obstacle_cache(self) -> None:

@@ -23,6 +23,8 @@ class FormationManager:
         self.simulator = simulator
         self.current_plan: Optional[FormationPlan] = None
         self.plan_candidates: Dict[int, FormationPlan] = {}
+        self._direct_targets: Dict[int, Optional[Position]] = {}
+        self.follow_formation_targets: bool = False
 
     # ------------------------------------------------------------------
     # Public API
@@ -37,6 +39,8 @@ class FormationManager:
             self.clear()
             return
 
+        if not self.follow_formation_targets:
+            self._enforce_direct_targets()
         self.plan_candidates.clear()
         selected_plan: Optional[FormationPlan] = None
 
@@ -52,12 +56,20 @@ class FormationManager:
 
         if not self.plan_candidates:
             self.current_plan = None
+            if self.follow_formation_targets:
+                self._enforce_direct_targets()
             return
 
         if selected_plan is not None:
             self.current_plan = selected_plan
         else:
             self.current_plan = next(iter(self.plan_candidates.values()))
+
+        if self.follow_formation_targets:
+            if self.current_plan is not None:
+                self._apply_plan_targets(self.current_plan)
+            else:
+                self._enforce_direct_targets()
 
     def draw(self) -> None:
         if not self.plan_candidates:
@@ -201,6 +213,7 @@ class FormationManager:
 
         angle_min, angle_max = self._formation_angle_bounds(formation_type)
         penalty = 1e6
+        self._prune_direct_target_cache()
         best_plan: Dict[str, Optional[FormationPlan]] = {"plan": None}
 
         def objective(theta: float) -> float:
@@ -230,18 +243,76 @@ class FormationManager:
             raise ValueError("Unable to find a feasible formation configuration")
 
         if apply:
-            # NOTE:
-            #   The previous behaviour updated each robot's target with the
-            #   generated formation target. For the current testing workflow we
-            #   keep the original (direct) goals assigned to the robots even
-            #   when a formation plan is available. Therefore the optimisation
-            #   result is stored for visualisation purposes only, without
-            #   overriding ``robot.target``.
+            if self.follow_formation_targets:
+                self._apply_plan_targets(plan)
+            else:
+                self._enforce_direct_targets()
             self.current_plan = plan
             if ego_index is not None:
                 self.plan_candidates[ego_index] = plan
 
         return plan
+
+    def register_direct_target(self, robot_index: int, target: Optional[Position]) -> None:
+        if target is None:
+            self._direct_targets[robot_index] = None
+            return
+
+        self._direct_targets[robot_index] = (float(target[0]), float(target[1]))
+
+    def _prune_direct_target_cache(self) -> None:
+        robot_count = len(self.simulator.robot_states)
+        stale_indices = [index for index in self._direct_targets if index >= robot_count]
+        for index in stale_indices:
+            del self._direct_targets[index]
+
+    def _enforce_direct_targets(self) -> None:
+        self._prune_direct_target_cache()
+        for index, robot in enumerate(self.simulator.robot_states):
+            if index not in self._direct_targets:
+                continue
+
+            direct_target = self._direct_targets[index]
+
+            if direct_target is None:
+                if robot.target is not None:
+                    robot.target = None
+                continue
+
+            if robot.target is None or (
+                abs(robot.target[0] - direct_target[0]) > 1e-6
+                or abs(robot.target[1] - direct_target[1]) > 1e-6
+            ):
+                robot.target = (float(direct_target[0]), float(direct_target[1]))
+
+    def toggle_follow_formation(self) -> bool:
+        self.follow_formation_targets = not self.follow_formation_targets
+        if self.follow_formation_targets:
+            self.update_visualisation()
+            if self.current_plan is None:
+                self.follow_formation_targets = False
+                self._enforce_direct_targets()
+        else:
+            self._enforce_direct_targets()
+        return self.follow_formation_targets
+
+    def _apply_plan_targets(self, plan: FormationPlan) -> None:
+        simulator = self.simulator
+        robot_states = simulator.robot_states
+        if len(plan.targets) < len(robot_states) or len(plan.assignment) < len(robot_states):
+            return
+
+        for robot_index, robot in enumerate(robot_states):
+            target_index = plan.assignment[robot_index]
+            if not (0 <= target_index < len(plan.targets)):
+                continue
+
+            target = plan.targets[target_index]
+            if robot.target is None or (
+                abs(robot.target[0] - target[0]) > 1e-6
+                or abs(robot.target[1] - target[1]) > 1e-6
+            ):
+                robot.target = (float(target[0]), float(target[1]))
 
     def generate_randomized_positions(
         self,
