@@ -172,7 +172,7 @@ class FormationManager:
 
     def optimize(
         self,
-        formation_type: str = "triangle",
+        formation_type: str = "line",
         *,
         weights: Optional[Sequence[float]] = None,
         ego_index: Optional[int] = None,
