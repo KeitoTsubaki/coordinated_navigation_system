@@ -104,6 +104,10 @@ class PolicyController:
                 ),
             )
 
+            if self._has_reached_target(robot):
+                self._deactivate_policy_control()
+                return
+
             self.simulator._update_lidar(robot)
             observation = self._build_observation(robot, control_state)
             if observation is None:
@@ -132,6 +136,16 @@ class PolicyController:
 
         if now is not None:
             self._last_action_timestamp = now
+
+    def _deactivate_policy_control(self) -> None:
+        if not self.active:
+            return
+
+        self.active = False
+        self._last_action_timestamp = None
+        self._control_state.clear()
+        self.simulator.policy_control_active = False
+        self.simulator.manual_control = self.simulator._manual_control_enabled
 
     def _load_policy_config(self) -> None:
         config: Optional[Dict[str, object]] = None
@@ -404,4 +418,14 @@ class PolicyController:
         angle_to_target = global_angle_to_target - robot_global_angle
         angle_to_target = (angle_to_target + math.pi) % (2 * math.pi) - math.pi
         return distance_m, angle_to_target
+
+    def _has_reached_target(self, robot: RobotState) -> bool:
+        if robot.target is None:
+            return False
+
+        dx_pixels = robot.target[0] - robot.position[0]
+        dy_pixels = robot.target[1] - robot.position[1]
+        distance_pixels = math.hypot(dx_pixels, dy_pixels)
+        distance_m = distance_pixels / self.simulator.env.PIXELS_PER_METER
+        return distance_m < self.simulator.env.ROBOT_RADIUS_M
 
