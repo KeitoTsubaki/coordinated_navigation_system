@@ -73,6 +73,8 @@ class MultiRobotSimulator:
             (self.env.SCREEN_W, self.env.SCREEN_H), pygame.SRCALPHA
         )
 
+        self._brake_font: Optional[pygame.font.Font] = None
+
         self._obstacle_mask: Optional[np.ndarray] = None
         self._obstacle_distance_map: Optional[np.ndarray] = None
 
@@ -378,6 +380,81 @@ class MultiRobotSimulator:
                 width=2,
             )
 
+        self._draw_speed_bar(robot)
+        if robot.braking:
+            self._draw_brake_overlay(robot)
+
+    def _draw_speed_bar(self, robot: RobotState) -> None:
+        v_max = getattr(self.env, "V_MAX", None)
+        if v_max is None or v_max <= 0:
+            return
+
+        surface = self.env.robot_and_lidar_layer
+        velocity = max(0.0, float(robot.velocity or 0.0))
+        ratio = min(velocity / v_max, 1.0)
+
+        bar_width = max(12, int(round(self.robot_frame_radius * 1.2)))
+        bar_height = max(3, int(round(self.robot_radius_pixels * 0.25)))
+        bar_offset = self.robot_frame_radius + bar_height + 6
+
+        bar_left = robot.position[0] - bar_width / 2
+        bar_top = robot.position[1] - bar_offset
+        bar_rect = pygame.Rect(
+            int(round(bar_left)),
+            int(round(bar_top)),
+            bar_width,
+            bar_height,
+        )
+
+        pygame.draw.rect(surface, (60, 60, 60), bar_rect)
+
+        fill_width = int(round((bar_rect.width - 2) * ratio))
+        if fill_width > 0:
+            fill_rect = pygame.Rect(
+                bar_rect.left + 1,
+                bar_rect.top + 1,
+                fill_width,
+                max(1, bar_rect.height - 2),
+            )
+            pygame.draw.rect(surface, (0, 180, 0), fill_rect)
+
+        pygame.draw.rect(surface, (20, 20, 20), bar_rect, width=1)
+
+        tick_color = (200, 200, 200)
+        pygame.draw.line(
+            surface,
+            tick_color,
+            (bar_rect.left, bar_rect.top - 1),
+            (bar_rect.left, bar_rect.bottom + 1),
+            width=1,
+        )
+        pygame.draw.line(
+            surface,
+            tick_color,
+            (bar_rect.right - 1, bar_rect.top - 1),
+            (bar_rect.right - 1, bar_rect.bottom + 1),
+            width=1,
+        )
+
+    def _draw_brake_overlay(self, robot: RobotState) -> None:
+        if self._brake_font is None:
+            font_size = max(12, int(round(self.robot_radius_pixels)))
+            self._brake_font = pygame.font.SysFont("arial", font_size, bold=True)
+
+        font = self._brake_font
+        text_surface = font.render("B", True, (255, 255, 255))
+        shadow_surface = font.render("B", True, (0, 0, 0))
+        center = (int(robot.position[0]), int(robot.position[1]))
+
+        for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+            shadow_rect = shadow_surface.get_rect(
+                center=(center[0] + dx, center[1] + dy)
+            )
+            self.env.robot_and_lidar_layer.blit(shadow_surface, shadow_rect)
+
+        text_rect = text_surface.get_rect(center=center)
+        self.env.robot_and_lidar_layer.blit(text_surface, text_rect)
+
     def _draw_target(self, robot: RobotState) -> None:
         assert robot.target is not None
         color = brighten_color(robot.color)
@@ -510,6 +587,7 @@ class MultiRobotSimulator:
             robot.closest_obstacle = (float("inf"), 0.0)
             robot.last_update_time = None
             robot.velocity = 0.0
+            robot.braking = False
 
         self._assign_random_targets(target_spawn_area)
 
@@ -627,6 +705,8 @@ class MultiRobotSimulator:
         keys = pygame.key.get_pressed()
         moved = False
         translated = False
+
+        robot.braking = False
 
         if keys[pygame.K_w]:
             move_success = self._attempt_move(robot, -self.manual_step_pixels)
