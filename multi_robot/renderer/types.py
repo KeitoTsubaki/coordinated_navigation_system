@@ -30,6 +30,7 @@ class RobotState:
     path_enabled: bool = True
     last_update_time: Optional[float] = None
     velocity: float = 0.0
+    braking: bool = False
 
 
 @dataclass

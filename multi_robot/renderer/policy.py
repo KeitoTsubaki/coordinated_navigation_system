@@ -109,6 +109,8 @@ class PolicyController:
                 ),
             )
 
+            robot.braking = False
+
             if robot_index in self._completed_robots:
                 if self._has_reached_target(robot_index, robot):
                     robot.velocity = 0.0
@@ -144,6 +146,7 @@ class PolicyController:
             omega_n = float(action[1] * env.OMEGA_MAX)
 
             translation_blocked = self._should_block_translation(robot)
+            robot.braking = translation_blocked
             if translation_blocked:
                 # Zero the nominal forward speed before applying the acceleration limits.
                 v_n = 0.0
@@ -180,6 +183,8 @@ class PolicyController:
         self._completed_robots.clear()
         self.simulator.policy_control_active = False
         self.simulator.manual_control = self.simulator._manual_control_enabled
+        for robot in self.simulator.robot_states:
+            robot.braking = False
 
     def _load_policy_config(self) -> None:
         config: Optional[Dict[str, object]] = None
