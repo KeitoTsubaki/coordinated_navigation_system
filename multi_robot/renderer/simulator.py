@@ -41,6 +41,13 @@ class MultiRobotSimulator:
                 .joinpath("config", "simulator_config.yaml")
             )
 
+        self._policy_controller: Optional[PolicyController] = (
+            PolicyController(self, policy_model_path)
+            if policy_model_path is not None
+            else None
+        )
+        self.policy_control_active = False
+        
         self.env = SimCoreEnvironment(render_mode=render_mode, config_path=config_path)
         self.path_history = max(0, path_history)
         self.show_labels = show_labels
@@ -70,12 +77,7 @@ class MultiRobotSimulator:
         self._obstacle_distance_map: Optional[np.ndarray] = None
 
         self.policy_model_path = policy_model_path
-        self._policy_controller: Optional[PolicyController] = (
-            PolicyController(self, policy_model_path)
-            if policy_model_path is not None
-            else None
-        )
-        self.policy_control_active = False
+        
 
         self.robot_states: List[RobotState] = []
         for i in range(num_robots):
