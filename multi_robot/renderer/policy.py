@@ -378,13 +378,20 @@ class PolicyController:
             if other is robot:
                 continue
             other_radius = self.simulator.robot_frame_radius
-            distance = math.hypot(
-                other.position[0] - robot.position[0],
-                other.position[1] - robot.position[1],
-            )
+            dx_pixels = other.position[0] - robot.position[0]
+            dy_pixels = other.position[1] - robot.position[1]
+            distance = math.hypot(dx_pixels, dy_pixels)
             if distance <= other_radius + 1.5 * robot_radius:
-                # Respect the requested 1.5× radius buffer to avoid crowding neighbours.
-                return True
+                dy_global = -dy_pixels
+                global_angle = math.atan2(dy_global, dx_pixels)
+                robot_global_angle = robot.theta + math.pi / 2
+                angle_diff = (
+                    (global_angle - robot_global_angle + math.pi) % (2 * math.pi)
+                    - math.pi
+                )
+                if abs(angle_diff) <= math.radians(20.0):
+                    # Respect the requested 1.5× radius buffer when neighbours are ahead.
+                    return True
         return False
 
     def _process_lidar_data(self, robot: RobotState) -> np.ndarray:
