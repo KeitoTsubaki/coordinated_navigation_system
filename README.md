@@ -87,5 +87,39 @@ uv pip install -e .
 
 ### Velocity Adjustment Module
 
+The renderer applies a formation-aware velocity adjustment helper
+(`multi_robot/renderer/speed_adjustment.py`). The helper implements the
+following attenuation scheme:
+
+* `l_theta = ((-cos(theta_f) + 1) / 2) ^ eta_theta` reflects the formation
+  heading error.
+* `l_d = min(((1 / d_f - 1 / T_df) ^ eta_d) / k_d, 1)` when `d_f < T_df`,
+  otherwise zero, captures how far the robot lags behind the formation target.
+* `l_t = max(l_theta - l_d, 0)` represents the lateral deviation gate.
+
+The executable commands are blended as `v_a = K[v_e * (1 - l_t)]` and
+`omega_a = K[omega_e + min(|d_o|, 1) * (omega_f - omega_e)]`. `K[·]` denotes
+saturation to the physical limits `[0, V_MAX]` and `[-OMEGA_MAX, OMEGA_MAX]`,
+while `omega_f` keeps a fixed magnitude of `0.4π rad/s` (its sign follows the
+heading error) so the robot turns at a consistent rate in the direction of the
+formation target.
+
+The tuning constants live in `simulation_core/config/simulator_config.yaml`:
+
+```yaml
+speed_adjustment:
+  eta_theta: 1.0  # Exponent for heading attenuation
+  eta_d: 1.0      # Exponent for distance attenuation
+  k_d: 0.5        # Distance attenuation gain
+  omega_fixed: 1.2566370614 # Fixed magnitude (0.4 * pi rad/s)
+  T_df: 1.0       # Distance threshold (m)
+```
+
+The renderer (`PolicyController`) applies this helper whenever a viable
+formation navigation target is available. During reinforcement learning
+training, formation objectives are ignored and the raw policy commands are
+executed after applying only the acceleration limits, keeping the training
+signal focused on goal-seeking behaviour.
+
 
 ## Roadmap

@@ -17,6 +17,7 @@ import yaml
 
 from typing import TYPE_CHECKING
 
+from .speed_adjustment import adjust_velocity
 from .types import RobotState
 from .utils import ensure_repo_root_on_path, process_lidar_for_observation
 
@@ -155,10 +156,41 @@ class PolicyController:
                 v_n, omega_n, control_state
             )
 
-            moved = self._apply_motion(robot, v_e, omega_e)
+            formation_target = self.simulator.formation.get_navigation_target(
+                robot_index, fallback=None
+            )
+            if formation_target is not None:
+                d_f, theta_f = self._compute_goal_info_for_target(
+                    robot, formation_target
+                )
+                d_o = d_f * math.sin(theta_f)
+                env_params = self.simulator.env
+                v_a, omega_a = adjust_velocity(
+                    v_e,
+                    omega_e,
+                    d_f,
+                    d_o,
+                    theta_f,
+                    env_params.ETA_THETA,
+                    env_params.ETA_D,
+                    env_params.K_D,
+                    env_params.OMEGA_FIXED,
+                    env_params.T_DF,
+                    env_params.V_MAX,
+                    env_params.OMEGA_MAX,
+                )
+            else:
+                v_a, omega_a = v_e, omega_e
 
-            control_state.current_v = v_e if moved else 0.0
-            control_state.current_omega = omega_e
+            moved = self._apply_motion(robot, v_a, omega_a)
+
+            if moved:
+                robot.velocity = v_a
+            else:
+                robot.velocity = 0.0
+
+            control_state.current_v = v_a if moved else 0.0
+            control_state.current_omega = omega_a
             control_state.previous_v = control_state.current_v
             control_state.previous_omega = control_state.current_omega
 
@@ -495,16 +527,10 @@ class PolicyController:
 
         return filtered_data, replaced_measurements
 
-    def _compute_goal_info(
-        self, robot_index: int, robot: RobotState
+    def _compute_goal_info_for_target(
+        self, robot: RobotState, target: Tuple[float, float]
     ) -> Tuple[float, float]:
         env = self.simulator.env
-        target = self.simulator.formation.get_navigation_target(
-            robot_index, fallback=robot.target
-        )
-        if target is None:
-            return 0.0, 0.0
-
         dx_pixels = target[0] - robot.position[0]
         dy_pixels = target[1] - robot.position[1]
         distance_pixels = math.hypot(dx_pixels, dy_pixels)
@@ -516,6 +542,17 @@ class PolicyController:
         angle_to_target = global_angle_to_target - robot_global_angle
         angle_to_target = (angle_to_target + math.pi) % (2 * math.pi) - math.pi
         return distance_m, angle_to_target
+
+    def _compute_goal_info(
+        self, robot_index: int, robot: RobotState
+    ) -> Tuple[float, float]:
+        target = self.simulator.formation.get_navigation_target(
+            robot_index, fallback=robot.target
+        )
+        if target is None:
+            return 0.0, 0.0
+
+        return self._compute_goal_info_for_target(robot, target)
 
     def _has_reached_target(self, robot_index: int, robot: RobotState) -> bool:
         target = self.simulator.formation.get_navigation_target(

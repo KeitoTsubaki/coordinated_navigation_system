@@ -8,6 +8,7 @@ import os
 import yaml
 import pygame
 import numpy as np
+from typing import Optional, Tuple
 
 from . import sensor, utils
 from . import map_creator as mc
@@ -68,6 +69,25 @@ class SimCoreEnvironment:
         self.K8 = config["simulation"]["k8"]
         self.K9 = config["simulation"]["k9"]
 
+        speed_adjustment_cfg = config.get("speed_adjustment", {})
+        self.SPEED_ADJUSTMENT_PARAMS = {
+            "eta_theta": float(speed_adjustment_cfg.get("eta_theta", 1.0)),
+            "eta_d": float(speed_adjustment_cfg.get("eta_d", 1.0)),
+            "k_d": float(speed_adjustment_cfg.get("k_d", 0.5)),
+            "omega_fixed": float(
+                speed_adjustment_cfg.get(
+                    "omega_fixed",
+                    speed_adjustment_cfg.get("omega_gain", speed_adjustment_cfg.get("k_theta", 0.4 * math.pi)),
+                )
+            ),
+            "T_df": float(speed_adjustment_cfg.get("T_df", 1.0)),
+        }
+        self.ETA_THETA = self.SPEED_ADJUSTMENT_PARAMS["eta_theta"]
+        self.ETA_D = self.SPEED_ADJUSTMENT_PARAMS["eta_d"]
+        self.K_D = self.SPEED_ADJUSTMENT_PARAMS["k_d"]
+        self.OMEGA_FIXED = self.SPEED_ADJUSTMENT_PARAMS["omega_fixed"]
+        self.T_DF = self.SPEED_ADJUSTMENT_PARAMS["T_df"]
+
         # initialize random number generator with seed 0
         self.np_random = np.random.default_rng(0)
 
@@ -104,6 +124,7 @@ class SimCoreEnvironment:
         self.target_position = (self.SCREEN_CENTER_X, self.SCREEN_CENTER_Y)
         self.robot_theta = 0.0
         self.target_theta = 0.0
+        self.formation_target_position: Optional[Tuple[float, float]] = None
 
         # ===== Initialize variables for different map types for RL =====
         # These parameters affect map difficulty
@@ -563,41 +584,36 @@ class SimCoreEnvironment:
         )
         return sensor_data
 
-    def get_goal_info(self):
+    def _compute_goal_info_to_position(
+        self, target_position: Tuple[float, float]
+    ) -> Tuple[float, float]:
         distance_to_target = math.sqrt(
-            (self.target_position[0] - self.robot_position[0]) ** 2
-            + (self.target_position[1] - self.robot_position[1]) ** 2
+            (target_position[0] - self.robot_position[0]) ** 2
+            + (target_position[1] - self.robot_position[1]) ** 2
         )
 
-        # 1. グローバル座標系でのターゲットへの角度を計算
-        #    Pygame座標系(Y軸下向き)なので、yの差はそのまま使用
-        #    math.atan2(y, x) はX軸正方向(右)を0 radとし、反時計回りを正とする。
-        dx = self.target_position[0] - self.robot_position[0]
+        dx = target_position[0] - self.robot_position[0]
         dy = -(
-            self.target_position[1] - self.robot_position[1]
+            target_position[1] - self.robot_position[1]
         )  # Y軸を数学座標系(上向きが正)に合わせる
-        global_angle_to_target = math.atan2(dy, dx)  # 数学座標系での角度
-        # print("global_angle_to_target:", global_angle_to_target)
+        global_angle_to_target = math.atan2(dy, dx)
 
-        # 2. ロボットの向きをatan2の座標系に変換
-        #    - self.robot_theta の基準: Y軸負方向(上) = 0 rad, 反時計回りが正
-        #    - 数学座標系の基準      : X軸正方向(右) = 0 rad, 反時計回りが正
-        #    ロボットの向き(上=0)は、数学座標系では +pi/2 rad に相当する。
-        #    したがって、ロボットの向きの基準を数学座標系に合わせるには、
-        #    現在の角度に +pi/2 を加える必要がある。
         robot_global_angle = self.robot_theta + math.pi / 2
 
-        # 3. ロボットから見たターゲットへの相対角度を計算
-        #    両方とも数学座標系に揃えたので、単純な引き算で相対角度が求まる。
-        #    結果は反時計回りが正となる。
         angle_to_target = global_angle_to_target - robot_global_angle
-
-        # 4. 角度を-πからπの範囲に正規化
         angle_to_target = (angle_to_target + math.pi) % (2 * math.pi) - math.pi
 
         distance_to_target_in_m = distance_to_target / self.PIXELS_PER_METER
 
         return distance_to_target_in_m, angle_to_target
+
+    def get_goal_info(self):
+        return self._compute_goal_info_to_position(self.target_position)
+
+    def get_formation_goal_info(self):
+        if self.formation_target_position is None:
+            return None
+        return self._compute_goal_info_to_position(self.formation_target_position)
 
     def get_closest_obstacle_info(self):
         # return closest obstacle distance in meters
