@@ -364,7 +364,10 @@ class MultiRobotSimulator:
             (int(head_position[0]), int(head_position[1])),
             width=2,
         )
-        if robot is self.robot_states[self.selected_robot_index]:
+        if (
+            robot is self.robot_states[self.selected_robot_index]
+            and not self.policy_control_active
+        ):
             pygame.draw.circle(
                 self.env.robot_and_lidar_layer,
                 (0, 255, 0),
