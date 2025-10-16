@@ -10,8 +10,14 @@
 #!  - Map size is twice the length of the lidar range.
 #!  - Map shape is square.
 simulation:
-  k8: 2400  
+  k8: 2400
   k9: 2400
+speed_adjustment:
+  eta_theta: 1.0
+  eta_d: 1.0
+  k_d: 0.5
+  omega_fixed: 1.2566370614 # 0.4 * pi rad/s
+  T_df: 1.0
 robot:
   radius_m: 0.4          # ロボットの半径（m）
   robot_color: "#1492C7"  # RGBでロボットの色

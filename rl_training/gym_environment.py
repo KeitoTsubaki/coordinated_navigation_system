@@ -42,6 +42,8 @@ class Env(gym.Env):
         self.OMEGA_MAX = self.env.OMEGA_MAX
         self.A_MAX = self.env.A_MAX
         self.ALPHA_MAX = self.env.ALPHA_MAX
+        self.K_D = self.env.K_D
+        self.T_DF = self.env.T_DF
         self.MAX_D = self.env.MAX_D
         self.MAX_THETA = self.env.MAX_THETA
         self.LIDAR_RANGE_M = self.env.LIDAR_RANGE_M
@@ -399,9 +401,9 @@ class Env(gym.Env):
         v_e = np.clip(v_n, v_kmin, v_kmax)
         omega_e = np.clip(omega_n, omega_kmin, omega_kmax)
 
-        self.previous_v = v_e
-        self.previous_omega = omega_e
-        return v_e, omega_e
+        self.previous_v = float(v_e)
+        self.previous_omega = float(omega_e)
+        return float(v_e), float(omega_e)
 
     def _update_robot_position(self, v_e, omega_e, dt):
         # ロボットの位置と向きを更新する関数
