@@ -139,7 +139,19 @@ class PolicyController:
                 )
                 continue
 
-            v_e, omega_e = self._action_to_executable_action(action, control_state)
+            env = self.simulator.env
+            v_n = float((action[0] + 1.0) / 2.0 * env.V_MAX)
+            omega_n = float(action[1] * env.OMEGA_MAX)
+
+            translation_blocked = self._should_block_translation(robot)
+            if translation_blocked:
+                # Zero the nominal forward speed before applying the acceleration limits.
+                v_n = 0.0
+
+            v_e, omega_e = self._action_to_executable_action(
+                v_n, omega_n, control_state
+            )
+
             moved = self._apply_motion(robot, v_e, omega_e)
 
             control_state.current_v = v_e if moved else 0.0
@@ -325,12 +337,13 @@ class PolicyController:
         }
 
     def _action_to_executable_action(
-        self, action: np.ndarray, control_state: PolicyRobotControlState
+        self,
+        v_n: float,
+        omega_n: float,
+        control_state: PolicyRobotControlState,
     ) -> Tuple[float, float]:
         env = self.simulator.env
         dt = self._dt
-        v_n = float((action[0] + 1.0) / 2.0 * env.V_MAX)
-        omega_n = float(action[1] * env.OMEGA_MAX)
 
         v_kmin = max(0.0, control_state.previous_v - env.A_MAX * dt)
         v_kmax = min(env.V_MAX, control_state.previous_v + env.A_MAX * dt)
@@ -343,6 +356,7 @@ class PolicyController:
 
     def _apply_motion(self, robot: RobotState, v_e: float, omega_e: float) -> bool:
         env = self.simulator.env
+
         v_pixels_per_sec = v_e * env.PIXELS_PER_METER
         dx = -v_pixels_per_sec * math.sin(robot.theta) * self._dt
         dy = -v_pixels_per_sec * math.cos(robot.theta) * self._dt
@@ -357,6 +371,21 @@ class PolicyController:
 
         robot.theta = (robot.theta + omega_e * self._dt + math.pi) % (2 * math.pi) - math.pi
         return moved
+
+    def _should_block_translation(self, robot: RobotState) -> bool:
+        robot_radius = self.simulator.robot_frame_radius
+        for other in self.simulator.robot_states:
+            if other is robot:
+                continue
+            other_radius = self.simulator.robot_frame_radius
+            distance = math.hypot(
+                other.position[0] - robot.position[0],
+                other.position[1] - robot.position[1],
+            )
+            if distance <= other_radius + 1.5 * robot_radius:
+                # Respect the requested 1.5× radius buffer to avoid crowding neighbours.
+                return True
+        return False
 
     def _process_lidar_data(self, robot: RobotState) -> np.ndarray:
         env = self.simulator.env
