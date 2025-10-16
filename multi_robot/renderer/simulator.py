@@ -393,8 +393,8 @@ class MultiRobotSimulator:
         velocity = max(0.0, float(robot.velocity or 0.0))
         ratio = min(velocity / v_max, 1.0)
 
-        bar_width = max(12, int(round(self.robot_frame_radius * 1.2)))
-        bar_height = max(3, int(round(self.robot_radius_pixels * 0.25)))
+        bar_width = max(20, int(round(self.robot_frame_radius * 2)))
+        bar_height = max(6, int(round(self.robot_radius_pixels * 0.4)))
         bar_offset = self.robot_frame_radius + bar_height + 6
 
         bar_left = robot.position[0] - bar_width / 2
@@ -416,7 +416,7 @@ class MultiRobotSimulator:
                 fill_width,
                 max(1, bar_rect.height - 2),
             )
-            pygame.draw.rect(surface, (0, 180, 0), fill_rect)
+            pygame.draw.rect(surface, (0, 200, 100), fill_rect)
 
         pygame.draw.rect(surface, (20, 20, 20), bar_rect, width=1)
 
@@ -438,7 +438,7 @@ class MultiRobotSimulator:
 
     def _draw_brake_overlay(self, robot: RobotState) -> None:
         if self._brake_font is None:
-            font_size = max(12, int(round(self.robot_radius_pixels)))
+            font_size = max(24, int(round(self.robot_radius_pixels*2)))
             self._brake_font = pygame.font.SysFont("arial", font_size, bold=True)
 
         font = self._brake_font
