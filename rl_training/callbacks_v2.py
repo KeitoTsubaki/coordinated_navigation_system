@@ -56,6 +56,7 @@ class EpisodeLoggerV2(BaseCallback):
         self.no_improve_counter = 0
 
         self.periodic_test_count = 0
+        self._should_decay_parameters = False
         self._log_file: Optional[object] = None
         self._csv_writer: Optional[csv.writer] = None
         self._episode_counter = 0
@@ -83,8 +84,6 @@ class EpisodeLoggerV2(BaseCallback):
                 "action_lr",
                 "critic_lr",
                 "action_noise_epsilon",
-                "p_t",
-                "p_z",
             ]
         )
         eval_log_path = os.path.join(self.log_dir, "eval_log.csv")
@@ -152,10 +151,7 @@ class EpisodeLoggerV2(BaseCallback):
 
             self._episode_counter += 1
 
-            pt = self.gym_env.unwrapped.get_pt()
-            pz = self.gym_env.unwrapped.get_pz()
-
-            if pt == 1 and pz == 1:
+            if self._should_decay_parameters:
                 self.action_lr_schedule.step_episode()
                 self.critic_lr_schedule.step_episode()
                 self.action_noise.step_episode()
@@ -182,8 +178,6 @@ class EpisodeLoggerV2(BaseCallback):
                         action_lr,
                         critic_lr,
                         action_noise_epsilon,
-                        pt,
-                        pz,
                     ]
                 )
                 self._log_file.flush()
@@ -209,8 +203,15 @@ class EpisodeLoggerV2(BaseCallback):
                 )
             
             if self._episode_counter % self.eval_freq_episodes == 0 and self._episode_counter >= self.eval_starts_episode:
-                overall_success_rate = self.periodic_test_and_record()
-                if pt == 1 and pz == 1:
+                (
+                    overall_success_rate,
+                    success_rate_by_map,
+                ) = self.periodic_test_and_record()
+                random_success_rate = success_rate_by_map.get("random", 0.0)
+                if random_success_rate > 0.8:
+                    self._should_decay_parameters = True
+
+                if self._should_decay_parameters:
                     if overall_success_rate > self.best_success_rate:
                         self.best_success_rate = overall_success_rate
                         self.no_improve_counter = 0
@@ -230,13 +231,14 @@ class EpisodeLoggerV2(BaseCallback):
 
     
 
-    def periodic_test_and_record(self) -> None:
+    def periodic_test_and_record(self) -> tuple[float, dict[str, float]]:
         print("\nStarted periodic evaluation...")
         # self.in_eval = True
         self.periodic_test_count += 1
         total_episodes = sum(self.n_eval_episodes.values())
         episode_count = 0
         total_successes = []
+        success_rate_by_map = {}
         for map_name, n_episodes in self.n_eval_episodes.items():
             rewards, successes = [], []
             for ep in range(n_episodes):
@@ -285,7 +287,8 @@ class EpisodeLoggerV2(BaseCallback):
             mean_reward = np.mean(rewards)
             success_rate = np.mean(successes)
             overall_success_rate = np.mean(total_successes)
-            
+            success_rate_by_map[map_name] = success_rate
+
             if self._eval_csv_writer is not None:
                 timestamp = datetime.utcnow().isoformat()
                 self._eval_csv_writer.writerow(
@@ -316,7 +319,7 @@ class EpisodeLoggerV2(BaseCallback):
         print(f"[PeriodicTest] Saved model to {save_path}")
         
         # self.in_eval = False
-        return overall_success_rate
+        return overall_success_rate, success_rate_by_map
     
     def show_test_progress(self, episode: int, total_episodes: int) -> None:
         progress = (episode / total_episodes) * 100
