@@ -34,6 +34,7 @@ import rl_training  # noqa: F401
 
 EpisodeLogger = callbacks_v2.EpisodeLoggerV2
 
+ENVIRONMENT_NAME = "simulation_env-v2"
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -118,11 +119,11 @@ def main() -> None:
 
     set_random_seed(args.seed)
 
-    gym_env = gym.make("simulation_env-v0", render_mode=render_mode)
+    gym_env = gym.make(ENVIRONMENT_NAME, render_mode=render_mode)
     gym_env.reset(seed=args.seed)
     gym_env = Monitor(gym_env)
     
-    eval_env = gym.make("simulation_env-v0", render_mode="rgb_array", eval_mode=True)
+    eval_env = gym.make(ENVIRONMENT_NAME, render_mode="rgb_array", eval_mode=True)
     eval_env.reset(seed=args.seed + 1000)
 
 
