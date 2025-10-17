@@ -448,7 +448,11 @@ class MultiRobotSimulator:
         direction_x = -math.sin(robot.theta)
         direction_y = -math.cos(robot.theta)
         forward_angle = math.atan2(direction_y, direction_x)
-        sign = 1.0 if omega_e >= 0.0 else -1.0
+        # Positive angular velocity should appear as a counter-clockwise rotation
+        # around the robot. The screen space Y axis is inverted (down is
+        # positive), so we flip the sign when mapping from the angular velocity
+        # to the direction of the arc sweep.
+        sign = -1.0 if omega_e >= 0.0 else 1.0
         segments = max(4, int(math.ceil(arc_angle / (math.pi / 24.0))))
 
         points: list[tuple[float, float]] = []
