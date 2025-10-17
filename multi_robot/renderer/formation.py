@@ -273,6 +273,8 @@ class FormationManager:
             del self._direct_targets[index]
 
     def _prune_formation_target_cache(self) -> None:
+        """Drop cached formation targets for robots that no longer exist."""
+
         robot_count = len(self.simulator.robot_states)
         stale_indices = [index for index in self._formation_targets if index >= robot_count]
         for index in stale_indices:
@@ -327,6 +329,7 @@ class FormationManager:
             target = plan.targets[target_index]
             new_targets[robot_index] = (float(target[0]), float(target[1]))
 
+        # Ensure we never return a cached assignment for a robot that has since been removed.
         self._prune_formation_target_cache()
         self._formation_targets = new_targets
 
@@ -353,10 +356,23 @@ class FormationManager:
     def get_formation_target(self, robot_index: int) -> Optional[Position]:
         """Return the assigned formation target for ``robot_index`` if available."""
 
+        # Keep cached assignments in sync with the current roster before reading from it.
         self._prune_formation_target_cache()
         target = self._formation_targets.get(robot_index)
         if target is None:
-            return None
+            plan = self.current_plan
+            if (
+                plan is None
+                or robot_index >= len(plan.assignment)
+                or robot_index >= len(self.simulator.robot_states)
+            ):
+                return None
+
+            target_index = plan.assignment[robot_index]
+            if not (0 <= target_index < len(plan.targets)):
+                return None
+
+            target = plan.targets[target_index]
 
         return (float(target[0]), float(target[1]))
 
