@@ -405,7 +405,7 @@ class MultiRobotSimulator:
         end_y = start_y + direction_y * length_pixels
 
         color = (255, 215, 0)
-        width = 2
+        width = 4
         start_pos = (int(round(start_x)), int(round(start_y)))
         end_pos = (int(round(end_x)), int(round(end_y)))
         pygame.draw.line(surface, color, start_pos, end_pos, width=width)
@@ -468,7 +468,7 @@ class MultiRobotSimulator:
 
         surface = self.env.robot_and_lidar_layer
         color = (100, 149, 237)
-        width = 2
+        width = 4
         point_list = [(int(round(x)), int(round(y))) for x, y in points]
         pygame.draw.lines(surface, color, False, point_list, width)
 
