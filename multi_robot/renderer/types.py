@@ -31,6 +31,8 @@ class RobotState:
     last_update_time: Optional[float] = None
     velocity: float = 0.0
     braking: bool = False
+    executable_velocity: float = 0.0
+    executable_angular_velocity: float = 0.0
 
 
 @dataclass
