@@ -115,6 +115,8 @@ class PolicyController:
             if robot_index in self._completed_robots:
                 if self._has_reached_target(robot_index, robot):
                     robot.velocity = 0.0
+                    robot.executable_velocity = 0.0
+                    robot.executable_angular_velocity = 0.0
                     control_state.current_v = 0.0
                     control_state.current_omega = 0.0
                     continue
@@ -123,6 +125,8 @@ class PolicyController:
             if self._has_reached_target(robot_index, robot):
                 self._completed_robots.add(robot_index)
                 robot.velocity = 0.0
+                robot.executable_velocity = 0.0
+                robot.executable_angular_velocity = 0.0
                 control_state.current_v = 0.0
                 control_state.current_omega = 0.0
                 control_state.previous_v = 0.0
@@ -155,6 +159,9 @@ class PolicyController:
             v_e, omega_e = self._action_to_executable_action(
                 v_n, omega_n, control_state
             )
+
+            robot.executable_velocity = v_e
+            robot.executable_angular_velocity = omega_e
 
             formation_target = self.simulator.formation.get_navigation_target(
                 robot_index, fallback=None
@@ -217,6 +224,8 @@ class PolicyController:
         self.simulator.manual_control = self.simulator._manual_control_enabled
         for robot in self.simulator.robot_states:
             robot.braking = False
+            robot.executable_velocity = 0.0
+            robot.executable_angular_velocity = 0.0
 
     def _load_policy_config(self) -> None:
         config: Optional[Dict[str, object]] = None

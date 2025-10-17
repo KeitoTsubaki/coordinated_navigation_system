@@ -380,9 +380,122 @@ class MultiRobotSimulator:
                 width=2,
             )
 
+        self._draw_velocity_arrow(robot)
+        self._draw_angular_velocity_arc(robot)
+
         self._draw_speed_bar(robot)
         if robot.braking:
             self._draw_brake_overlay(robot)
+
+    def _draw_velocity_arrow(self, robot: RobotState) -> None:
+        v_e = getattr(robot, "executable_velocity", 0.0)
+        if abs(v_e) < 1e-3:
+            return
+
+        pixels_per_meter = self.env.PIXELS_PER_METER
+        length_pixels = v_e * pixels_per_meter
+        if abs(length_pixels) < 1.0:
+            return
+
+        surface = self.env.robot_and_lidar_layer
+        start_x, start_y = robot.position
+        direction_x = -math.sin(robot.theta)
+        direction_y = -math.cos(robot.theta)
+        end_x = start_x + direction_x * length_pixels
+        end_y = start_y + direction_y * length_pixels
+
+        color = (255, 215, 0)
+        width = 2
+        start_pos = (int(round(start_x)), int(round(start_y)))
+        end_pos = (int(round(end_x)), int(round(end_y)))
+        pygame.draw.line(surface, color, start_pos, end_pos, width=width)
+
+        angle = math.atan2(end_y - start_y, end_x - start_x)
+        head_length = max(6.0, min(12.0, abs(length_pixels) * 0.25))
+        head_angle = math.pi / 8
+
+        left_x = end_x - head_length * math.cos(angle - head_angle)
+        left_y = end_y - head_length * math.sin(angle - head_angle)
+        right_x = end_x - head_length * math.cos(angle + head_angle)
+        right_y = end_y - head_length * math.sin(angle + head_angle)
+
+        pygame.draw.line(
+            surface,
+            color,
+            end_pos,
+            (int(round(left_x)), int(round(left_y))),
+            width=width,
+        )
+        pygame.draw.line(
+            surface,
+            color,
+            end_pos,
+            (int(round(right_x)), int(round(right_y))),
+            width=width,
+        )
+
+    def _draw_angular_velocity_arc(self, robot: RobotState) -> None:
+        omega_e = getattr(robot, "executable_angular_velocity", 0.0)
+        if abs(omega_e) < 1e-3:
+            return
+
+        arc_angle = min(abs(omega_e), math.tau)
+        if arc_angle < 1e-3:
+            return
+
+        center_x, center_y = robot.position
+        radius = self.robot_frame_radius + 10.0
+        direction_x = -math.sin(robot.theta)
+        direction_y = -math.cos(robot.theta)
+        forward_angle = math.atan2(direction_y, direction_x)
+        # Positive angular velocity should appear as a counter-clockwise rotation
+        # around the robot. The screen space Y axis is inverted (down is
+        # positive), so we flip the sign when mapping from the angular velocity
+        # to the direction of the arc sweep.
+        sign = -1.0 if omega_e >= 0.0 else 1.0
+        segments = max(4, int(math.ceil(arc_angle / (math.pi / 24.0))))
+
+        points: list[tuple[float, float]] = []
+        for i in range(segments + 1):
+            t = i / segments
+            angle = forward_angle + sign * t * arc_angle
+            x = center_x + radius * math.cos(angle)
+            y = center_y + radius * math.sin(angle)
+            points.append((x, y))
+
+        if len(points) < 2:
+            return
+
+        surface = self.env.robot_and_lidar_layer
+        color = (100, 149, 237)
+        width = 2
+        point_list = [(int(round(x)), int(round(y))) for x, y in points]
+        pygame.draw.lines(surface, color, False, point_list, width)
+
+        end_x, end_y = points[-1]
+        prev_x, prev_y = points[-2]
+        angle = math.atan2(end_y - prev_y, end_x - prev_x)
+        head_length = 10.0
+        head_angle = math.pi / 8
+        left_x = end_x - head_length * math.cos(angle - head_angle)
+        left_y = end_y - head_length * math.sin(angle - head_angle)
+        right_x = end_x - head_length * math.cos(angle + head_angle)
+        right_y = end_y - head_length * math.sin(angle + head_angle)
+
+        pygame.draw.line(
+            surface,
+            color,
+            (int(round(end_x)), int(round(end_y))),
+            (int(round(left_x)), int(round(left_y))),
+            width=width,
+        )
+        pygame.draw.line(
+            surface,
+            color,
+            (int(round(end_x)), int(round(end_y))),
+            (int(round(right_x)), int(round(right_y))),
+            width=width,
+        )
 
     def _draw_speed_bar(self, robot: RobotState) -> None:
         v_max = getattr(self.env, "V_MAX", None)
@@ -707,6 +820,8 @@ class MultiRobotSimulator:
         translated = False
 
         robot.braking = False
+        robot.executable_velocity = 0.0
+        robot.executable_angular_velocity = 0.0
 
         if keys[pygame.K_w]:
             move_success = self._attempt_move(robot, -self.manual_step_pixels)
