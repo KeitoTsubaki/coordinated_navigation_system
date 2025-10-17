@@ -170,7 +170,14 @@ class PolicyController:
                 d_f, theta_f = self._compute_goal_info_for_target(
                     robot, formation_target
                 )
-                d_o = d_f * math.sin(theta_f)
+                # ``theta_f`` follows the mathematical convention where
+                # positive values indicate targets to the robot's left. The
+                # lateral offset ``d_o`` is defined such that positive values
+                # correspond to targets on the robot's right-hand side. Using
+                # ``-sin(theta_f)`` aligns the sign of ``d_o`` with that
+                # definition while still scaling with the perpendicular
+                # distance to the formation target.
+                d_o = -d_f * math.sin(theta_f)
                 env_params = self.simulator.env
                 print(f"robot {robot_index}: theta_f={theta_f:.3f}")
                 v_a, omega_a = adjust_velocity(
@@ -544,13 +551,29 @@ class PolicyController:
         dx_pixels = target[0] - robot.position[0]
         dy_pixels = target[1] - robot.position[1]
         distance_pixels = math.hypot(dx_pixels, dy_pixels)
-        dy = -dy_pixels
         distance_m = distance_pixels / env.PIXELS_PER_METER
 
-        global_angle_to_target = math.atan2(dy, dx_pixels)
-        robot_global_angle = robot.theta + math.pi / 2
-        angle_to_target = global_angle_to_target - robot_global_angle
-        angle_to_target = (angle_to_target + math.pi) % (2 * math.pi) - math.pi
+        # ``RobotState.theta`` uses the renderer's reference frame where
+        # ``theta = 0`` points upward. Convert both vectors into the
+        # mathematical coordinate system (X to the right, Y upward) and use the
+        # cross/dot formulation to obtain the signed angle between them.  This
+        # avoids subtle sign flips that can arise when subtracting absolute
+        # angles in the world frame and keeps the computation numerically stable
+        # even when the target lies very close to the robot.
+        heading_vector = (-math.sin(robot.theta), -math.cos(robot.theta))
+        target_vector = (dx_pixels, dy_pixels)
+
+        heading_math = (heading_vector[0], -heading_vector[1])
+        target_math = (target_vector[0], -target_vector[1])
+
+        dot = heading_math[0] * target_math[0] + heading_math[1] * target_math[1]
+        cross = heading_math[0] * target_math[1] - heading_math[1] * target_math[0]
+
+        if dot == 0.0 and cross == 0.0:
+            angle_to_target = 0.0
+        else:
+            angle_to_target = math.atan2(cross, dot)
+
         return distance_m, angle_to_target
 
     def _compute_goal_info(
