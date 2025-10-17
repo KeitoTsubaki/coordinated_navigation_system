@@ -170,7 +170,14 @@ class PolicyController:
                 d_f, theta_f = self._compute_goal_info_for_target(
                     robot, formation_target
                 )
-                d_o = d_f * math.sin(theta_f)
+                # ``theta_f`` follows the mathematical convention where
+                # positive values indicate targets to the robot's left. The
+                # lateral offset ``d_o`` is defined such that positive values
+                # correspond to targets on the robot's right-hand side. Using
+                # ``-sin(theta_f)`` aligns the sign of ``d_o`` with that
+                # definition while still scaling with the perpendicular
+                # distance to the formation target.
+                d_o = -d_f * math.sin(theta_f)
                 env_params = self.simulator.env
                 v_a, omega_a = adjust_velocity(
                     v_e,
