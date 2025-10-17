@@ -95,6 +95,10 @@ class PolicyController:
 
         robot_states = self.simulator.robot_states
 
+        formation_manager = self.simulator.formation
+        if formation_manager.follow_formation_targets:
+            formation_manager.update_visualisation()
+
         stale_indices = [
             index for index in self._control_state if index >= len(robot_states)
         ]
