@@ -17,11 +17,11 @@ def _clip(value: float, lower: float, upper: float) -> float:
 class SpeedAdjustmentParameters:
     """Container for the formation-aware velocity adjustment gains."""
 
-    eta_theta: float = 1.0
-    eta_d: float = 1.0
-    k_d: float = 0.5
+    eta_theta: float = 0.5
+    eta_d: float = 2.0
+    k_d: float = 30
     omega_fixed: float = 0.4 * math.pi
-    t_df: float = 1.0
+    t_df: float = 0.5
 
     @classmethod
     def from_mapping(cls, mapping: Mapping[str, float]) -> "SpeedAdjustmentParameters":
