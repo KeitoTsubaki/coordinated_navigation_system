@@ -71,14 +71,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--learning-starts",
         type=int,
-        default=50_000,
+        default=10_000,
         help="Timesteps before training starts.",
     )
     parser.add_argument(
-        "--buffer-size", type=int, default=100_000, help="Replay buffer size."
+        "--buffer-size",
+        type=int,
+        default=50_000,
+        help="Replay buffer size.",
     )
     parser.add_argument(
-        "--batch-size", type=int, default=64, help="Batch size for training updates."
+        "--batch-size",
+        type=int,
+        default=64,
+        help="Batch size for training updates.",
     )
     parser.add_argument(
         "--tau",
@@ -146,8 +152,8 @@ def main() -> None:
         action_noise=action_noise,
         gym_env=gym_env,
         eval_env=eval_env,
-        eval_starts_episode=700,
-        eval_freq_episodes=200,
+        eval_starts_episode=100,
+        eval_freq_episodes=100,
         fps=10,
         video_dir=os.path.join(run_dir, "videos"),
         log_dir=run_dir,
