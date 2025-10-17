@@ -167,9 +167,13 @@ class PolicyController:
             robot.executable_velocity = v_e
             robot.executable_angular_velocity = omega_e
 
-            formation_target = self.simulator.formation.get_navigation_target(
-                robot_index, fallback=None
+            formation_target = self.simulator.formation.get_formation_target(
+                robot_index
             )
+            if formation_target is None:
+                formation_target = self.simulator.formation.get_navigation_target(
+                    robot_index, fallback=None
+                )
             if formation_target is not None:
                 
                 print(f"formation target: {formation_target}")

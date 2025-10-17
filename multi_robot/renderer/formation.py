@@ -350,6 +350,16 @@ class FormationManager:
 
         return (float(fallback[0]), float(fallback[1]))
 
+    def get_formation_target(self, robot_index: int) -> Optional[Position]:
+        """Return the assigned formation target for ``robot_index`` if available."""
+
+        self._prune_formation_target_cache()
+        target = self._formation_targets.get(robot_index)
+        if target is None:
+            return None
+
+        return (float(target[0]), float(target[1]))
+
     def generate_randomized_positions(
         self,
         spawn_area: Optional[Sequence[float]],
