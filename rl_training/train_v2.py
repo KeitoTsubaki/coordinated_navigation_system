@@ -71,7 +71,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--learning-starts",
         type=int,
-        default=10_000,
+        default=25_000,
         help="Timesteps before training starts.",
     )
     parser.add_argument(
