@@ -171,9 +171,6 @@ class PolicyController:
                 robot_index
             )
             if formation_target is not None:
-                
-                print(f"formation target: {formation_target}")
-                print(f"robot position: {robot.position}")
                 d_f, theta_f = self._compute_goal_info_for_target(
                     robot, formation_target
                 )
@@ -186,7 +183,6 @@ class PolicyController:
                 # distance to the formation target.
                 d_o = -d_f * math.sin(theta_f)
                 env_params = self.simulator.env
-                print(f"robot {robot_index}: theta_f={theta_f:.3f}")
                 v_a, omega_a = adjust_velocity(
                     v_e,
                     omega_e,
@@ -203,7 +199,6 @@ class PolicyController:
                 )
             else:
                 v_a, omega_a = v_e, omega_e
-            # print(omega_a)
             moved = self._apply_motion(robot, v_a, omega_a)
 
             if moved:
