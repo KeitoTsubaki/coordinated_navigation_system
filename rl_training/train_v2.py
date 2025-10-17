@@ -19,20 +19,20 @@ if __package__ is None or __package__ == "":
     sys.path.insert(0, str(package_root.parent))
     from rl_training import custom_ddpg_policy  # type: ignore
     from rl_training import ddpg  # type: ignore
-    from rl_training import callbacks  # type: ignore
+    from rl_training import callbacks_v2  # type: ignore
     from rl_training import utils  # type: ignore
 else:  # pragma: no cover - executed when run as module
     # If it is running directly
     from . import custom_ddpg_policy
     from . import ddpg
-    from . import callbacks
+    from . import callbacks_v2
     from . import utils
 
 # Ensure the custom environment is registered
 import rl_training  # noqa: F401
 
 
-EpisodeLogger = callbacks.EpisodeLogger
+EpisodeLogger = callbacks_v2.EpisodeLoggerV2
 
 
 def parse_args() -> argparse.Namespace:
