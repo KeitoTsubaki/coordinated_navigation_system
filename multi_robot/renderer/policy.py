@@ -171,6 +171,9 @@ class PolicyController:
                 robot_index, fallback=None
             )
             if formation_target is not None:
+                
+                print(f"formation target: {formation_target}")
+                print(f"robot position: {robot.position}")
                 d_f, theta_f = self._compute_goal_info_for_target(
                     robot, formation_target
                 )
