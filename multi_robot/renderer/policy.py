@@ -197,6 +197,9 @@ class PolicyController:
                     env_params.V_MAX,
                     env_params.OMEGA_MAX,
                 )
+                if translation_blocked:
+                    # Zero the nominal forward speed before applying the acceleration limits.
+                    v_a = 0.0
                 v_o, omega_o = self._action_to_executable_action(
                     v_a, omega_a, control_state
                 )
