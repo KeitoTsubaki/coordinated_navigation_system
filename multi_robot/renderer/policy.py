@@ -197,17 +197,21 @@ class PolicyController:
                     env_params.V_MAX,
                     env_params.OMEGA_MAX,
                 )
+                v_o, omega_o = self._action_to_executable_action(
+                    v_a, omega_a, control_state
+                )
             else:
-                v_a, omega_a = v_e, omega_e
-            moved = self._apply_motion(robot, v_a, omega_a)
+                v_o, omega_o = v_e, omega_e
+                
+            moved = self._apply_motion(robot, v_o, omega_o)
 
             if moved:
-                robot.velocity = v_a
+                robot.velocity = v_o
             else:
                 robot.velocity = 0.0
 
-            control_state.current_v = v_a if moved else 0.0
-            control_state.current_omega = omega_a
+            control_state.current_v = v_o if moved else 0.0
+            control_state.current_omega = omega_o
             control_state.previous_v = control_state.current_v
             control_state.previous_omega = control_state.current_omega
 
