@@ -760,7 +760,134 @@ class MultiRobotSimulator:
             self._obstacle_distance_map = distance_pixels / self.env.PIXELS_PER_METER
         return self._obstacle_distance_map
 
-    def _is_point_obstacle(self, point: Position) -> bool:
+    # ------------------------------------------------------------------
+    # Perception driven helpers
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _normalize_angle(angle: float) -> float:
+        """Normalize *angle* to the range [-pi, pi]."""
+
+        return (angle + math.pi) % (2 * math.pi) - math.pi
+
+    def _robot_relative_angle(self, robot: RobotState, point: Position) -> float:
+        """Return the LiDAR-relative angle from *robot* to *point*.
+
+        The renderer uses a screen coordinate system where ``y`` increases
+        downward.  This helper mirrors the transformations applied by the
+        LiDAR sensor so that formation planning can align world-space
+        queries with per-robot measurements.
+        """
+
+        dx = point[0] - robot.position[0]
+        dy = point[1] - robot.position[1]
+        if dx == 0.0 and dy == 0.0:
+            return 0.0
+
+        global_angle = math.atan2(-dx, -dy)
+        relative_angle = robot.theta - math.pi / 2 - global_angle
+        return self._normalize_angle(relative_angle)
+
+    def _robot_query_distance(self, robot: RobotState, point: Position) -> float:
+        """Return the Euclidean distance in meters from *robot* to *point*."""
+
+        dx = point[0] - robot.position[0]
+        dy = point[1] - robot.position[1]
+        return math.hypot(dx, dy) / self.env.PIXELS_PER_METER
+
+    def _robot_observation_samples(
+        self, robot: RobotState
+    ) -> List[Tuple[float, float]]:
+        """Collect LiDAR measurements relevant for visibility estimation."""
+
+        samples: List[Tuple[float, float]] = []
+        if robot.sensor_data:
+            samples.extend((float(distance), float(angle)) for distance, angle in robot.sensor_data)
+        if robot.filtered_sensor_data:
+            samples.extend(
+                (float(distance), float(angle))
+                for distance, angle in robot.filtered_sensor_data
+            )
+
+        lidar_range = (
+            robot.sensor.LIDAR_RANGE_M if robot.sensor is not None else self.env.LIDAR_RANGE_M
+        )
+        for other in self.robot_states:
+            if other is robot:
+                continue
+
+            dx = other.position[0] - robot.position[0]
+            dy = other.position[1] - robot.position[1]
+            distance_m = math.hypot(dx, dy) / self.env.PIXELS_PER_METER
+            angle = self._robot_relative_angle(robot, other.position)
+            clearance = max(distance_m - self.env.ROBOT_RADIUS_M, 0.0)
+            samples.append((min(clearance, lidar_range), angle))
+
+        return samples
+
+    def _robot_observed_distance(
+        self, robot: RobotState, point: Position, *, default: float = 0.0
+    ) -> float:
+        """Return the distance (in meters) measured along the ray to *point*.
+
+        The estimate is derived from the robot's own LiDAR samples, ensuring
+        that formation planning only reasons about obstacles that the robot
+        has actually perceived.  Other robots are injected as synthetic
+        samples so they properly occlude the line of sight.  When no point
+        cloud is available we fall back to *default*, which should represent
+        the most conservative assumption (typically ``0``).
+        """
+
+        samples = self._robot_observation_samples(robot)
+        if not samples:
+            return default
+
+        target_angle = self._robot_relative_angle(robot, point)
+        best_distance: Optional[float] = None
+        best_diff = math.inf
+        for distance, sample_angle in samples:
+            diff = abs(self._normalize_angle(target_angle - sample_angle))
+            if diff < best_diff - 1e-9:
+                best_diff = diff
+                best_distance = distance
+            elif abs(diff - best_diff) <= 1e-9 and best_distance is not None:
+                best_distance = min(best_distance, distance)
+
+        if best_distance is None:
+            return default
+        return float(best_distance)
+
+    def _robot_clearance(self, robot: RobotState, point: Position) -> float:
+        """Estimate free space beyond *point* using only *robot* observations."""
+
+        query_distance = self._robot_query_distance(robot, point)
+        observed_distance = self._robot_observed_distance(robot, point, default=0.0)
+        if observed_distance <= query_distance:
+            return 0.0
+        return observed_distance - query_distance
+
+    def _robot_line_blocked(self, robot: RobotState, point: Position) -> bool:
+        """Return ``True`` if *robot* perceives an obstacle before *point*.
+
+        Unknown space is treated as blocked so that optimisation remains
+        conservative when LiDAR data is unavailable.
+        """
+
+        query_distance = self._robot_query_distance(robot, point)
+        if query_distance <= 0.0:
+            return False
+
+        observed_distance = self._robot_observed_distance(robot, point, default=0.0)
+        if observed_distance <= 0.0:
+            return True
+
+        tolerance = 1e-3
+        return observed_distance + tolerance < query_distance
+
+    # ------------------------------------------------------------------
+    # Debug helpers that consult the ground-truth map.
+    # ------------------------------------------------------------------
+
+    def _is_point_obstacle_map(self, point: Position) -> bool:
         x = int(round(point[0]))
         y = int(round(point[1]))
         if not (0 <= x < self.env.SCREEN_W and 0 <= y < self.env.SCREEN_H):
@@ -768,7 +895,7 @@ class MultiRobotSimulator:
         mask = self._get_obstacle_mask()
         return bool(mask[y, x])
 
-    def _distance_to_nearest_obstacle(self, point: Position) -> float:
+    def _distance_to_nearest_obstacle_map(self, point: Position) -> float:
         x = int(round(point[0]))
         y = int(round(point[1]))
         if not (0 <= x < self.env.SCREEN_W and 0 <= y < self.env.SCREEN_H):
@@ -776,7 +903,7 @@ class MultiRobotSimulator:
         distance_map = self._get_obstacle_distance_map()
         return float(distance_map[y, x])
 
-    def _is_line_blocked(self, start: Position, end: Position) -> bool:
+    def _is_line_blocked_map(self, start: Position, end: Position) -> bool:
         dx = end[0] - start[0]
         dy = end[1] - start[1]
         distance = math.hypot(dx, dy)
@@ -785,7 +912,7 @@ class MultiRobotSimulator:
             t = step / steps
             x = start[0] + dx * t
             y = start[1] + dy * t
-            if self._is_point_obstacle((x, y)):
+            if self._is_point_obstacle_map((x, y)):
                 return True
         return False
 

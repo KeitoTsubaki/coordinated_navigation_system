@@ -814,15 +814,21 @@ class FormationManager:
         cost_matrix = np.full((robot_count, robot_count), penalty, dtype=float)
         per_robot_costs: Dict[int, float] = {}
 
+        clearance_tolerance = 1e-3  # Keep in sync with simulator._robot_line_blocked
+
         for robot_index, robot in enumerate(simulator.robot_states):
             for target_index, target in enumerate(targets):
-                if simulator._is_point_obstacle(target):
+                clearance = simulator._robot_clearance(robot, target)
+                if clearance <= clearance_tolerance:
+                    # The robot either perceives an obstacle at the target or has
+                    # no observations for that direction; treat it as unsafe.
                     continue
+
                 if ego_index is None or robot_index == ego_index:
-                    if simulator._is_line_blocked(robot.position, target):
+                    if simulator._robot_line_blocked(robot, target):
                         continue
 
-                distance_to_obstacle = simulator._distance_to_nearest_obstacle(target)
+                distance_to_obstacle = clearance
                 dx = target[0] - robot.position[0]
                 dy = target[1] - robot.position[1]
                 distance_pixels = math.hypot(dx, dy)
