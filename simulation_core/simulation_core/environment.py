@@ -53,6 +53,14 @@ class SimCoreEnvironment:
         self.MAX_THETA = config["robot"]["max_theta"]
         self.NUM_CHECK_POINTS = config["robot"]["num_check_points"]
 
+        formation_cfg = config.get("formation", {})
+        self.DEFAULT_FORMATION_ROBOT_COUNT = int(formation_cfg.get("robot_count", 1))
+        self.DEFAULT_FORMATION_TYPE = formation_cfg.get("default_type", "line")
+        default_spacing_m = formation_cfg.get("spacing_m")
+        if default_spacing_m is None:
+            default_spacing_m = self.ROBOT_RADIUS_M * 3.0
+        self.DEFAULT_FORMATION_SPACING_M = float(default_spacing_m)
+
         self.LIDAR_RANGE_M = config["lidar"]["range_m"]
         self.LIDAR_LINE_COLOR = config["lidar"]["line_color"]
         self.LIDAR_POINTS_COLOR = config["lidar"]["points_color"]
@@ -97,6 +105,9 @@ class SimCoreEnvironment:
         # ===== Post processing to convert parameters from meters to pixels =====
         self.ROBOT_RADIUS_PIXELS = self.ROBOT_RADIUS_M * self.PIXELS_PER_METER
         self.LIDAR_RANGE_PIXELS = self.LIDAR_RANGE_M * self.PIXELS_PER_METER
+        self.DEFAULT_FORMATION_SPACING_PIXELS = (
+            self.DEFAULT_FORMATION_SPACING_M * self.PIXELS_PER_METER
+        )
 
         # ===== Initialize rendering screen =====
         self.render_mode = render_mode

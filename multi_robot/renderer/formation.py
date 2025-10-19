@@ -211,7 +211,7 @@ class FormationManager:
 
     def optimize(
         self,
-        formation_type: str = "line",
+        formation_type: Optional[str] = None,
         *,
         weights: Optional[Sequence[float]] = None,
         ego_index: Optional[int] = None,
@@ -230,8 +230,11 @@ class FormationManager:
         )
         center = (center_x, center_y)
 
+        if formation_type is None:
+            formation_type = simulator.default_formation_type
+
         if spacing is None:
-            spacing = simulator.env.ROBOT_RADIUS_PIXELS * 3.0
+            spacing = simulator.default_formation_spacing
 
         weights = weights or (1.0, 1.0, 0.5, 0.3)
         ego_index = ego_index if ego_index is not None else simulator.selected_robot_index
