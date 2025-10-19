@@ -23,7 +23,7 @@ class MultiRobotSimulator:
 
     def __init__(
         self,
-        num_robots: int = 1,
+        num_robots: Optional[int] = None,
         *,
         render_mode: str = "human",
         config_path: Optional[str] = None,
@@ -47,8 +47,17 @@ class MultiRobotSimulator:
             else None
         )
         self.policy_control_active = False
-        
+
         self.env = SimCoreEnvironment(render_mode=render_mode, config_path=config_path)
+        self.default_formation_robot_count = (
+            self.env.DEFAULT_FORMATION_ROBOT_COUNT
+        )
+        self.default_formation_type = self.env.DEFAULT_FORMATION_TYPE
+        self.default_formation_spacing = self.env.DEFAULT_FORMATION_SPACING_PIXELS
+        self.default_formation_spacing_m = self.env.DEFAULT_FORMATION_SPACING_M
+        resolved_robot_count = (
+            num_robots if num_robots is not None else self.default_formation_robot_count
+        )
         self.path_history = max(0, path_history)
         self.show_labels = show_labels
         self.running = True
@@ -82,7 +91,7 @@ class MultiRobotSimulator:
         
 
         self.robot_states: List[RobotState] = []
-        for i in range(num_robots):
+        for i in range(resolved_robot_count):
             name = f"robot_{i}"
             color = color_from_palette(i)
             self.robot_states.append(
@@ -918,7 +927,7 @@ class MultiRobotSimulator:
 
     def optimize_formation(
         self,
-        formation_type: str = "triangle",
+        formation_type: Optional[str] = None,
         *,
         weights: Optional[Sequence[float]] = None,
         ego_index: Optional[int] = None,
