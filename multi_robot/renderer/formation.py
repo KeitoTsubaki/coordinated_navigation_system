@@ -37,7 +37,7 @@ class FormationManager:
         self._direct_targets: Dict[int, Optional[Position]] = {}
         self._formation_targets: Dict[int, Position] = {}
         self._per_robot_candidates: Dict[int, List["_RobotPlanCandidate"]] = {}
-        self.follow_formation_targets: bool = False
+        self.follow_formation_targets: bool = True
 
     # ------------------------------------------------------------------
     # Public API
