@@ -154,12 +154,6 @@ class PolicyController:
             v_n = float((action[0] + 1.0) / 2.0 * env.V_MAX)
             omega_n = float(action[1] * env.OMEGA_MAX)
 
-            translation_blocked = self._should_block_translation(robot)
-            robot.braking = translation_blocked
-            if translation_blocked:
-                # Zero the nominal forward speed before applying the acceleration limits.
-                v_n = 0.0
-
             v_e, omega_e = self._action_to_executable_action(
                 v_n, omega_n, control_state
             )
@@ -197,14 +191,26 @@ class PolicyController:
                     env_params.V_MAX,
                     env_params.OMEGA_MAX,
                 )
-                if translation_blocked:
-                    # Zero the nominal forward speed before applying the acceleration limits.
-                    v_a = 0.0
-                v_o, omega_o = self._action_to_executable_action(
-                    v_a, omega_a, control_state
-                )
+                # if translation_blocked:
+                #     # Zero the nominal forward speed before applying the acceleration limits.
+                #     v_a = 0.0
+                # v_o, omega_o = self._action_to_executable_action(
+                #     v_a, omega_a, control_state
+                # )
             else:
-                v_o, omega_o = v_e, omega_e
+                v_a, omega_a = v_e, omega_e
+            
+            
+            # Inter-robot collision avoidance
+            translation_blocked = self._should_block_translation(robot)
+            robot.braking = translation_blocked
+            if translation_blocked:
+                v_a = 0.0
+            
+            # Velocity Clipping
+            v_o, omega_o = self._action_to_executable_action(
+                v_a, omega_a, control_state
+            )
                 
             moved = self._apply_motion(robot, v_o, omega_o)
 
