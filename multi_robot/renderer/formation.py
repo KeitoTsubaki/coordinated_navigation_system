@@ -468,12 +468,29 @@ class FormationManager:
         robot_index: int,
         *,
         fallback: Optional[Position] = None,
+        prefer_formation: bool = True,
     ) -> Optional[Position]:
+        """Return the navigation target for ``robot_index``.
+
+        Parameters
+        ----------
+        robot_index:
+            Index of the robot whose target should be queried.
+        fallback:
+            Direct per-robot navigation goal to fall back to when no formation
+            target is available. If omitted, the current ``RobotState.target``
+            is used when possible.
+        prefer_formation:
+            When ``True`` (the default) and follow mode is enabled, prefer the
+            computed formation target over the direct navigation goal. Passing
+            ``False`` forces the method to return the direct navigation goal
+            even while formation following is active.
+        """
         self._prune_formation_target_cache()
         if fallback is None and 0 <= robot_index < len(self.simulator.robot_states):
             fallback = self.simulator.robot_states[robot_index].target
 
-        if self.follow_formation_targets:
+        if prefer_formation and self.follow_formation_targets:
             if robot_index in self._formation_targets:
                 target = self._formation_targets[robot_index]
                 return (float(target[0]), float(target[1]))
