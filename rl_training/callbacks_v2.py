@@ -36,7 +36,8 @@ class EpisodeLoggerV2(BaseCallback):
         log_every: int = 10,
         verbose: int = 1,
         filename: Optional[str] = None,
-        patience: int = 1000,
+        decay_patience: int = 500,
+        early_stop_patience: int = 1000,
     ) -> None:
         super().__init__(verbose)
         self.action_lr_schedule = action_lr_schedule
@@ -51,14 +52,21 @@ class EpisodeLoggerV2(BaseCallback):
         self.log_dir = log_dir
         self.log_every = max(1, log_every)
         self.filename = filename or "episode_log.csv"
-        self.patience = patience
+        self.decay_patience = decay_patience
+        self.early_stop_patience = early_stop_patience
         self.best_success_rate = -np.inf
         self.no_improve_counter = 0
+        self._evaluation_history: list[float] = []
+        self._decay_event_count = 0
 
         self.periodic_test_count = 0
         self._should_decay_parameters = False
         self._log_file: Optional[object] = None
         self._csv_writer: Optional[csv.writer] = None
+        self._eval_log_file: Optional[object] = None
+        self._eval_csv_writer: Optional[csv.writer] = None
+        self._velocity_log_file: Optional[object] = None
+        self._velocity_csv_writer: Optional[csv.writer] = None
         self._episode_counter = 0
         self._recent_rewards: deque[float] = deque(maxlen=self.log_every)
         self._recent_lengths: deque[int] = deque(maxlen=self.log_every)
@@ -115,6 +123,14 @@ class EpisodeLoggerV2(BaseCallback):
             self._log_file.close()
         self._log_file = None
         self._csv_writer = None
+        if self._eval_log_file is not None:
+            self._eval_log_file.close()
+        self._eval_log_file = None
+        self._eval_csv_writer = None
+        if self._velocity_log_file is not None:
+            self._velocity_log_file.close()
+        self._velocity_log_file = None
+        self._velocity_csv_writer = None
 
     def _on_training_start(self) -> None:
         self._init_logger()
@@ -150,11 +166,6 @@ class EpisodeLoggerV2(BaseCallback):
                 continue
 
             self._episode_counter += 1
-
-            if self._should_decay_parameters:
-                self.action_lr_schedule.step_episode()
-                self.critic_lr_schedule.step_episode()
-                self.action_noise.step_episode()
 
             episode_reward = float(episode_info.get("r", 0.0))
             episode_length = int(episode_info.get("l", 0))
@@ -202,26 +213,74 @@ class EpisodeLoggerV2(BaseCallback):
                     )
                 )
             
-            if self._episode_counter % self.eval_freq_episodes == 0 and self._episode_counter >= self.eval_starts_episode:
+            if (
+                self._episode_counter % self.eval_freq_episodes == 0
+                and self._episode_counter >= self.eval_starts_episode
+            ):
                 (
                     overall_success_rate,
                     success_rate_by_map,
                 ) = self.periodic_test_and_record()
+                self._evaluation_history.append(overall_success_rate)
+                running_best = max(self._evaluation_history)
+                self.logger.record("evaluation/overall_success_rate", overall_success_rate)
+                self.logger.record("evaluation/running_best_success_rate", running_best)
                 random_success_rate = success_rate_by_map.get("random", 0.0)
-                if random_success_rate > 0.8:
+                if random_success_rate > 0.8 and not self._should_decay_parameters:
                     self._should_decay_parameters = True
+                    if self.verbose > 0:
+                        print(
+                            "🔁 Plateau-triggered parameter decay enabled: "
+                            f"random map success={random_success_rate:.3f}"
+                        )
 
-                if self._should_decay_parameters:
-                    if overall_success_rate > self.best_success_rate:
-                        self.best_success_rate = overall_success_rate
-                        self.no_improve_counter = 0
-                    else:
-                        self.no_improve_counter += self.eval_freq_episodes
+                if overall_success_rate > self.best_success_rate:
+                    if self.verbose > 0 and self.best_success_rate > -np.inf:
+                        print(
+                            "✅ Evaluation success improved from "
+                            f"{self.best_success_rate:.3f} to {overall_success_rate:.3f}"
+                        )
+                    self.best_success_rate = overall_success_rate
+                    self.no_improve_counter = 0
+                else:
+                    self.no_improve_counter += self.eval_freq_episodes
+                    self.logger.record(
+                        "evaluation/episodes_without_improvement", self.no_improve_counter
+                    )
 
-            if self.no_improve_counter >= self.patience:
-                if self.verbose > 0:
-                    print("⏹ Early stopping triggered!")
-                return False
+                if (
+                    self._should_decay_parameters
+                    and self.no_improve_counter >= self.decay_patience
+                ):
+                    plateau_episodes = self.no_improve_counter
+                    self.action_lr_schedule.step_episode(plateau_episodes)
+                    self.critic_lr_schedule.step_episode(plateau_episodes)
+                    self.action_noise.step_episode(plateau_episodes)
+                    new_action_lr = self.action_lr_schedule.decay_once()
+                    new_critic_lr = self.critic_lr_schedule.decay_once()
+                    new_noise_epsilon = self.action_noise.decay_once()
+                    self._decay_event_count += 1
+                    self.logger.record("train/plateau_decay_events", self._decay_event_count)
+                    self.logger.record("train/action_lr", new_action_lr)
+                    self.logger.record("train/critic_lr", new_critic_lr)
+                    self.logger.record("train/action_noise_epsilon", new_noise_epsilon)
+                    if self.verbose > 0:
+                        print(
+                            "📉 Plateau detected: "
+                            f"{plateau_episodes} episodes without improvement. "
+                            f"Decayed action LR to {new_action_lr:.6f}, "
+                            f"critic LR to {new_critic_lr:.6f}, "
+                            f"noise epsilon to {new_noise_epsilon:.6f}."
+                        )
+                    self.no_improve_counter = 0
+
+                if (
+                    not self._should_decay_parameters
+                    and self.no_improve_counter >= self.early_stop_patience
+                ):
+                    if self.verbose > 0:
+                        print("⏹ Early stopping triggered!")
+                    return False
                 
         
         return True

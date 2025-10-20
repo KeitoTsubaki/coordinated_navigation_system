@@ -121,5 +121,28 @@ training, formation objectives are ignored and the raw policy commands are
 executed after applying only the acceleration limits, keeping the training
 signal focused on goal-seeking behaviour.
 
+### Formation defaults
+
+The simulator reads default formation settings from
+`simulation_core/config/simulator_config.yaml`. The new `formation`
+section lets you control the initial robot count, preferred pattern, and
+robot spacing:
+
+```yaml
+formation:
+  robot_count: 3          # Number of robots spawned when no override is provided
+  default_type: "triangle"  # Formation label passed to the planner
+  spacing_m: 1.5          # Desired spacing in metres
+```
+
+`spacing_m` is specified in metres and automatically converted into pixels
+using the current map scale (`PIXELS_PER_METER`). The resolved value is
+exposed in `MultiRobotSimulator.default_formation_spacing` (pixels) and
+`MultiRobotSimulator.default_formation_spacing_m` (metres). Passing
+`None` for the `num_robots`, `formation_type`, or `spacing` arguments
+when constructing the simulator or optimising a formation causes these
+defaults to be used.
+
+
 
 ## Roadmap

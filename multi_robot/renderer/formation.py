@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import math
-from typing import Dict, List, Optional, Sequence, Tuple
+from dataclasses import dataclass
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pygame
@@ -16,6 +17,16 @@ if False:  # pragma: no cover - type checking helper
     from .simulator import MultiRobotSimulator
 
 
+@dataclass(frozen=True)
+class _RobotPlanCandidate:
+    """Intermediate representation for per-robot formation options."""
+
+    theta: float
+    target_index: int
+    cost: float
+    target: Position
+
+
 class FormationManager:
     """Encapsulates formation optimisation and related rendering."""
 
@@ -25,7 +36,8 @@ class FormationManager:
         self.plan_candidates: Dict[int, FormationPlan] = {}
         self._direct_targets: Dict[int, Optional[Position]] = {}
         self._formation_targets: Dict[int, Position] = {}
-        self.follow_formation_targets: bool = False
+        self._per_robot_candidates: Dict[int, List["_RobotPlanCandidate"]] = {}
+        self.follow_formation_targets: bool = True
 
     # ------------------------------------------------------------------
     # Public API
@@ -34,6 +46,7 @@ class FormationManager:
         self.current_plan = None
         self.plan_candidates.clear()
         self._formation_targets.clear()
+        self._per_robot_candidates.clear()
 
     def update_visualisation(self) -> None:
         simulator = self.simulator
@@ -45,6 +58,7 @@ class FormationManager:
             self._enforce_direct_targets()
             self._formation_targets.clear()
         self.plan_candidates.clear()
+        self._per_robot_candidates.clear()
         selected_plan: Optional[FormationPlan] = None
 
         for ego_index in range(len(simulator.robot_states)):
@@ -61,6 +75,7 @@ class FormationManager:
             self.current_plan = None
             if self.follow_formation_targets:
                 self._formation_targets.clear()
+                self._per_robot_candidates.clear()
                 self._enforce_direct_targets()
             return
 
@@ -69,9 +84,16 @@ class FormationManager:
         else:
             self.current_plan = next(iter(self.plan_candidates.values()))
 
+        aggregated_candidates = self._aggregate_plan_candidates(
+            self.plan_candidates.values()
+        )
+        self._per_robot_candidates = aggregated_candidates
+
         if self.follow_formation_targets:
-            if self.current_plan is not None:
-                self._apply_plan_targets(self.current_plan)
+            if aggregated_candidates:
+                applied = self._apply_plan_targets(candidates=aggregated_candidates)
+                if not applied:
+                    self._enforce_direct_targets()
             else:
                 self._formation_targets.clear()
                 self._enforce_direct_targets()
@@ -189,7 +211,7 @@ class FormationManager:
 
     def optimize(
         self,
-        formation_type: str = "line",
+        formation_type: Optional[str] = None,
         *,
         weights: Optional[Sequence[float]] = None,
         ego_index: Optional[int] = None,
@@ -208,8 +230,11 @@ class FormationManager:
         )
         center = (center_x, center_y)
 
+        if formation_type is None:
+            formation_type = simulator.default_formation_type
+
         if spacing is None:
-            spacing = simulator.env.ROBOT_RADIUS_PIXELS * 3.0
+            spacing = simulator.default_formation_spacing
 
         weights = weights or (1.0, 1.0, 0.5, 0.3)
         ego_index = ego_index if ego_index is not None else simulator.selected_robot_index
@@ -248,13 +273,21 @@ class FormationManager:
             raise ValueError("Unable to find a feasible formation configuration")
 
         if apply:
+            plans_for_selection: List[FormationPlan]
+            if ego_index is not None:
+                self.plan_candidates[ego_index] = plan
+                plans_for_selection = list(self.plan_candidates.values())
+            else:
+                plans_for_selection = list(self.plan_candidates.values()) + [plan]
+
             if self.follow_formation_targets:
-                self._apply_plan_targets(plan)
+                candidates = self._aggregate_plan_candidates(plans_for_selection)
+                applied = self._apply_plan_targets(candidates=candidates)
+                if not applied:
+                    self._enforce_direct_targets()
             else:
                 self._enforce_direct_targets()
             self.current_plan = plan
-            if ego_index is not None:
-                self.plan_candidates[ego_index] = plan
 
         return plan
 
@@ -312,38 +345,152 @@ class FormationManager:
             self._enforce_direct_targets()
         return self.follow_formation_targets
 
-    def _apply_plan_targets(self, plan: FormationPlan) -> None:
-        simulator = self.simulator
-        robot_states = simulator.robot_states
-        if len(plan.targets) < len(robot_states) or len(plan.assignment) < len(robot_states):
+    def _apply_plan_targets(
+        self,
+        plan: Optional[FormationPlan] = None,
+        *,
+        candidates: Optional[Dict[int, List[_RobotPlanCandidate]]] = None,
+    ) -> bool:
+        """Update ``_formation_targets`` using the best per-robot candidates.
+
+        When *plan* is provided it will be merged into *candidates* (or the
+        existing :attr:`plan_candidates`) before selecting targets.  The
+        routine returns ``True`` when at least one assignment survived the
+        clearance and visibility checks.
+        """
+
+        aggregated = candidates
+        if aggregated is None:
+            plans = list(self.plan_candidates.values())
+            if plan is not None and plan not in plans:
+                plans.append(plan)
+            aggregated = self._aggregate_plan_candidates(plans)
+        elif plan is not None:
+            extra = self._aggregate_plan_candidates([plan])
+            if extra:
+                merged: Dict[int, List[_RobotPlanCandidate]] = {
+                    index: list(items) for index, items in aggregated.items()
+                }
+                for index, items in extra.items():
+                    merged.setdefault(index, []).extend(items)
+                aggregated = merged
+
+        self._per_robot_candidates = aggregated
+
+        selected_targets = self._select_best_targets_for_robot(aggregated)
+        if not selected_targets:
             self._formation_targets.clear()
-            return
+            return False
 
-        new_targets: Dict[int, Position] = {}
-
-        for robot_index, robot in enumerate(robot_states):
-            target_index = plan.assignment[robot_index]
-            if not (0 <= target_index < len(plan.targets)):
-                continue
-
-            target = plan.targets[target_index]
-            new_targets[robot_index] = (float(target[0]), float(target[1]))
-
+        self._formation_targets = selected_targets
         # Ensure we never return a cached assignment for a robot that has since been removed.
         self._prune_formation_target_cache()
-        self._formation_targets = new_targets
+        return True
+
+    def _aggregate_plan_candidates(
+        self, plans: Iterable[FormationPlan]
+    ) -> Dict[int, List[_RobotPlanCandidate]]:
+        """Group candidate targets by robot using optimisation outputs."""
+
+        aggregated: Dict[int, List[_RobotPlanCandidate]] = {}
+        robot_count = len(self.simulator.robot_states)
+
+        for plan in plans:
+            if not plan.targets or not plan.assignment:
+                continue
+
+            limit = min(robot_count, len(plan.assignment))
+            for robot_index in range(limit):
+                target_index = plan.assignment[robot_index]
+                if not (0 <= target_index < len(plan.targets)):
+                    continue
+
+                cost_value = plan.per_robot_costs.get(robot_index)
+                if cost_value is None:
+                    continue
+                cost = float(cost_value)
+                if not math.isfinite(cost):
+                    continue
+
+                target = plan.targets[target_index]
+                candidate = _RobotPlanCandidate(
+                    theta=float(plan.theta),
+                    target_index=int(target_index),
+                    cost=cost,
+                    target=(float(target[0]), float(target[1])),
+                )
+                aggregated.setdefault(robot_index, []).append(candidate)
+
+        return aggregated
+
+    def _select_best_targets_for_robot(
+        self, candidates: Dict[int, List[_RobotPlanCandidate]]
+    ) -> Dict[int, Position]:
+        """Return the best feasible target for each robot if available."""
+
+        simulator = self.simulator
+        selected: Dict[int, Position] = {}
+
+        for robot_index, robot in enumerate(simulator.robot_states):
+            feasible_candidates: List[_RobotPlanCandidate] = []
+            for candidate in candidates.get(robot_index, []):
+                if simulator._robot_line_blocked(robot, candidate.target):
+                    continue
+
+                clearance = simulator._robot_clearance(robot, candidate.target)
+                if clearance <= 0.0:
+                    continue
+
+                feasible_candidates.append(candidate)
+
+            if not feasible_candidates:
+                continue
+
+            best_candidate = feasible_candidates[0]
+            for candidate in feasible_candidates[1:]:
+                if candidate.cost < best_candidate.cost - 1e-9:
+                    best_candidate = candidate
+                    continue
+
+                if math.isclose(candidate.cost, best_candidate.cost, rel_tol=1e-9, abs_tol=1e-9):
+                    if candidate.theta < best_candidate.theta:
+                        best_candidate = candidate
+
+            selected[robot_index] = (
+                float(best_candidate.target[0]),
+                float(best_candidate.target[1]),
+            )
+
+        return selected
 
     def get_navigation_target(
         self,
         robot_index: int,
         *,
         fallback: Optional[Position] = None,
+        prefer_formation: bool = True,
     ) -> Optional[Position]:
+        """Return the navigation target for ``robot_index``.
+
+        Parameters
+        ----------
+        robot_index:
+            Index of the robot whose target should be queried.
+        fallback:
+            Direct per-robot navigation goal to fall back to when no formation
+            target is available. If omitted, the current ``RobotState.target``
+            is used when possible.
+        prefer_formation:
+            When ``True`` (the default) and follow mode is enabled, prefer the
+            computed formation target over the direct navigation goal. Passing
+            ``False`` forces the method to return the direct navigation goal
+            even while formation following is active.
+        """
         self._prune_formation_target_cache()
         if fallback is None and 0 <= robot_index < len(self.simulator.robot_states):
             fallback = self.simulator.robot_states[robot_index].target
 
-        if self.follow_formation_targets:
+        if prefer_formation and self.follow_formation_targets:
             if robot_index in self._formation_targets:
                 target = self._formation_targets[robot_index]
                 return (float(target[0]), float(target[1]))
@@ -360,19 +507,7 @@ class FormationManager:
         self._prune_formation_target_cache()
         target = self._formation_targets.get(robot_index)
         if target is None:
-            plan = self.current_plan
-            if (
-                plan is None
-                or robot_index >= len(plan.assignment)
-                or robot_index >= len(self.simulator.robot_states)
-            ):
-                return None
-
-            target_index = plan.assignment[robot_index]
-            if not (0 <= target_index < len(plan.targets)):
-                return None
-
-            target = plan.targets[target_index]
+            return None
 
         return (float(target[0]), float(target[1]))
 
@@ -814,15 +949,21 @@ class FormationManager:
         cost_matrix = np.full((robot_count, robot_count), penalty, dtype=float)
         per_robot_costs: Dict[int, float] = {}
 
+        clearance_tolerance = 1e-3  # Keep in sync with simulator._robot_line_blocked
+
         for robot_index, robot in enumerate(simulator.robot_states):
             for target_index, target in enumerate(targets):
-                if simulator._is_point_obstacle(target):
+                clearance = simulator._robot_clearance(robot, target)
+                if clearance <= clearance_tolerance:
+                    # The robot either perceives an obstacle at the target or has
+                    # no observations for that direction; treat it as unsafe.
                     continue
+
                 if ego_index is None or robot_index == ego_index:
-                    if simulator._is_line_blocked(robot.position, target):
+                    if simulator._robot_line_blocked(robot, target):
                         continue
 
-                distance_to_obstacle = simulator._distance_to_nearest_obstacle(target)
+                distance_to_obstacle = clearance
                 dx = target[0] - robot.position[0]
                 dy = target[1] - robot.position[1]
                 distance_pixels = math.hypot(dx, dy)

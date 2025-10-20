@@ -96,8 +96,21 @@ class PolicyController:
         robot_states = self.simulator.robot_states
 
         formation_manager = self.simulator.formation
+        lidar_preupdated = False
         if formation_manager.follow_formation_targets:
+            for robot in robot_states:
+                # Ensure the formation planner operates on the latest LiDAR
+                # information.  ``update_visualisation`` filters candidate
+                # targets using each robot's perceived clearance which is
+                # derived exclusively from their most recent sensor data.  When
+                # policy control is first activated the sensors may not have
+                # been refreshed yet, causing every candidate to be rejected
+                # and leaving ``_formation_targets`` empty.  Proactively
+                # updating the scans before running the planner keeps the
+                # assignments stable and avoids spurious ``None`` returns.
+                self.simulator._update_lidar(robot)
             formation_manager.update_visualisation()
+            lidar_preupdated = True
 
         stale_indices = [
             index for index in self._control_state if index >= len(robot_states)
@@ -137,7 +150,8 @@ class PolicyController:
                 control_state.previous_omega = 0.0
                 continue
 
-            self.simulator._update_lidar(robot)
+            if not lidar_preupdated:
+                self.simulator._update_lidar(robot)
             observation = self._build_observation(robot_index, robot, control_state)
             if observation is None:
                 continue
@@ -153,12 +167,6 @@ class PolicyController:
             env = self.simulator.env
             v_n = float((action[0] + 1.0) / 2.0 * env.V_MAX)
             omega_n = float(action[1] * env.OMEGA_MAX)
-
-            translation_blocked = self._should_block_translation(robot)
-            robot.braking = translation_blocked
-            if translation_blocked:
-                # Zero the nominal forward speed before applying the acceleration limits.
-                v_n = 0.0
 
             v_e, omega_e = self._action_to_executable_action(
                 v_n, omega_n, control_state
@@ -197,17 +205,36 @@ class PolicyController:
                     env_params.V_MAX,
                     env_params.OMEGA_MAX,
                 )
+                # if translation_blocked:
+                #     # Zero the nominal forward speed before applying the acceleration limits.
+                #     v_a = 0.0
+                # v_o, omega_o = self._action_to_executable_action(
+                #     v_a, omega_a, control_state
+                # )
             else:
                 v_a, omega_a = v_e, omega_e
-            moved = self._apply_motion(robot, v_a, omega_a)
+            
+            
+            # Inter-robot collision avoidance
+            translation_blocked = self._should_block_translation(robot)
+            robot.braking = translation_blocked
+            if translation_blocked:
+                v_a = 0.0
+            
+            # Velocity Clipping
+            v_o, omega_o = self._action_to_executable_action(
+                v_a, omega_a, control_state
+            )
+                
+            moved = self._apply_motion(robot, v_o, omega_o)
 
             if moved:
-                robot.velocity = v_a
+                robot.velocity = v_o
             else:
                 robot.velocity = 0.0
 
-            control_state.current_v = v_a if moved else 0.0
-            control_state.current_omega = omega_a
+            control_state.current_v = v_o if moved else 0.0
+            control_state.current_omega = omega_o
             control_state.previous_v = control_state.current_v
             control_state.previous_omega = control_state.current_omega
 
@@ -582,7 +609,7 @@ class PolicyController:
         self, robot_index: int, robot: RobotState
     ) -> Tuple[float, float]:
         target = self.simulator.formation.get_navigation_target(
-            robot_index, fallback=robot.target
+            robot_index, fallback=robot.target, prefer_formation=False
         )
         if target is None:
             return 0.0, 0.0
@@ -591,7 +618,7 @@ class PolicyController:
 
     def _has_reached_target(self, robot_index: int, robot: RobotState) -> bool:
         target = self.simulator.formation.get_navigation_target(
-            robot_index, fallback=robot.target
+            robot_index, fallback=robot.target, prefer_formation=False
         )
         if target is None:
             return False

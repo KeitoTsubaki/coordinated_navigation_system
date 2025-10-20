@@ -34,6 +34,11 @@ robot:
   max_theta: 0.47    # 1ステップで回転する最大角度（rad）0.15 * pi
   num_check_points: 16  # ロボット周囲の障害物チェックポイントの数
 
+formation:
+  robot_count: 2          # デフォルトで生成するロボット台数
+  default_type: "line"  # 既定の隊形タイプ
+  spacing_m: 3          # ロボット間隔（m）
+
 lidar:
   range_m: 10           # 最大距離（m）
   resolution: 629       # スキャン点の数（例：360°で60点 → 6度ごと）
