@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import math
 from collections import deque
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -32,6 +33,8 @@ class MultiRobotSimulator:
         manual_control: bool = True,
         policy_model_path: Optional[str] = "multi_robot/model_ep11200.zip",
         show_info_panel: bool = True,
+        formation_type: Optional[str] = None,
+        formation_spacing_m: Optional[float] = None,
     ) -> None:
         if config_path is None:
             import importlib.resources
@@ -55,9 +58,20 @@ class MultiRobotSimulator:
         self.default_formation_type = self.env.DEFAULT_FORMATION_TYPE
         self.default_formation_spacing = self.env.DEFAULT_FORMATION_SPACING_PIXELS
         self.default_formation_spacing_m = self.env.DEFAULT_FORMATION_SPACING_M
+        if formation_type is not None:
+            self.default_formation_type = formation_type
+        if formation_spacing_m is not None:
+            if formation_spacing_m <= 0:
+                raise ValueError("formation_spacing_m must be positive")
+            self.default_formation_spacing_m = formation_spacing_m
+            self.default_formation_spacing = (
+                formation_spacing_m * self.env.PIXELS_PER_METER
+            )
         resolved_robot_count = (
             num_robots if num_robots is not None else self.default_formation_robot_count
         )
+        if num_robots is not None:
+            self.default_formation_robot_count = num_robots
         self.path_history = max(0, path_history)
         self.show_labels = show_labels
         self.running = True
@@ -1156,21 +1170,83 @@ class MultiRobotSimulator:
         )
 
 
-def demo() -> None:
-    simulator = MultiRobotSimulator(num_robots=2, render_mode="human", show_labels=False)
-    simulator.set_robot_target(0, simulator.meters_to_pixels(1.0, 1.0))
-    simulator.set_robot_target(1, simulator.meters_to_pixels(-1.0, -1.0))
-
+def _run_event_loop(simulator: "MultiRobotSimulator", fps_limit: int) -> None:
     clock = pygame.time.Clock()
     try:
         while simulator.running:
             simulator.process_events()
             simulator.draw_scene()
-            clock.tick(30)
+            clock.tick(fps_limit)
     finally:
         simulator.close()
 
 
+def demo() -> None:
+    simulator = MultiRobotSimulator(num_robots=2, render_mode="human", show_labels=False)
+    simulator.set_robot_target(0, simulator.meters_to_pixels(1.0, 1.0))
+    simulator.set_robot_target(1, simulator.meters_to_pixels(-1.0, -1.0))
+    _run_event_loop(simulator, fps_limit=30)
+
+
+def main(argv: Optional[Sequence[str]] = None) -> None:
+    parser = argparse.ArgumentParser(
+        description="Interactive multi-robot simulator with formation control."
+    )
+    parser.add_argument(
+        "--config",
+        dest="config_path",
+        help="Path to the simulator configuration YAML file.",
+    )
+    parser.add_argument(
+        "--robots",
+        type=int,
+        dest="robots",
+        help="Number of robots to spawn. Defaults to the configuration value.",
+    )
+    parser.add_argument(
+        "--formation-type",
+        dest="formation_type",
+        help="Override the default formation label (e.g. line, triangle, square).",
+    )
+    parser.add_argument(
+        "--formation-spacing",
+        dest="formation_spacing",
+        type=float,
+        help="Override the default spacing between robots in metres.",
+    )
+    parser.add_argument(
+        "--render-mode",
+        dest="render_mode",
+        choices=("human", "rgb_array"),
+        default="human",
+        help="Rendering mode used by pygame (default: human).",
+    )
+    parser.add_argument(
+        "--fps",
+        dest="fps_limit",
+        type=int,
+        default=30,
+        help="Limit the draw loop to the specified frames per second (default: 30).",
+    )
+    args = parser.parse_args(argv)
+
+    if args.robots is not None and args.robots <= 0:
+        parser.error("--robots must be a positive integer")
+    if args.formation_spacing is not None and args.formation_spacing <= 0:
+        parser.error("--formation-spacing must be positive")
+    if args.fps_limit <= 0:
+        parser.error("--fps must be positive")
+
+    simulator = MultiRobotSimulator(
+        num_robots=args.robots,
+        render_mode=args.render_mode,
+        config_path=args.config_path,
+        formation_type=args.formation_type,
+        formation_spacing_m=args.formation_spacing,
+    )
+    _run_event_loop(simulator, fps_limit=args.fps_limit)
+
+
 if __name__ == "__main__":
-    demo()
+    main()
 
