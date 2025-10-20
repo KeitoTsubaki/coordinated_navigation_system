@@ -221,6 +221,7 @@ class EpisodeLoggerV2(BaseCallback):
                     overall_success_rate,
                     success_rate_by_map,
                 ) = self.periodic_test_and_record()
+                overall_success_rate_higher_than_90 = overall_success_rate > 0.9
                 self._evaluation_history.append(overall_success_rate)
                 running_best = max(self._evaluation_history)
                 self.logger.record("evaluation/overall_success_rate", overall_success_rate)
@@ -247,7 +248,8 @@ class EpisodeLoggerV2(BaseCallback):
                     self.logger.record(
                         "evaluation/episodes_without_improvement", self.no_improve_counter
                     )
-
+                
+                
                 if (
                     self._should_decay_parameters
                     and self.no_improve_counter >= self.decay_patience
@@ -277,6 +279,7 @@ class EpisodeLoggerV2(BaseCallback):
                 if (
                     not self._should_decay_parameters
                     and self.no_improve_counter >= self.early_stop_patience
+                    and overall_success_rate_higher_than_90
                 ):
                     if self.verbose > 0:
                         print("⏹ Early stopping triggered!")
