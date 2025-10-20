@@ -609,7 +609,7 @@ class PolicyController:
         self, robot_index: int, robot: RobotState
     ) -> Tuple[float, float]:
         target = self.simulator.formation.get_navigation_target(
-            robot_index, fallback=robot.target
+            robot_index, fallback=robot.target, prefer_formation=False
         )
         if target is None:
             return 0.0, 0.0
@@ -618,7 +618,7 @@ class PolicyController:
 
     def _has_reached_target(self, robot_index: int, robot: RobotState) -> bool:
         target = self.simulator.formation.get_navigation_target(
-            robot_index, fallback=robot.target
+            robot_index, fallback=robot.target, prefer_formation=False
         )
         if target is None:
             return False
