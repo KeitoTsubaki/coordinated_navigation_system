@@ -147,7 +147,7 @@ def main() -> None:
         gym_env=gym_env,
         eval_env=eval_env,
         eval_starts_episode=700,
-        eval_freq_episodes=200,
+        eval_freq_episodes=100,
         fps=10,
         video_dir=os.path.join(run_dir, "videos"),
         log_dir=run_dir,

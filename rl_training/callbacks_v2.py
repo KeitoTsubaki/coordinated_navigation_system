@@ -36,8 +36,8 @@ class EpisodeLoggerV2(BaseCallback):
         log_every: int = 10,
         verbose: int = 1,
         filename: Optional[str] = None,
-        decay_patience: int = 50,
-        early_stop_patience: int = 100,
+        decay_patience: int = 500,
+        early_stop_patience: int = 1000,
     ) -> None:
         super().__init__(verbose)
         self.action_lr_schedule = action_lr_schedule
