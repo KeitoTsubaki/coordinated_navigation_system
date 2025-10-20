@@ -35,9 +35,9 @@ robot:
   num_check_points: 16  # ロボット周囲の障害物チェックポイントの数
 
 formation:
-  robot_count: 3          # デフォルトで生成するロボット台数
-  default_type: "triangle"  # 既定の隊形タイプ
-  spacing_m: 1.5          # ロボット間隔（m）
+  robot_count: 2          # デフォルトで生成するロボット台数
+  default_type: "line"  # 既定の隊形タイプ
+  spacing_m: 3          # ロボット間隔（m）
 
 lidar:
   range_m: 10           # 最大距離（m）
