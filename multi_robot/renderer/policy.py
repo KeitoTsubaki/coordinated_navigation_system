@@ -178,12 +178,10 @@ class PolicyController:
             formation_target = self.simulator.formation.get_formation_target(
                 robot_index
             )
-            print("Formation target:", formation_target)
             if formation_target is not None:
                 d_f, theta_f = self._compute_goal_info_for_target(
                     robot, formation_target
                 )
-                print(f"df: {d_f}, \ttheta_f: {theta_f}")
                 # ``theta_f`` follows the mathematical convention where
                 # positive values indicate targets to the robot's left. The
                 # lateral offset ``d_o`` is defined such that positive values
