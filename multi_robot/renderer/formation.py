@@ -244,6 +244,8 @@ class FormationManager:
                 small_font=small_font,
             )
 
+        self._draw_centroid_history()
+
     def draw_parallel_overlay(self) -> None:
         simulator = self.simulator
         if len(simulator.robot_states) < 2:
@@ -807,6 +809,7 @@ class FormationManager:
             if target is not None:
                 robots_with_targets.append((index, robot, target))
         if not robots_with_targets:
+            self._draw_centroid_history()
             return
 
         layer = simulator.env.robot_and_lidar_layer
@@ -834,6 +837,86 @@ class FormationManager:
                 text_color=text_color,
                 font=small_font,
             )
+
+        self._draw_centroid_history()
+
+    def _draw_centroid_history(self) -> None:
+        if len(self._centroid_history) < 2:
+            return
+
+        simulator = self.simulator
+        layer = simulator.env.robot_and_lidar_layer
+
+        trail_color = with_alpha((65, 105, 225), 0.8)
+        head_color = brighten_color((65, 105, 225))
+
+        points = []
+        latest_position: Optional[Position] = None
+        for _timestamp, position in self._centroid_history:
+            latest_position = position
+            points.append((int(round(position[0])), int(round(position[1]))))
+
+        if len(points) < 2 or latest_position is None:
+            return
+
+        pygame.draw.lines(layer, trail_color, False, points, width=2)
+
+        start_x = float(latest_position[0])
+        start_y = float(latest_position[1])
+        start_point = (int(round(start_x)), int(round(start_y)))
+        pygame.draw.circle(layer, head_color, start_point, 4, width=1)
+
+        progress = self._centroid_progress_vector()
+        if progress is None:
+            return
+
+        dx, dy, displacement = progress
+        if displacement <= 0.0:
+            return
+
+        angle = math.atan2(dy, dx)
+        arrow_length = max(20.0, min(80.0, displacement * 1.5))
+        end_x = start_x + math.cos(angle) * arrow_length
+        end_y = start_y + math.sin(angle) * arrow_length
+        end_point = (int(round(end_x)), int(round(end_y)))
+
+        direction_color = with_alpha((30, 144, 255), 0.95)
+        pygame.draw.line(layer, direction_color, start_point, end_point, width=3)
+
+        head_length = max(6.0, min(arrow_length * 0.35, 14.0))
+        head_angle = math.radians(25)
+
+        left_angle = angle + math.pi - head_angle
+        right_angle = angle + math.pi + head_angle
+
+        left_point = (
+            int(round(end_x + math.cos(left_angle) * head_length)),
+            int(round(end_y + math.sin(left_angle) * head_length)),
+        )
+        right_point = (
+            int(round(end_x + math.cos(right_angle) * head_length)),
+            int(round(end_y + math.sin(right_angle) * head_length)),
+        )
+
+        pygame.draw.line(layer, direction_color, end_point, left_point, width=2)
+        pygame.draw.line(layer, direction_color, end_point, right_point, width=2)
+
+        if not simulator.show_debug_text:
+            return
+
+        pixels_per_meter = getattr(simulator.env, "PIXELS_PER_METER", 1.0) or 1.0
+        distance_m = displacement / float(pixels_per_meter)
+        angle_deg = (math.degrees(angle) + 360.0) % 360.0
+
+        font = pygame.font.SysFont("consolas", 12)
+        label = font.render(f"{distance_m:.2f}m @ {angle_deg:.0f}°", True, (25, 25, 25))
+
+        label_offset = 10
+        label_position = (
+            int(round(end_x + label_offset)),
+            int(round(end_y + label_offset)),
+        )
+        layer.blit(label, label_position)
 
     def _draw_robot_target_indicator(
         self,
