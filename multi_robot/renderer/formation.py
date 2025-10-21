@@ -953,12 +953,14 @@ class FormationManager:
 
         for robot_index, robot in enumerate(simulator.robot_states):
             for target_index, target in enumerate(targets):
+                # C1
                 clearance = simulator._robot_clearance(robot, target)
                 if clearance <= clearance_tolerance:
                     # The robot either perceives an obstacle at the target or has
                     # no observations for that direction; treat it as unsafe.
                     continue
-
+                
+                # C2
                 if ego_index is None or robot_index == ego_index:
                     if simulator._robot_line_blocked(robot, target):
                         continue
