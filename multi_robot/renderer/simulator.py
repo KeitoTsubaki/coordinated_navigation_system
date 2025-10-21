@@ -838,42 +838,24 @@ class MultiRobotSimulator:
     ) -> List[Tuple[float, float]]:
         """Collect LiDAR measurements relevant for visibility estimation."""
 
-        samples: List[Tuple[float, float]] = []
-        if robot.sensor_data:
-            samples.extend((float(distance), float(angle)) for distance, angle in robot.sensor_data)
-        if robot.filtered_sensor_data:
-            samples.extend(
-                (float(distance), float(angle))
-                for distance, angle in robot.filtered_sensor_data
-            )
+        if not robot.sensor_data:
+            return []
 
-        lidar_range = (
-            robot.sensor.LIDAR_RANGE_M if robot.sensor is not None else self.env.LIDAR_RANGE_M
-        )
-        for other in self.robot_states:
-            if other is robot:
-                continue
-
-            dx = other.position[0] - robot.position[0]
-            dy = other.position[1] - robot.position[1]
-            distance_m = math.hypot(dx, dy) / self.env.PIXELS_PER_METER
-            angle = self._robot_relative_angle(robot, other.position)
-            clearance = max(distance_m - self.env.ROBOT_RADIUS_M, 0.0)
-            samples.append((min(clearance, lidar_range), angle))
-
-        return samples
+        return [
+            (float(distance), float(angle))
+            for distance, angle in robot.sensor_data
+        ]
 
     def _robot_observed_distance(
         self, robot: RobotState, point: Position, *, default: float = 0.0
     ) -> float:
         """Return the distance (in meters) measured along the ray to *point*.
 
-        The estimate is derived from the robot's own LiDAR samples, ensuring
-        that formation planning only reasons about obstacles that the robot
-        has actually perceived.  Other robots are injected as synthetic
-        samples so they properly occlude the line of sight.  When no point
-        cloud is available we fall back to *default*, which should represent
-        the most conservative assumption (typically ``0``).
+        The estimate is derived solely from the robot's own LiDAR samples,
+        ensuring that formation planning only reasons about obstacles that the
+        robot has actually perceived.  When no point cloud is available we
+        fall back to *default*, which should represent the most conservative
+        assumption (typically ``0``).
         """
 
         samples = self._robot_observation_samples(robot)
