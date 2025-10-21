@@ -77,6 +77,7 @@ class FormationManager:
         history_limit = max(1, self._centroid_look_back_steps + 1)
         self._centroid_history: Deque[Tuple[float, Position]] = deque(maxlen=history_limit)
         self._last_centroid_sample_time: Optional[float] = None
+        self._last_centroid_progress: Optional[Tuple[float, float, float]] = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -88,6 +89,7 @@ class FormationManager:
         self._per_robot_candidates.clear()
         self._centroid_history.clear()
         self._last_centroid_sample_time = None
+        self._last_centroid_progress = None
 
     def _record_centroid(self, center: Position) -> None:
         if not math.isfinite(center[0]) or not math.isfinite(center[1]):
@@ -113,11 +115,12 @@ class FormationManager:
 
     def _centroid_progress_vector(self) -> Optional[Tuple[float, float, float]]:
         steps = self._centroid_look_back_steps
+        cached_progress = self._last_centroid_progress
         if steps <= 0:
-            return None
+            return cached_progress
 
         if len(self._centroid_history) <= steps:
-            return None
+            return cached_progress
 
         _, current_pos = self._centroid_history[-1]
         _, lookback_pos = self._centroid_history[-1 - steps]
@@ -126,9 +129,11 @@ class FormationManager:
         displacement = math.hypot(dx, dy)
 
         if displacement < self._centroid_min_displacement_pixels:
-            return None
+            return cached_progress
 
-        return dx, dy, displacement
+        progress_vector = (dx, dy, displacement)
+        self._last_centroid_progress = progress_vector
+        return progress_vector
 
     def _is_theta_perpendicular(self, theta: float) -> bool:
         progress = self._centroid_progress_vector()
