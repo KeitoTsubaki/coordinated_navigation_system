@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import math
+from collections import deque
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Deque, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pygame
@@ -38,6 +39,44 @@ class FormationManager:
         self._formation_targets: Dict[int, Position] = {}
         self._per_robot_candidates: Dict[int, List["_RobotPlanCandidate"]] = {}
         self.follow_formation_targets: bool = True
+        self._centroid_sampling_interval = max(
+            0.0, float(getattr(simulator, "formation_centroid_sampling_interval", 0.0))
+        )
+        self._centroid_look_back_steps = max(
+            0, int(getattr(simulator, "formation_centroid_look_back_steps", 0))
+        )
+        tolerance_rad = float(
+            getattr(simulator, "formation_centroid_angular_tolerance_rad", 0.0)
+        )
+        if tolerance_rad < 0.0:
+            tolerance_rad = 0.0
+        self._centroid_angular_tolerance_rad = tolerance_rad
+        self._centroid_angular_tolerance_deg = max(
+            0.0, float(getattr(simulator, "formation_centroid_angular_tolerance_deg", math.degrees(tolerance_rad)))
+        )
+        self._centroid_min_displacement_pixels = max(
+            0.0,
+            float(
+                getattr(
+                    simulator,
+                    "formation_centroid_min_displacement_pixels",
+                    getattr(simulator.env, "FORMATION_MIN_DISPLACEMENT_PIXELS", 0.0),
+                )
+            ),
+        )
+        self._centroid_min_displacement_m = max(
+            0.0,
+            float(
+                getattr(
+                    simulator,
+                    "formation_centroid_min_displacement_m",
+                    getattr(simulator.env, "FORMATION_MIN_DISPLACEMENT_M", 0.0),
+                )
+            ),
+        )
+        history_limit = max(1, self._centroid_look_back_steps + 1)
+        self._centroid_history: Deque[Tuple[float, Position]] = deque(maxlen=history_limit)
+        self._last_centroid_sample_time: Optional[float] = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -47,6 +86,62 @@ class FormationManager:
         self.plan_candidates.clear()
         self._formation_targets.clear()
         self._per_robot_candidates.clear()
+        self._centroid_history.clear()
+        self._last_centroid_sample_time = None
+
+    def _record_centroid(self, center: Position) -> None:
+        if not math.isfinite(center[0]) or not math.isfinite(center[1]):
+            return
+
+        now = pygame.time.get_ticks() / 1000.0
+        interval = self._centroid_sampling_interval
+        last_time = self._last_centroid_sample_time
+
+        should_record = False
+        if interval <= 0.0:
+            should_record = True
+        elif last_time is None:
+            should_record = True
+        elif now - last_time >= interval:
+            should_record = True
+
+        if not should_record:
+            return
+
+        self._centroid_history.append((now, (float(center[0]), float(center[1]))))
+        self._last_centroid_sample_time = now
+
+    def _centroid_progress_vector(self) -> Optional[Tuple[float, float, float]]:
+        steps = self._centroid_look_back_steps
+        if steps <= 0:
+            return None
+
+        if len(self._centroid_history) <= steps:
+            return None
+
+        _, current_pos = self._centroid_history[-1]
+        _, lookback_pos = self._centroid_history[-1 - steps]
+        dx = float(current_pos[0] - lookback_pos[0])
+        dy = float(current_pos[1] - lookback_pos[1])
+        displacement = math.hypot(dx, dy)
+
+        if displacement < self._centroid_min_displacement_pixels:
+            return None
+
+        return dx, dy, displacement
+
+    def _is_theta_perpendicular(self, theta: float) -> bool:
+        progress = self._centroid_progress_vector()
+        if progress is None:
+            return True
+
+        dx, dy, _ = progress
+        progress_angle = math.atan2(dy, dx)
+        diff = abs(((theta - progress_angle + math.pi) % (2 * math.pi)) - math.pi)
+        tolerance = self._centroid_angular_tolerance_rad
+        # Allow a tiny epsilon to avoid rejecting valid solutions due to rounding.
+        epsilon = 1e-9
+        return abs(diff - (math.pi / 2.0)) <= tolerance + epsilon
 
     def update_visualisation(self) -> None:
         simulator = self.simulator
@@ -229,6 +324,7 @@ class FormationManager:
             simulator.robot_states
         )
         center = (center_x, center_y)
+        self._record_centroid(center)
 
         if formation_type is None:
             formation_type = simulator.default_formation_type
@@ -940,6 +1036,9 @@ class FormationManager:
         targets = self._generate_targets(center, theta, formation_type, spacing)
         robot_count = len(simulator.robot_states)
         if robot_count == 0 or not targets:
+            return None
+
+        if not self._is_theta_perpendicular(theta):
             return None
 
         weights = tuple(weights)
