@@ -82,11 +82,16 @@ class FormationManager:
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
-    def clear(self) -> None:
+    def _reset_plan_state(self) -> None:
+        """Clear plan-related caches without disturbing centroid tracking."""
+
         self.current_plan = None
         self.plan_candidates.clear()
         self._formation_targets.clear()
         self._per_robot_candidates.clear()
+
+    def clear(self) -> None:
+        self._reset_plan_state()
         self._centroid_history.clear()
         self._last_centroid_sample_time = None
         self._last_centroid_progress = None
@@ -372,7 +377,7 @@ class FormationManager:
 
         plan = best_plan["plan"]
         if plan is None:
-            self.clear()
+            self._reset_plan_state()
             raise ValueError("Unable to find a feasible formation configuration")
 
         if apply:
