@@ -61,6 +61,7 @@ class EpisodeLoggerV2(BaseCallback):
 
         self.periodic_test_count = 0
         self._should_decay_parameters = False
+        self._random_success_streak = 0
         self._log_file: Optional[object] = None
         self._csv_writer: Optional[csv.writer] = None
         self._eval_log_file: Optional[object] = None
@@ -227,13 +228,22 @@ class EpisodeLoggerV2(BaseCallback):
                 self.logger.record("evaluation/overall_success_rate", overall_success_rate)
                 self.logger.record("evaluation/running_best_success_rate", running_best)
                 random_success_rate = success_rate_by_map.get("random", 0.0)
-                if random_success_rate > 0.8 and not self._should_decay_parameters:
-                    self._should_decay_parameters = True
-                    if self.verbose > 0:
-                        print(
-                            "🔁 Plateau-triggered parameter decay enabled: "
-                            f"random map success={random_success_rate:.3f}"
-                        )
+                if not self._should_decay_parameters:
+                    if random_success_rate > 0.8:
+                        self._random_success_streak += 1
+                    else:
+                        self._random_success_streak = 0
+
+                    if self._random_success_streak >= 5:
+                        self._should_decay_parameters = True
+                        self._random_success_streak = 0
+                        if self.verbose > 0:
+                            print(
+                                "🔁 Plateau-triggered parameter decay enabled: "
+                                f"random map success={random_success_rate:.3f}"
+                            )
+                else:
+                    self._random_success_streak = 0
 
                 if overall_success_rate > self.best_success_rate:
                     if self.verbose > 0 and self.best_success_rate > -np.inf:
