@@ -58,6 +58,22 @@ class MultiRobotSimulator:
         self.default_formation_type = self.env.DEFAULT_FORMATION_TYPE
         self.default_formation_spacing = self.env.DEFAULT_FORMATION_SPACING_PIXELS
         self.default_formation_spacing_m = self.env.DEFAULT_FORMATION_SPACING_M
+        self.formation_centroid_sampling_interval = (
+            self.env.FORMATION_CENTROID_SAMPLING_INTERVAL
+        )
+        self.formation_centroid_look_back_steps = self.env.FORMATION_LOOK_BACK_STEPS
+        self.formation_centroid_angular_tolerance_deg = (
+            self.env.FORMATION_ANGULAR_TOLERANCE_DEG
+        )
+        self.formation_centroid_angular_tolerance_rad = (
+            self.env.FORMATION_ANGULAR_TOLERANCE_RAD
+        )
+        self.formation_centroid_min_displacement_m = (
+            self.env.FORMATION_MIN_DISPLACEMENT_M
+        )
+        self.formation_centroid_min_displacement_pixels = (
+            self.env.FORMATION_MIN_DISPLACEMENT_PIXELS
+        )
         if formation_type is not None:
             self.default_formation_type = formation_type
         if formation_spacing_m is not None:

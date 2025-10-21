@@ -60,6 +60,18 @@ class SimCoreEnvironment:
         if default_spacing_m is None:
             default_spacing_m = self.ROBOT_RADIUS_M * 3.0
         self.DEFAULT_FORMATION_SPACING_M = float(default_spacing_m)
+        self.FORMATION_CENTROID_SAMPLING_INTERVAL = max(
+            0.0, float(formation_cfg.get("centroid_sampling_interval", 0.5))
+        )
+        self.FORMATION_LOOK_BACK_STEPS = max(
+            0, int(formation_cfg.get("look_back_steps", 0))
+        )
+        self.FORMATION_ANGULAR_TOLERANCE_DEG = max(
+            0.0, float(formation_cfg.get("angular_tolerance", 0.0))
+        )
+        self.FORMATION_MIN_DISPLACEMENT_M = max(
+            0.0, float(formation_cfg.get("min_displacement", 0.0))
+        )
 
         self.LIDAR_RANGE_M = config["lidar"]["range_m"]
         self.LIDAR_LINE_COLOR = config["lidar"]["line_color"]
@@ -107,6 +119,12 @@ class SimCoreEnvironment:
         self.LIDAR_RANGE_PIXELS = self.LIDAR_RANGE_M * self.PIXELS_PER_METER
         self.DEFAULT_FORMATION_SPACING_PIXELS = (
             self.DEFAULT_FORMATION_SPACING_M * self.PIXELS_PER_METER
+        )
+        self.FORMATION_MIN_DISPLACEMENT_PIXELS = (
+            self.FORMATION_MIN_DISPLACEMENT_M * self.PIXELS_PER_METER
+        )
+        self.FORMATION_ANGULAR_TOLERANCE_RAD = math.radians(
+            self.FORMATION_ANGULAR_TOLERANCE_DEG
         )
 
         # ===== Initialize rendering screen =====
