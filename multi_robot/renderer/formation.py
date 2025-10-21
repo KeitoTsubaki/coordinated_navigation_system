@@ -350,9 +350,29 @@ class FormationManager:
             raise IndexError("ego_index is out of range")
 
         angle_min, angle_max = self._formation_angle_bounds(formation_type)
+        progress = self._centroid_progress_vector()
+        tolerance = self._centroid_angular_tolerance_rad
         penalty = 1e6
         self._prune_direct_target_cache()
         best_plan: Dict[str, Optional[FormationPlan]] = {"plan": None}
+
+        two_pi = 2.0 * math.pi
+
+        def wrap_angle(angle: float) -> float:
+            wrapped = angle % two_pi
+            if wrapped < 0.0:
+                wrapped += two_pi
+            return wrapped
+
+        def project_to_bounds(theta: float) -> Optional[float]:
+            adjusted = wrap_angle(theta)
+            while adjusted < angle_min:
+                adjusted += two_pi
+            while adjusted > angle_max:
+                adjusted -= two_pi
+            if angle_min <= adjusted <= angle_max:
+                return adjusted
+            return None
 
         def objective(theta: float) -> float:
             plan = self._evaluate_plan(
@@ -370,10 +390,45 @@ class FormationManager:
                 best_plan["plan"] = plan
             return plan.cost
 
-        result = minimize_scalar(objective, bounds=(angle_min, angle_max), method="bounded")
-        objective(float(result.x))
-        objective(angle_min)
-        objective(angle_max)
+        candidate_bases: List[float] = []
+        if progress is not None and tolerance >= 0.0:
+            dx, dy, _ = progress
+            progress_angle = math.atan2(dy, dx)
+            for base in (progress_angle + math.pi / 2.0, progress_angle - math.pi / 2.0):
+                adjusted = project_to_bounds(base)
+                if adjusted is not None:
+                    candidate_bases.append(adjusted)
+
+        for base in candidate_bases:
+            if tolerance <= 0.0:
+                projected = project_to_bounds(base)
+                if projected is not None:
+                    objective(projected)
+                continue
+
+            def delta_objective(delta: float) -> float:
+                projected = project_to_bounds(base + delta)
+                if projected is None:
+                    return penalty
+                return objective(projected)
+
+            delta_objective(0.0)
+            delta_result = minimize_scalar(
+                delta_objective,
+                bounds=(-tolerance, tolerance),
+                method="bounded",
+            )
+            delta_objective(float(delta_result.x))
+            delta_objective(-tolerance)
+            delta_objective(tolerance)
+
+        if best_plan["plan"] is None:
+            result = minimize_scalar(
+                objective, bounds=(angle_min, angle_max), method="bounded"
+            )
+            objective(float(result.x))
+            objective(angle_min)
+            objective(angle_max)
 
         plan = best_plan["plan"]
         if plan is None:
