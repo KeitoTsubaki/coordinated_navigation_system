@@ -211,6 +211,13 @@ class FormationManager:
                 self._enforce_direct_targets()
 
     def draw(self) -> None:
+        if not self.follow_formation_targets:
+            # When robots are travelling directly towards their individual
+            # navigation goals, omit the formation overlay so that only the
+            # direct targets remain visible.
+            self._draw_manual_target_overlay()
+            return
+
         if not self.plan_candidates:
             self._draw_manual_target_overlay()
             return
