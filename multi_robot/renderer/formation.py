@@ -39,6 +39,10 @@ class FormationManager:
         self._formation_targets: Dict[int, Position] = {}
         self._per_robot_candidates: Dict[int, List["_RobotPlanCandidate"]] = {}
         self.follow_formation_targets: bool = True
+        self._enforce_vertical_constraint: bool = bool(
+            getattr(simulator, "formation_vertical_constraint_enabled", True)
+        )
+        simulator.formation_vertical_constraint_enabled = self._enforce_vertical_constraint
         self._centroid_sampling_interval = max(
             0.0, float(getattr(simulator, "formation_centroid_sampling_interval", 0.0))
         )
@@ -141,6 +145,9 @@ class FormationManager:
         return progress_vector
 
     def _is_theta_perpendicular(self, theta: float) -> bool:
+        if not self._enforce_vertical_constraint:
+            return True
+
         progress = self._centroid_progress_vector()
         if progress is None:
             return True
@@ -391,7 +398,11 @@ class FormationManager:
             return plan.cost
 
         candidate_bases: List[float] = []
-        if progress is not None and tolerance >= 0.0:
+        if (
+            self._enforce_vertical_constraint
+            and progress is not None
+            and tolerance >= 0.0
+        ):
             dx, dy, _ = progress
             progress_angle = math.atan2(dy, dx)
             for base in (progress_angle + math.pi / 2.0, progress_angle - math.pi / 2.0):
@@ -507,6 +518,29 @@ class FormationManager:
         else:
             self._enforce_direct_targets()
         return self.follow_formation_targets
+
+    @property
+    def vertical_constraint_enabled(self) -> bool:
+        """Return whether the perpendicular heading constraint is active."""
+
+        return self._enforce_vertical_constraint
+
+    def set_vertical_constraint(self, enabled: bool) -> None:
+        """Enable or disable the perpendicular heading constraint."""
+
+        enabled_flag = bool(enabled)
+        if self._enforce_vertical_constraint == enabled_flag:
+            return
+
+        self._enforce_vertical_constraint = enabled_flag
+        self.simulator.formation_vertical_constraint_enabled = enabled_flag
+        self.update_visualisation()
+
+    def toggle_vertical_constraint(self) -> bool:
+        """Invert the perpendicular heading constraint state."""
+
+        self.set_vertical_constraint(not self._enforce_vertical_constraint)
+        return self._enforce_vertical_constraint
 
     def _apply_plan_targets(
         self,
