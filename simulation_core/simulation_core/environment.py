@@ -16,7 +16,9 @@ from . import map_creator as mc
 
 class SimCoreEnvironment:
 
-    def __init__(self, render_mode=None, config_path=None):
+    def __init__(
+        self, render_mode=None, config_path=None, min_target_clearance_m: float = 0.0
+    ):
 
         # ===== Load config file =====
         # For ROS2 package
@@ -79,6 +81,7 @@ class SimCoreEnvironment:
         self.LIDAR_RESOLUTION = config["lidar"]["resolution"]
 
         self.OBSTACLE_COLOR = config["obstacles"]["color"]
+        self._obstacle_color_rgb = utils.hex_to_rgb(self.OBSTACLE_COLOR)
         self.T_DO_M = config["obstacles"]["T_do_m"]
         self.map_type = config["obstacles"]["default_map_type"]
         self.n_obstacles = config["obstacles"]["count"]
@@ -88,6 +91,8 @@ class SimCoreEnvironment:
 
         self.K8 = config["simulation"]["k8"]
         self.K9 = config["simulation"]["k9"]
+
+        self.min_target_clearance_m = max(0.0, float(min_target_clearance_m))
 
         speed_adjustment_cfg = config.get("speed_adjustment", {})
         self.SPEED_ADJUSTMENT_PARAMS = {
@@ -479,7 +484,45 @@ class SimCoreEnvironment:
             (self.SCREEN_W, self.SCREEN_H), pygame.SRCALPHA
         )
 
-    def randomize_position(self, spawn_area):
+    def _has_obstacle_clearance(
+        self, position: Tuple[float, float], clearance_m: float
+    ) -> bool:
+        """Checks if the given position has the required obstacle clearance."""
+        if clearance_m <= 0.0:
+            return True
+
+        radius_pixels = int(math.ceil(clearance_m * self.PIXELS_PER_METER))
+        if radius_pixels <= 0:
+            return True
+
+        center_x = int(round(position[0]))
+        center_y = int(round(position[1]))
+        radius_sq = radius_pixels * radius_pixels
+
+        for dx in range(-radius_pixels, radius_pixels + 1):
+            for dy in range(-radius_pixels, radius_pixels + 1):
+                if dx * dx + dy * dy > radius_sq:
+                    continue
+
+                check_x = center_x + dx
+                check_y = center_y + dy
+
+                if not (0 <= check_x < self.SCREEN_W and 0 <= check_y < self.SCREEN_H):
+                    return False
+
+                pixel_color = self.obstacle_layer.get_at((check_x, check_y))
+                if (
+                    pixel_color[0],
+                    pixel_color[1],
+                    pixel_color[2],
+                ) == self._obstacle_color_rgb:
+                    return False
+
+        return True
+
+    def randomize_position(
+        self, spawn_area, min_distance_to_obstacles_m: float = 0.0
+    ):
         """Generates a random position within the environment.
         area: [xmin, xmax, ymin, ymax] defines the area where the robot can be placed.
         """
@@ -511,8 +554,11 @@ class SimCoreEnvironment:
                 spawn_area_ymin + buffer,
                 spawn_area_ymax - buffer,
             )
-            if not self.is_collision((x, y)):
-                return (x, y)  # Return the random position
+            candidate = (int(x), int(y))
+            if not self.is_collision(candidate) and self._has_obstacle_clearance(
+                candidate, min_distance_to_obstacles_m
+            ):
+                return candidate  # Return the random position
 
     def create_start_and_target_position(
         self, map_type, start_spawn_area, target_spawn_area
@@ -528,7 +574,9 @@ class SimCoreEnvironment:
             T_dt_m = self.T_DT_M_EMPTY
         while True:
             self.robot_position = self.randomize_position(start_spawn_area)
-            self.target_position = self.randomize_position(target_spawn_area)
+            self.target_position = self.randomize_position(
+                target_spawn_area, self.min_target_clearance_m
+            )
             distance_btwn_robot_and_target = math.sqrt(
                 (self.target_position[0] - self.robot_position[0]) ** 2
                 + (self.target_position[1] - self.robot_position[1]) ** 2
@@ -565,8 +613,11 @@ class SimCoreEnvironment:
                 return True
 
             # Check if the pixel color matches the obstacle color.
-            obstacle_color_rgb = utils.hex_to_rgb(self.OBSTACLE_COLOR)
-            if (pixel_color[0], pixel_color[1], pixel_color[2]) == obstacle_color_rgb:
+            if (
+                pixel_color[0],
+                pixel_color[1],
+                pixel_color[2],
+            ) == self._obstacle_color_rgb:
                 # print("Collision with obstacle detected")
                 return True
         return False

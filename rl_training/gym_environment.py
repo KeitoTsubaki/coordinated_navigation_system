@@ -34,7 +34,9 @@ class Env(gym.Env):
         self.render_mode = render_mode
 
         self.env = environment.SimCoreEnvironment(
-            render_mode=self.render_mode, config_path=simulator_config_path
+            render_mode=self.render_mode,
+            config_path=simulator_config_path,
+            min_target_clearance_m=self.ddpg_config["reward"]["rho_0"],
         )
         self.env.eval_mode = eval_mode
 
