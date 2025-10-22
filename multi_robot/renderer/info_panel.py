@@ -153,6 +153,12 @@ class InfoPanelRenderer:
             control_mode += " (pending)"
         general_lines.append(f"Control: {control_mode}")
 
+        formation = self.simulator.formation
+        follow_state = "On" if formation.follow_formation_targets else "Off"
+        vertical_state = "On" if formation.vertical_constraint_enabled else "Off"
+        general_lines.append(f"Formation follow: {follow_state}")
+        general_lines.append(f"Vertical constraint: {vertical_state}")
+
         if self.simulator.policy_controller is not None:
             model_status = (
                 "Loaded" if self.simulator.policy_controller.is_available else "Not loaded"

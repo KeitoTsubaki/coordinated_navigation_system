@@ -118,7 +118,7 @@ class MultiRobotSimulator:
         self._obstacle_distance_map: Optional[np.ndarray] = None
 
         self.policy_model_path = policy_model_path
-        
+        self.formation_vertical_constraint_enabled = True
 
         self.robot_states: List[RobotState] = []
         for i in range(resolved_robot_count):
@@ -328,6 +328,14 @@ class MultiRobotSimulator:
                         print("Formation following enabled: robots will pursue formation targets.")
                     else:
                         print("Formation following disabled: robots will pursue direct goals.")
+                elif event.key == pygame.K_v:
+                    enabled = self.formation.toggle_vertical_constraint()
+                    state_text = "enabled" if enabled else "disabled"
+                    action_text = "respect" if enabled else "ignore"
+                    print(
+                        "Vertical formation heading constraint"
+                        f" {state_text}: formation search will {action_text} perpendicular targets."
+                    )
                 elif event.key == pygame.K_d:
                     self.show_debug_text = not self.show_debug_text
                 elif event.key == pygame.K_l:
@@ -658,7 +666,7 @@ class MultiRobotSimulator:
             return
         font = pygame.font.SysFont("arial", 16)
         hud_lines = [
-            "Controls: TAB/0-9 select, W move forward, Q/E rotate, C cycle map, SPACE reset, L toggle LiDAR, P toggle path, I toggle info panel, D toggle debug text",
+            "Controls: TAB/0-9 select, W move forward, Q/E rotate, C cycle map, SPACE reset, L toggle LiDAR, P toggle path, I toggle info panel, D toggle debug text, F toggle formation follow, V toggle vertical constraint",
         ]
         for index, text in enumerate(hud_lines):
             label = font.render(text, True, (0, 0, 0))
