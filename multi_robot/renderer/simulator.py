@@ -13,7 +13,8 @@ from scipy import ndimage
 
 from .env import LiDARSensor, SimCoreEnvironment, utils_module
 # from .formation import FormationManager
-from .formation_previous_research import FormationManager
+# from .formation_previous_research import FormationManager
+from .formation_sidebyside_1 import FormationManager
 from .info_panel import InfoPanelRenderer
 from .policy import PolicyController
 from .types import Color, FormationPlan, Position, RobotState
