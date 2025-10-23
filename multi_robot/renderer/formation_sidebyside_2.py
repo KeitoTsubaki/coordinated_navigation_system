@@ -49,15 +49,6 @@ class FormationManager:
         self._centroid_look_back_steps = max(
             0, int(getattr(simulator, "formation_centroid_look_back_steps", 0))
         )
-        tolerance_rad = float(
-            getattr(simulator, "formation_centroid_angular_tolerance_rad", 0.0)
-        )
-        if tolerance_rad < 0.0:
-            tolerance_rad = 0.0
-        self._centroid_angular_tolerance_rad = tolerance_rad
-        self._centroid_angular_tolerance_deg = max(
-            0.0, float(getattr(simulator, "formation_centroid_angular_tolerance_deg", math.degrees(tolerance_rad)))
-        )
         self._centroid_min_displacement_pixels = max(
             0.0,
             float(
@@ -143,22 +134,6 @@ class FormationManager:
         progress_vector = (dx, dy, displacement)
         self._last_centroid_progress = progress_vector
         return progress_vector
-
-    def _is_theta_perpendicular(self, theta: float) -> bool:
-        if not self._enforce_vertical_constraint:
-            return True
-
-        progress = self._centroid_progress_vector()
-        if progress is None:
-            return True
-
-        dx, dy, _ = progress
-        progress_angle = math.atan2(dy, dx)
-        diff = abs(((theta - progress_angle + math.pi) % (2 * math.pi)) - math.pi)
-        tolerance = self._centroid_angular_tolerance_rad
-        # Allow a tiny epsilon to avoid rejecting valid solutions due to rounding.
-        epsilon = 1e-9
-        return abs(diff - (math.pi / 2.0)) <= tolerance + epsilon
 
     def update_visualisation(self) -> None:
         simulator = self.simulator
@@ -358,35 +333,15 @@ class FormationManager:
         if spacing is None:
             spacing = simulator.default_formation_spacing
 
-        weights = weights or (1.0, 1.0, 0.5, 0.3)
+        weights = weights or (1.0, 1.0, 0.5, 0.3, 1.0)
         ego_index = ego_index if ego_index is not None else simulator.selected_robot_index
         if ego_index is not None and not (0 <= ego_index < len(simulator.robot_states)):
             raise IndexError("ego_index is out of range")
 
         angle_min, angle_max = self._formation_angle_bounds(formation_type)
-        progress = self._centroid_progress_vector()
-        tolerance = self._centroid_angular_tolerance_rad
         penalty = 1e6
         self._prune_direct_target_cache()
         best_plan: Dict[str, Optional[FormationPlan]] = {"plan": None}
-
-        two_pi = 2.0 * math.pi
-
-        def wrap_angle(angle: float) -> float:
-            wrapped = angle % two_pi
-            if wrapped < 0.0:
-                wrapped += two_pi
-            return wrapped
-
-        def project_to_bounds(theta: float) -> Optional[float]:
-            adjusted = wrap_angle(theta)
-            while adjusted < angle_min:
-                adjusted += two_pi
-            while adjusted > angle_max:
-                adjusted -= two_pi
-            if angle_min <= adjusted <= angle_max:
-                return adjusted
-            return None
 
         def objective(theta: float) -> float:
             plan = self._evaluate_plan(
@@ -404,49 +359,10 @@ class FormationManager:
                 best_plan["plan"] = plan
             return plan.cost
 
-        candidate_bases: List[float] = []
-        if (
-            self._enforce_vertical_constraint
-            and progress is not None
-            and tolerance >= 0.0
-        ):
-            dx, dy, _ = progress
-            progress_angle = math.atan2(dy, dx)
-            for base in (progress_angle + math.pi / 2.0, progress_angle - math.pi / 2.0):
-                adjusted = project_to_bounds(base)
-                if adjusted is not None:
-                    candidate_bases.append(adjusted)
-
-        for base in candidate_bases:
-            if tolerance <= 0.0:
-                projected = project_to_bounds(base)
-                if projected is not None:
-                    objective(projected)
-                continue
-
-            def delta_objective(delta: float) -> float:
-                projected = project_to_bounds(base + delta)
-                if projected is None:
-                    return penalty
-                return objective(projected)
-
-            delta_objective(0.0)
-            delta_result = minimize_scalar(
-                delta_objective,
-                bounds=(-tolerance, tolerance),
-                method="bounded",
-            )
-            delta_objective(float(delta_result.x))
-            delta_objective(-tolerance)
-            delta_objective(tolerance)
-
-        if best_plan["plan"] is None:
-            result = minimize_scalar(
-                objective, bounds=(angle_min, angle_max), method="bounded"
-            )
-            objective(float(result.x))
-            objective(angle_min)
-            objective(angle_max)
+        result = minimize_scalar(objective, bounds=(angle_min, angle_max), method="bounded")
+        objective(float(result.x))
+        objective(angle_min)
+        objective(angle_max)
 
         plan = best_plan["plan"]
         if plan is None:
@@ -528,13 +444,9 @@ class FormationManager:
 
     @property
     def vertical_constraint_enabled(self) -> bool:
-        """Return whether the perpendicular heading constraint is active."""
-
         return self._enforce_vertical_constraint
 
     def set_vertical_constraint(self, enabled: bool) -> None:
-        """Enable or disable the perpendicular heading constraint."""
-
         enabled_flag = bool(enabled)
         if self._enforce_vertical_constraint == enabled_flag:
             return
@@ -544,8 +456,6 @@ class FormationManager:
         self.update_visualisation()
 
     def toggle_vertical_constraint(self) -> bool:
-        """Invert the perpendicular heading constraint state."""
-
         self.set_vertical_constraint(not self._enforce_vertical_constraint)
         return self._enforce_vertical_constraint
 
@@ -1227,12 +1137,26 @@ class FormationManager:
         if robot_count == 0 or not targets:
             return None
 
-        if not self._is_theta_perpendicular(theta):
-            return None
-
         weights = tuple(weights)
-        if len(weights) != 4:
-            raise ValueError("weights must contain four elements")
+        if len(weights) != 5:
+            raise ValueError("weights must contain five elements")
+
+        formation_axis_direction = (math.cos(theta), math.sin(theta))
+        progress_state = self._centroid_progress_vector()
+        angle_difference = math.pi / 2.0
+        if progress_state is not None:
+            progress_dx, progress_dy, progress_displacement = progress_state
+            if progress_displacement > 0.0:
+                movement_direction_x = progress_dx / progress_displacement
+                movement_direction_y = progress_dy / progress_displacement
+                dot_product = (
+                    movement_direction_x * formation_axis_direction[0]
+                    + movement_direction_y * formation_axis_direction[1]
+                )
+                clamped_dot_product = max(-1.0, min(1.0, dot_product))
+                angle_difference = math.acos(clamped_dot_product)
+
+        c5 = 2.0 * abs(angle_difference - math.pi / 2.0) / math.pi
 
         cost_matrix = np.full((robot_count, robot_count), penalty, dtype=float)
         per_robot_costs: Dict[int, float] = {}
@@ -1289,6 +1213,7 @@ class FormationManager:
                     + weights[1] * c2
                     + weights[2] * c3
                     + weights[3] * c4
+                    + weights[4] * c5
                 )
 
                 cost_matrix[robot_index, target_index] = total_cost
