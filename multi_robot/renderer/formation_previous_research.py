@@ -39,6 +39,10 @@ class FormationManager:
         self._formation_targets: Dict[int, Position] = {}
         self._per_robot_candidates: Dict[int, List["_RobotPlanCandidate"]] = {}
         self.follow_formation_targets: bool = True
+        self._enforce_vertical_constraint: bool = bool(
+            getattr(simulator, "formation_vertical_constraint_enabled", True)
+        )
+        simulator.formation_vertical_constraint_enabled = self._enforce_vertical_constraint
         self._centroid_sampling_interval = max(
             0.0, float(getattr(simulator, "formation_centroid_sampling_interval", 0.0))
         )
@@ -437,6 +441,23 @@ class FormationManager:
         else:
             self._enforce_direct_targets()
         return self.follow_formation_targets
+
+    @property
+    def vertical_constraint_enabled(self) -> bool:
+        return self._enforce_vertical_constraint
+
+    def set_vertical_constraint(self, enabled: bool) -> None:
+        enabled_flag = bool(enabled)
+        if self._enforce_vertical_constraint == enabled_flag:
+            return
+
+        self._enforce_vertical_constraint = enabled_flag
+        self.simulator.formation_vertical_constraint_enabled = enabled_flag
+        self.update_visualisation()
+
+    def toggle_vertical_constraint(self) -> bool:
+        self.set_vertical_constraint(not self._enforce_vertical_constraint)
+        return self._enforce_vertical_constraint
 
     def _apply_plan_targets(
         self,
