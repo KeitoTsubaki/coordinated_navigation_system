@@ -33,7 +33,7 @@ class MultiRobotSimulator:
         path_history: int = 256,
         show_labels: bool = True,
         manual_control: bool = True,
-        policy_model_path: Optional[str] = "multi_robot/models/model_ep300.zip", #"multi_robot/models/model_ep11200.zip",
+        policy_model_path: Optional[str] = "multi_robot/models/model_ep3700.zip", #"multi_robot/models/model_ep11200.zip",
         show_info_panel: bool = True,
         formation_type: Optional[str] = None,
         formation_spacing_m: Optional[float] = None,
