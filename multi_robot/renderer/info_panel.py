@@ -19,10 +19,10 @@ class InfoPanelRenderer:
     def __init__(self, simulator: "MultiRobotSimulator") -> None:
         self.simulator = simulator
         self.visible = True
-        self.min_width = 320
-        self.width = max(self.min_width, int(self.simulator.env.SCREEN_W * 0.4))
-        self._last_width = self.width
-        self._last_resize_target = self.width
+        self.min_width = 420
+        base_width = int(self.simulator.env.SCREEN_W * 0.45)
+        self.width = max(self.min_width, base_width)
+        self.default_width = self.width
         self.background = (245, 245, 245)
         self.text_color = (32, 32, 32)
         self.highlight_color = (220, 235, 250)
@@ -46,11 +46,10 @@ class InfoPanelRenderer:
             return
 
         if visible:
-            target_width = max(self.min_width, self._last_width)
             self.visible = True
-            self.simulator.resize_display_surface(target_width)
+            self.scroll = max(0, min(self.scroll, self.content_height))
+            self.simulator.resize_display_surface(self.default_width)
         else:
-            self._last_width = max(self.min_width, self.width)
             self.visible = False
             self.simulator.resize_display_surface(0)
             self.scroll = 0
@@ -62,16 +61,7 @@ class InfoPanelRenderer:
             )
             return
 
-        while True:
-            required_inner_width, required_height = self._render(resize_only=True)
-            target_width = max(self.min_width, required_inner_width + 2 * self.padding)
-            if target_width == self.width:
-                break
-            if target_width == self._last_resize_target:
-                break
-            self._last_resize_target = target_width
-            self.simulator.resize_display_surface(target_width)
-
+        required_inner_width, required_height = self._render(resize_only=True)
         panel_height = max(self.simulator.env.SCREEN_H, required_height + self.padding)
         if (
             self.surface is None
@@ -96,11 +86,16 @@ class InfoPanelRenderer:
         self.scroll = max(0, min(self.scroll + int(delta), max_scroll))
 
     def update_width(self, new_width: int) -> None:
-        self.width = new_width
-        self._last_resize_target = new_width
+        if new_width > 0:
+            self.width = new_width
+            self.default_width = new_width
+        else:
+            self.width = 0
+
         if self.width <= 0:
             self.surface = None
             return
+
         panel_height = max(self.simulator.env.SCREEN_H, self.content_height)
         self.surface = pygame.Surface((self.width, panel_height))
 
@@ -127,6 +122,11 @@ class InfoPanelRenderer:
         title_font = pygame.font.SysFont("arial", 20, bold=True)
         name_font = pygame.font.SysFont("arial", 18, bold=True)
         value_font = pygame.font.SysFont("consolas", 16)
+        label_field_width = 20
+
+        def format_stat(label: str, value: str) -> str:
+            key = f"{label}:"
+            return f"{key:<{label_field_width}} {value}"
 
         x_offset = self.padding
         y_offset = self.padding
@@ -158,26 +158,26 @@ class InfoPanelRenderer:
             else "None"
         )
         general_lines = [
-            f"FPS: {self.simulator.fps:5.1f}",
-            f"Robots: {len(self.simulator.robot_states)}",
-            f"Selected: {selected_name}",
+            format_stat("FPS", f"{self.simulator.fps:5.1f}"),
+            format_stat("Robots", str(len(self.simulator.robot_states))),
+            format_stat("Selected", selected_name),
         ]
         control_mode = "Policy" if self.simulator.policy_control_active else "Manual"
         if self.simulator.policy_controller is None and self.simulator.policy_model_path:
             control_mode += " (pending)"
-        general_lines.append(f"Control: {control_mode}")
+        general_lines.append(format_stat("Control", control_mode))
 
         formation = self.simulator.formation
         follow_state = "On" if formation.follow_formation_targets else "Off"
         vertical_state = "On" if formation.vertical_constraint_enabled else "Off"
-        general_lines.append(f"Formation follow: {follow_state}")
-        general_lines.append(f"Vertical constraint: {vertical_state}")
+        general_lines.append(format_stat("Formation follow", follow_state))
+        general_lines.append(format_stat("Vertical constraint", vertical_state))
 
         if self.simulator.policy_controller is not None:
             model_status = (
                 "Loaded" if self.simulator.policy_controller.is_available else "Not loaded"
             )
-            general_lines.append(f"Policy model: {model_status}")
+            general_lines.append(format_stat("Policy model", model_status))
         for line in general_lines:
             render_line(line, value_font, self.text_color, spacing=4)
 
@@ -195,8 +195,8 @@ class InfoPanelRenderer:
         map_width_m = self.simulator.env.SCREEN_W / self.simulator.env.PIXELS_PER_METER
         map_height_m = self.simulator.env.SCREEN_H / self.simulator.env.PIXELS_PER_METER
         map_lines = [
-            f"Type: {self.simulator.env.map_type}",
-            f"Size: {map_width_m:.1f}m x {map_height_m:.1f}m",
+            format_stat("Type", self.simulator.env.map_type),
+            format_stat("Size", f"{map_width_m:.1f}m x {map_height_m:.1f}m"),
         ]
         for line in map_lines:
             render_line(line, value_font, self.text_color, spacing=4)
@@ -210,6 +210,33 @@ class InfoPanelRenderer:
                 render_line(line, value_font, self.text_color, indent=desc_indent, spacing=2)
 
             y_offset += 6
+
+        render_line("Controls", title_font, self.text_color, spacing=8)
+
+        control_descriptions = [
+            ("TAB / 0-9", "Select robot"),
+            ("W", "Move forward"),
+            ("Q / E", "Rotate"),
+            ("C", "Cycle map"),
+            ("SPACE", "Reset simulation"),
+            ("L", "Toggle LiDAR"),
+            ("P", "Toggle path"),
+            ("I", "Toggle info panel"),
+            ("D", "Toggle debug text"),
+            ("F", "Toggle formation follow"),
+            ("V", "Toggle vertical constraint"),
+        ]
+
+        for key, description_text in control_descriptions:
+            render_line(
+                format_stat(key, description_text),
+                value_font,
+                self.text_color,
+                indent=10,
+                spacing=2,
+            )
+
+        y_offset += 12
 
         formation = self.simulator.formation
         if formation.plan_candidates:
@@ -337,23 +364,24 @@ class InfoPanelRenderer:
         for index, robot in enumerate(self.simulator.robot_states):
             robot_name_text = robot.name
             pos_m = self.simulator.pixels_to_meters(*robot.position)
-            metrics: List[str] = [
-                f"Pos: ({pos_m[0]:.2f}, {pos_m[1]:.2f}) m",
-                f"Theta: {math.degrees(robot.theta):.1f}°",
-                f"Speed: {robot.velocity:.2f} m/s",
+            metrics: List[Tuple[str, str]] = [
+                ("Pos", f"({pos_m[0]:.2f}, {pos_m[1]:.2f}) m"),
+                ("Theta", f"{math.degrees(robot.theta):.1f}°"),
+                ("Speed", f"{robot.velocity:.2f} m/s"),
             ]
 
             active_target = self.simulator.formation.get_navigation_target(
                 index, fallback=robot.target
             )
             if active_target is None:
-                metrics.append("Target: None")
+                metrics.append(("Target", "None"))
             else:
                 active_m = self.simulator.pixels_to_meters(*active_target)
                 distance_active = math.hypot(
                     active_m[0] - pos_m[0], active_m[1] - pos_m[1]
                 )
-                metrics.append(f"Active target dist: {distance_active:.2f} m")
+                metrics.append(("Target", f"({active_m[0]:.2f}, {active_m[1]:.2f}) m"))
+                metrics.append(("Target dist", f"{distance_active:.2f} m"))
 
                 direct_target = robot.target
                 if direct_target is not None and (
@@ -364,18 +392,20 @@ class InfoPanelRenderer:
                     distance_direct = math.hypot(
                         direct_m[0] - pos_m[0], direct_m[1] - pos_m[1]
                     )
-                    metrics.append(f"Direct target dist: {distance_direct:.2f} m")
+                    metrics.append(("Direct dist", f"{distance_direct:.2f} m"))
 
             if robot.closest_obstacle[0] != float("inf"):
-                metrics.append(f"Closest obs: {robot.closest_obstacle[0]:.2f} m")
+                metrics.append(("Closest obs", f"{robot.closest_obstacle[0]:.2f} m"))
             else:
-                metrics.append("Closest obs: --")
+                metrics.append(("Closest obs", "--"))
 
-            metrics.append(f"LiDAR: {'On' if robot.lidar_enabled else 'Off'}")
-            metrics.append(f"Path: {'On' if robot.path_enabled else 'Off'}")
+            metrics.append(("LiDAR", "On" if robot.lidar_enabled else "Off"))
+            metrics.append(("Path", "On" if robot.path_enabled else "Off"))
+
+            metric_lines = [format_stat(label, value) for label, value in metrics]
 
             name_width, name_height = name_font.size(robot_name_text)
-            block_height = name_height + 4 + len(metrics) * line_height + 12
+            block_height = name_height + 4 + len(metric_lines) * line_height + 12
             block_rect = pygame.Rect(
                 8,
                 y_offset - 6,
@@ -385,7 +415,7 @@ class InfoPanelRenderer:
 
             text_indent = max(0, (block_rect.x + 10) - x_offset)
             max_required_inner_width = max(max_required_inner_width, text_indent + name_width)
-            for metric in metrics:
+            for metric in metric_lines:
                 metric_width, _ = value_font.size(metric)
                 max_required_inner_width = max(
                     max_required_inner_width, text_indent + metric_width
@@ -417,7 +447,7 @@ class InfoPanelRenderer:
                 surface.blit(robot_name_surface, (text_x, text_y))
                 text_y += robot_name_surface.get_height() + 4
 
-                for metric in metrics:
+                for metric in metric_lines:
                     metric_label = value_font.render(metric, True, self.text_color)
                     surface.blit(metric_label, (text_x, text_y))
                     text_y += line_height
