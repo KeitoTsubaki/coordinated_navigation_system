@@ -210,12 +210,14 @@ class EnvV3(gym.Env):
             "orientation_condition_met": orientation_condition_met,
         }
         reward = self._calculate_reward()
-        if is_target_reached:
-            print(
-                "is_target_reached: True "
-                f"(distance_condition_met={distance_condition_met}, "
-                f"orientation_condition_met={orientation_condition_met})"
-            )
+        if terminated:
+            if is_target_reached:
+                print(f"is_target_reached: True")
+            else:
+                print(f"is_target_reached: False(collision)")
+        if truncated:
+            print(f"is_target_reached: False(time limit)")
+        
 
         return observation, reward, terminated, truncated, info
 
