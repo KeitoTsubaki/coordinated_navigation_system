@@ -241,12 +241,19 @@ class MultiRobotSimulator:
         target: Optional[Position],
         *,
         in_meters: bool = False,
+        target_theta: Optional[float] = None,
     ) -> None:
         robot = self.robot_states[robot_index]
         if target is not None and in_meters:
             target = self.meters_to_pixels(*target)
         robot.target = target
-        self.formation.register_direct_target(robot_index, target)
+        if target is None:
+            robot.target_theta = None
+        else:
+            if target_theta is None:
+                target_theta = self._infer_target_heading(robot.position, target)
+            robot.target_theta = target_theta
+        self.formation.register_direct_target(robot_index, target, robot.target_theta)
         if target is None:
             self.formation.clear()
 
@@ -399,9 +406,8 @@ class MultiRobotSimulator:
             (int(position[0]), int(position[1])),
             int(self.robot_radius_pixels),
         )
-        head_position = (
-            position[0] - self.robot_frame_radius * math.sin(robot.theta),
-            position[1] - self.robot_frame_radius * math.cos(robot.theta),
+        head_position = self._compute_orientation_endpoint(
+            position, robot.theta, self.robot_frame_radius
         )
         pygame.draw.circle(
             self.env.robot_and_lidar_layer,
@@ -627,6 +633,18 @@ class MultiRobotSimulator:
             max(1, int(round(self.robot_radius_pixels))),
             width=2,
         )
+        if robot.target_theta is not None:
+            start_x, start_y = robot.target
+            end_x, end_y = self._compute_orientation_endpoint(
+                robot.target, robot.target_theta, self.robot_frame_radius
+            )
+            pygame.draw.line(
+                self.env.robot_and_lidar_layer,
+                color,
+                (int(round(start_x)), int(round(start_y))),
+                (int(round(end_x)), int(round(end_y))),
+                width=2,
+            )
 
     def _draw_path(self, robot: RobotState) -> None:
         points = list(robot.path)
@@ -779,8 +797,10 @@ class MultiRobotSimulator:
             return
 
         for index, (robot, target) in enumerate(zip(self.robot_states, target_positions)):
+            heading = self._infer_target_heading(robot.position, target)
             robot.target = target
-            self.formation.register_direct_target(index, target)
+            robot.target_theta = heading
+            self.formation.register_direct_target(index, target, heading)
         self.formation.clear()
 
     def _invalidate_obstacle_cache(self) -> None:
@@ -812,6 +832,27 @@ class MultiRobotSimulator:
     # ------------------------------------------------------------------
     # Perception driven helpers
     # ------------------------------------------------------------------
+    @staticmethod
+    def _compute_orientation_endpoint(
+        origin: Position, theta: float, length: float
+    ) -> Position:
+        return (
+            float(origin[0] - length * math.sin(theta)),
+            float(origin[1] - length * math.cos(theta)),
+        )
+
+    def _infer_target_heading(self, start: Position, target: Position) -> float:
+        dx = float(target[0]) - float(start[0])
+        dy = float(target[1]) - float(start[1])
+        norm = math.hypot(dx, dy)
+        if norm <= 0.0:
+            return 0.0
+
+        vx = dx / norm
+        vy = dy / norm
+        heading = math.atan2(-vx, -vy)
+        return self._normalize_angle(heading)
+
     @staticmethod
     def _normalize_angle(angle: float) -> float:
         """Normalize *angle* to the range [-pi, pi]."""

@@ -158,6 +158,8 @@ class SimCoreEnvironment:
         self.target_position = (self.SCREEN_CENTER_X, self.SCREEN_CENTER_Y)
         self.robot_theta = 0.0
         self.target_theta = 0.0
+        self._robot_heading_initialized = False
+        self._target_heading_initialized = False
         self.formation_target_position: Optional[Tuple[float, float]] = None
 
         # ===== Initialize variables for different map types for RL =====
@@ -384,11 +386,8 @@ class SimCoreEnvironment:
                 self.target_position,
                 robot_radius,
             )
-            target_head_position = (
-                self.target_position[0]
-                + robot_frame_radius * math.sin(self.target_theta),
-                self.target_position[1]
-                - robot_frame_radius * math.cos(self.target_theta),
+            target_head_position = self._compute_orientation_endpoint(
+                self.target_position, self.target_theta, robot_frame_radius
             )
             pygame.draw.line(
                 self.robot_and_lidar_layer,
@@ -410,12 +409,8 @@ class SimCoreEnvironment:
                 self.robot_position,
                 robot_radius,
             )
-            robot_head_position = (
-                self.robot_position[0]
-                - robot_frame_radius
-                * math.sin(self.robot_theta),  # 反時計回りを正とするため符号を反転
-                self.robot_position[1]
-                - robot_frame_radius * math.cos(self.robot_theta),  # Y軸は不変
+            robot_head_position = self._compute_orientation_endpoint(
+                self.robot_position, self.robot_theta, robot_frame_radius
             )
             pygame.draw.line(
                 self.robot_and_lidar_layer,
@@ -445,9 +440,19 @@ class SimCoreEnvironment:
         self.create_start_and_target_position(
             map_type, start_spawn_area, target_spawn_area
         )
-        # ロボットの向きも初期化する
-        self.robot_theta = 0.0
-        self.target_theta = 0.0
+
+        if not self._robot_heading_initialized:
+            self.robot_theta = 0.0
+        if not self._target_heading_initialized:
+            self.target_theta = 0.0
+
+    def _compute_orientation_endpoint(
+        self, position: Tuple[float, float], theta: float, frame_radius: float
+    ) -> Tuple[float, float]:
+        return (
+            position[0] - frame_radius * math.sin(theta),
+            position[1] - frame_radius * math.cos(theta),
+        )
 
     def render_robot_and_lidar(self):
         """Draws the robot and the last sensor data to the screen."""
@@ -586,6 +591,24 @@ class SimCoreEnvironment:
                 #     f"Distance between robot and target: {distance_btwn_robot_and_target // self.PIXELS_PER_METER} m"
                 # )
                 break
+
+        robot_global_angle = math.atan2(
+            -(self.target_position[1] - self.robot_position[1]),
+            self.target_position[0] - self.robot_position[0],
+        )
+        self.robot_theta = (
+            (robot_global_angle - math.pi / 2 + math.pi) % (2 * math.pi)
+        ) - math.pi
+        self._robot_heading_initialized = True
+
+        target_global_angle = math.atan2(
+            -(self.robot_position[1] - self.target_position[1]),
+            self.robot_position[0] - self.target_position[0],
+        )
+        self.target_theta = (
+            (target_global_angle - math.pi / 2 + math.pi) % (2 * math.pi)
+        ) - math.pi
+        self._target_heading_initialized = True
 
     # ===== Detection functions =====
 
