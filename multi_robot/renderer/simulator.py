@@ -382,7 +382,7 @@ class MultiRobotSimulator:
             # rectangle so the info panel contents are cropped and positioned
             # correctly even when the window is taller than the view.
             self.info_panel_renderer.blit(
-                self.info_panel_texture, target=dst_rect, area=src_rect
+                self.info_panel_texture, dest=dst_rect, area=src_rect
             )
             self.info_panel_renderer.present()
 
