@@ -354,6 +354,7 @@ class SimCoreEnvironment:
 
     def show_robot_and_lidar(self, sensor_data=None):
         if sensor_data != False:  # if sensor_data exists, then start for loop
+            lidar_point_color = utils.hex_to_rgb(self.ROBOT_COLOR)
             for element in sensor_data:
                 obstacle_angle = self.robot_theta - math.pi / 2 - element[1]
                 point = utils.AD2pos(
@@ -362,16 +363,9 @@ class SimCoreEnvironment:
                     self.robot_position,
                     self.PIXELS_PER_METER,
                 )  # Input: sensor_data = [Distance, Angle]. Output: (x,y) coordinate of objects/walls.
-                pygame.draw.line(
-                    self.robot_and_lidar_layer,
-                    self.LIDAR_LINE_COLOR,
-                    (int(self.robot_position[0]), int(self.robot_position[1])),
-                    (int(point[0]), int(point[1])),
-                    1,
-                )
                 pygame.draw.circle(
                     self.robot_and_lidar_layer,
-                    self.LIDAR_POINTS_COLOR,
+                    lidar_point_color,
                     (int(point[0]), int(point[1])),
                     2,
                 )
