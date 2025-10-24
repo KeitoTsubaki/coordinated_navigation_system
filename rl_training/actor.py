@@ -20,8 +20,15 @@ class CustomActor(BasePolicy):
 
         self.lidar_network = shared_lidar_network
 
+        goal_dim = observation_space["goal"].shape[0]
+        velocity_dim = observation_space["velocity"].shape[0]
+        closest_obstacle_dim = observation_space["closest_obstacle"].shape[0]
+        discrete_dim = goal_dim + velocity_dim + closest_obstacle_dim
+        lidar_feature_dim = getattr(self.lidar_network, "output_dim", 60)
+        mlp_input_dim = lidar_feature_dim + discrete_dim
+
         self.mlp = nn.Sequential(
-            nn.Linear(66, 256),  # 60 is the output size of LiDARNetwork
+            nn.Linear(mlp_input_dim, 256),  # LiDAR features + discrete state features
             nn.LeakyReLU(0.01),
             nn.Linear(256, 128),
             nn.LeakyReLU(0.01),
