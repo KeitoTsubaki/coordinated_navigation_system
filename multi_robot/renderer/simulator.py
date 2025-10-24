@@ -5,11 +5,18 @@ from __future__ import annotations
 import argparse
 import math
 from collections import deque
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pygame
 from scipy import ndimage
+
+try:  # pragma: no cover - optional dependency
+    from pygame._sdl2.video import Renderer as SDLRenderer, Texture as SDLTexture, Window as SDLWindow
+except ImportError:  # pragma: no cover - SDL2 extension may be unavailable during import time
+    SDLRenderer = None  # type: ignore[assignment]
+    SDLTexture = None  # type: ignore[assignment]
+    SDLWindow = None  # type: ignore[assignment]
 
 from .env import LiDARSensor, SimCoreEnvironment, utils_module
 # from .formation import FormationManager
@@ -141,9 +148,15 @@ class MultiRobotSimulator:
         self.formation = FormationManager(self)
         self._last_display_size: Optional[Tuple[int, int]] = None
 
+        self.info_panel_window: Optional[Any] = None
+        self.info_panel_renderer: Optional[Any] = None
+        self.info_panel_texture: Optional[Any] = None
+        self._info_panel_window_size: Optional[Tuple[int, int]] = None
+        self._info_panel_texture_size: Optional[Tuple[int, int]] = None
+
         total_width = self.env.SCREEN_W + self.info_panel.width
         if self.env.render_mode == "human":
-            pygame.display.set_mode((total_width, self.env.SCREEN_H))
+            pygame.display.set_mode((self.env.SCREEN_W, self.env.SCREEN_H))
             self.display_surface = pygame.display.get_surface()
             self._last_display_size = self.display_surface.get_size()
             self.env.screen = pygame.Surface((self.env.SCREEN_W, self.env.SCREEN_H))
@@ -302,6 +315,8 @@ class MultiRobotSimulator:
         self.display_surface.blit(self.simulation_surface, (0, 0))
         if self.info_panel.visible:
             self.info_panel.draw()
+        else:
+            self.present_info_panel_surface(None, 0, self.env.SCREEN_H)
 
         if self.env.render_mode == "human":
             pygame.display.flip()
@@ -314,6 +329,123 @@ class MultiRobotSimulator:
         surface = self.draw_scene()
         array = pygame.surfarray.array3d(surface)
         return np.transpose(array, (1, 0, 2))
+
+    # ------------------------------------------------------------------
+    # Info panel window management
+    # ------------------------------------------------------------------
+    def present_info_panel_surface(
+        self,
+        surface: Optional[pygame.Surface],
+        scroll_offset: int,
+        view_height: int,
+    ) -> None:
+        if self.env.render_mode == "human":
+            if surface is None or self.info_panel.width <= 0:
+                self._hide_info_panel_window()
+                return
+
+            self._ensure_info_panel_window()
+            if self.info_panel_renderer is None:
+                return
+
+            width, height = surface.get_size()
+            if width == 0 or height == 0:
+                self.info_panel_renderer.clear()
+                self.info_panel_renderer.present()
+                return
+
+            if (
+                self.info_panel_texture is None
+                or self._info_panel_texture_size != (width, height)
+            ):
+                if self.info_panel_texture is not None and hasattr(
+                    self.info_panel_texture, "destroy"
+                ):
+                    self.info_panel_texture.destroy()
+                if SDLTexture is None:
+                    raise RuntimeError(
+                        "pygame._sdl2.video.Texture is required for multi-window rendering"
+                    )
+                self.info_panel_texture = SDLTexture.from_surface(
+                    self.info_panel_renderer, surface
+                )
+                self._info_panel_texture_size = (width, height)
+            else:
+                assert self.info_panel_texture is not None
+                self.info_panel_texture.update(surface)
+
+            self.info_panel_renderer.clear()
+            src_rect = pygame.Rect(0, scroll_offset, width, view_height)
+            dst_rect = pygame.Rect(0, 0, width, view_height)
+            # ``Renderer.copy`` is not universally available across pygame versions,
+            # whereas ``Renderer.blit`` is. Use ``blit`` with an explicit destination
+            # rectangle so the info panel contents are cropped and positioned
+            # correctly even when the window is taller than the view.
+            self.info_panel_renderer.blit(
+                self.info_panel_texture, target=dst_rect, area=src_rect
+            )
+            self.info_panel_renderer.present()
+
+            if self.info_panel_window is not None and hasattr(
+                self.info_panel_window, "show"
+            ):
+                self.info_panel_window.show()
+        else:
+            if surface is None or self.info_panel.width <= 0:
+                return
+            dest_rect = pygame.Rect(
+                self.env.SCREEN_W, 0, surface.get_width(), view_height
+            )
+            src_rect = pygame.Rect(0, scroll_offset, surface.get_width(), view_height)
+            self.display_surface.blit(surface, dest_rect, src_rect)
+
+    def _ensure_info_panel_window(self) -> None:
+        if self.info_panel_window is None:
+            if SDLWindow is None or SDLRenderer is None:
+                raise RuntimeError(
+                    "pygame._sdl2.video multi-window support is required but unavailable"
+                )
+            window_size = (
+                max(1, self.info_panel.width or self.info_panel.min_width),
+                self.env.SCREEN_H,
+            )
+            self.info_panel_window = SDLWindow("Simulation Info", size=window_size)
+            self.info_panel_renderer = SDLRenderer(
+                self.info_panel_window, accelerated=1, vsync=0
+            )
+            self._info_panel_window_size = window_size
+            if hasattr(self.info_panel_renderer, "logical_size"):
+                self.info_panel_renderer.logical_size = window_size
+
+        self._resize_info_panel_window()
+
+    def _resize_info_panel_window(self) -> None:
+        if self.info_panel_window is None:
+            return
+        target_size = (max(1, self.info_panel.width), self.env.SCREEN_H)
+        if self._info_panel_window_size != target_size:
+            self.info_panel_window.size = target_size
+            self._info_panel_window_size = target_size
+            if self.info_panel_renderer is not None and hasattr(
+                self.info_panel_renderer, "logical_size"
+            ):
+                self.info_panel_renderer.logical_size = target_size
+            if self.info_panel_texture is not None and hasattr(
+                self.info_panel_texture, "destroy"
+            ):
+                self.info_panel_texture.destroy()
+                self.info_panel_texture = None
+                self._info_panel_texture_size = None
+
+    def _hide_info_panel_window(self) -> None:
+        if self.info_panel_window is None:
+            return
+        if hasattr(self.info_panel_window, "hide"):
+            self.info_panel_window.hide()
+        if self.info_panel_renderer is not None:
+            self.info_panel_renderer.clear()
+            self.info_panel_renderer.present()
+
 
     def process_events(self) -> None:
         for event in pygame.event.get():
@@ -396,6 +528,23 @@ class MultiRobotSimulator:
             self.policy_control_active = self._policy_controller.active
 
     def close(self) -> None:
+        if self.info_panel_texture is not None and hasattr(
+            self.info_panel_texture, "destroy"
+        ):
+            self.info_panel_texture.destroy()
+            self.info_panel_texture = None
+        if self.info_panel_renderer is not None and hasattr(
+            self.info_panel_renderer, "destroy"
+        ):
+            self.info_panel_renderer.destroy()
+            self.info_panel_renderer = None
+        if self.info_panel_window is not None and hasattr(
+            self.info_panel_window, "destroy"
+        ):
+            self.info_panel_window.destroy()
+            self.info_panel_window = None
+        self._info_panel_window_size = None
+        self._info_panel_texture_size = None
         pygame.quit()
 
     # ------------------------------------------------------------------
@@ -703,24 +852,27 @@ class MultiRobotSimulator:
 
     def resize_display_surface(self, new_info_panel_width: int) -> None:
         self.info_panel.update_width(new_info_panel_width)
+        if self.env.render_mode == "human":
+            if self.info_panel.visible and self.info_panel.width > 0:
+                self._ensure_info_panel_window()
+                self._resize_info_panel_window()
+            else:
+                self._hide_info_panel_window()
+            self._last_display_size = (
+                self.env.SCREEN_W,
+                self.env.SCREEN_H,
+            )
+            return
+
         total_width = self.env.SCREEN_W + self.info_panel.width
         new_size = (total_width, self.env.SCREEN_H)
 
-        if self.env.render_mode == "human":
-            if self._last_display_size != new_size:
-                pygame.display.set_mode(new_size)
-                self.display_surface = pygame.display.get_surface()
-            else:
-                current_surface = pygame.display.get_surface()
-                if current_surface is not None:
-                    self.display_surface = current_surface
-        else:
-            needs_new_surface = (
-                self._last_display_size != new_size
-                or self.display_surface.get_size() != new_size
-            )
-            if needs_new_surface:
-                self.display_surface = pygame.Surface(new_size)
+        needs_new_surface = (
+            self._last_display_size != new_size
+            or self.display_surface.get_size() != new_size
+        )
+        if needs_new_surface:
+            self.display_surface = pygame.Surface(new_size)
 
         self._last_display_size = new_size
 
