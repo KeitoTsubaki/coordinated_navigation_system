@@ -377,8 +377,12 @@ class MultiRobotSimulator:
             self.info_panel_renderer.clear()
             src_rect = pygame.Rect(0, scroll_offset, width, view_height)
             dst_rect = pygame.Rect(0, 0, width, view_height)
-            self.info_panel_renderer.copy(
-                self.info_panel_texture, srcrect=src_rect, dstrect=dst_rect
+            # ``Renderer.copy`` is not universally available across pygame versions,
+            # whereas ``Renderer.blit`` is. Use ``blit`` with an explicit destination
+            # rectangle so the info panel contents are cropped and positioned
+            # correctly even when the window is taller than the view.
+            self.info_panel_renderer.blit(
+                self.info_panel_texture, target=dst_rect, area=src_rect
             )
             self.info_panel_renderer.present()
 
