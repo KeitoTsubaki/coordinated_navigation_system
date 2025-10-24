@@ -36,6 +36,7 @@ class FormationManager:
         self.current_plan: Optional[FormationPlan] = None
         self.plan_candidates: Dict[int, FormationPlan] = {}
         self._direct_targets: Dict[int, Optional[Position]] = {}
+        self._direct_target_orientations: Dict[int, Optional[float]] = {}
         self._formation_targets: Dict[int, Position] = {}
         self._per_robot_candidates: Dict[int, List["_RobotPlanCandidate"]] = {}
         self.follow_formation_targets: bool = True
@@ -472,19 +473,31 @@ class FormationManager:
 
         return plan
 
-    def register_direct_target(self, robot_index: int, target: Optional[Position]) -> None:
+    def register_direct_target(
+        self,
+        robot_index: int,
+        target: Optional[Position],
+        target_theta: Optional[float] = None,
+    ) -> None:
         if target is None:
             self._direct_targets[robot_index] = None
+            self._direct_target_orientations[robot_index] = None
             return
 
         self._direct_targets[robot_index] = (float(target[0]), float(target[1]))
+        self._direct_target_orientations[robot_index] = (
+            None if target_theta is None else float(target_theta)
+        )
         self._formation_targets.pop(robot_index, None)
+        # No formation orientation to clear at the moment, but keep caches aligned.
 
     def _prune_direct_target_cache(self) -> None:
         robot_count = len(self.simulator.robot_states)
         stale_indices = [index for index in self._direct_targets if index >= robot_count]
         for index in stale_indices:
             del self._direct_targets[index]
+            if index in self._direct_target_orientations:
+                del self._direct_target_orientations[index]
 
     def _prune_formation_target_cache(self) -> None:
         """Drop cached formation targets for robots that no longer exist."""
@@ -507,6 +520,7 @@ class FormationManager:
             if direct_target is None:
                 if robot.target is not None:
                     robot.target = None
+                robot.target_theta = None
                 continue
 
             if robot.target is None or (
@@ -514,6 +528,8 @@ class FormationManager:
                 or abs(robot.target[1] - direct_target[1]) > 1e-6
             ):
                 robot.target = (float(direct_target[0]), float(direct_target[1]))
+            orientation = self._direct_target_orientations.get(index)
+            robot.target_theta = None if orientation is None else float(orientation)
 
     def toggle_follow_formation(self) -> bool:
         self.follow_formation_targets = not self.follow_formation_targets
