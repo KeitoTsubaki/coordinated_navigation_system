@@ -4,7 +4,7 @@ reward:
   eta_r: 1.8
   rho_0: 1.5
   rho_1: 1
-  rho_2: 0.7
+  rho_2: 5
   k_1: 2
   k_2: 0.5
   k_3: 1
@@ -14,7 +14,7 @@ reward:
   k_7: 0.4
   k_8: 2400
   k_9: 2400
-  k_10: 0.2
+  k_10: 0.5
   minor_penalty: -0.01
 
 lidar:
