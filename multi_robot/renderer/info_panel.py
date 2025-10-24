@@ -361,6 +361,23 @@ class InfoPanelRenderer:
 
         line_height = value_font.get_height() + 4
 
+        column_spacing = self.padding
+        # Determine whether we can fit two columns while keeping a reasonable width.
+        desired_columns = 2
+        column_width = (
+            self.width - (desired_columns + 1) * column_spacing
+        ) // desired_columns
+        if column_width < 180:
+            desired_columns = 1
+            column_width = self.width - 2 * column_spacing
+
+        column_origins = [
+            column_spacing + i * (column_width + column_spacing)
+            for i in range(desired_columns)
+        ]
+
+        robot_blocks: List[Tuple[pygame.Rect, int, List[str], str, int]] = []
+
         for index, robot in enumerate(self.simulator.robot_states):
             robot_name_text = robot.name
             pos_m = self.simulator.pixels_to_meters(*robot.position)
@@ -406,25 +423,36 @@ class InfoPanelRenderer:
 
             name_width, name_height = name_font.size(robot_name_text)
             block_height = name_height + 4 + len(metric_lines) * line_height + 12
-            block_rect = pygame.Rect(
-                8,
-                y_offset - 6,
-                self.width - 16,
-                block_height,
-            )
 
-            text_indent = max(0, (block_rect.x + 10) - x_offset)
-            max_required_inner_width = max(max_required_inner_width, text_indent + name_width)
+            text_width = name_width
             for metric in metric_lines:
                 metric_width, _ = value_font.size(metric)
-                max_required_inner_width = max(
-                    max_required_inner_width, text_indent + metric_width
-                )
+                text_width = max(text_width, metric_width)
+            block_rect = pygame.Rect(0, 0, column_width, block_height)
+            robot_blocks.append((block_rect, index, metric_lines, robot_name_text, text_width))
 
-            if not resize_only:
+        # Lay out the robot blocks row-by-row across the available columns.
+        row_top = y_offset - 6
+        row_height = 0
+        column_index = 0
+
+        for block_rect, robot_index, metric_lines, robot_name_text, text_width in robot_blocks:
+            column_x = column_origins[column_index]
+            block_rect.x = column_x
+            block_rect.y = row_top
+
+            text_indent = max(0, (block_rect.x + 10) - x_offset)
+            max_required_inner_width = max(
+                max_required_inner_width, text_indent + text_width
+            )
+            max_required_inner_width = max(
+                max_required_inner_width, block_rect.x + block_rect.width - x_offset
+            )
+
+            if not resize_only and surface is not None:
                 background_color = (
                     self.highlight_color
-                    if index == self.simulator.selected_robot_index
+                    if robot_index == self.simulator.selected_robot_index
                     else self.background
                 )
                 pygame.draw.rect(
@@ -442,7 +470,7 @@ class InfoPanelRenderer:
                 )
 
                 text_x = block_rect.x + 10
-                text_y = y_offset
+                text_y = block_rect.y + 6
                 robot_name_surface = name_font.render(robot_name_text, True, self.text_color)
                 surface.blit(robot_name_surface, (text_x, text_y))
                 text_y += robot_name_surface.get_height() + 4
@@ -452,7 +480,18 @@ class InfoPanelRenderer:
                     surface.blit(metric_label, (text_x, text_y))
                     text_y += line_height
 
-            y_offset = block_rect.bottom + 10
+            row_height = max(row_height, block_rect.height)
+
+            column_index += 1
+            if column_index >= desired_columns:
+                row_top += row_height + 10
+                row_height = 0
+                column_index = 0
+
+        if column_index != 0:
+            row_top += row_height + 10
+
+        y_offset = row_top + 6
 
         return max_required_inner_width, y_offset
 
