@@ -21,6 +21,7 @@ class RobotState:
     theta: float = 0.0
     color: Color = (0, 128, 255)
     target: Optional[Position] = None
+    target_theta: Optional[float] = None
     path: Deque[Tuple[Position, float]] = field(default_factory=deque)
     sensor: Optional["LiDARSensor"] = None
     sensor_data: List[Tuple[float, float]] = field(default_factory=list)

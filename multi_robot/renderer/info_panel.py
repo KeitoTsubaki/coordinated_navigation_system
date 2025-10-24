@@ -22,6 +22,7 @@ class InfoPanelRenderer:
         self.min_width = 320
         self.width = max(self.min_width, int(self.simulator.env.SCREEN_W * 0.4))
         self._last_width = self.width
+        self._last_resize_target = self.width
         self.background = (245, 245, 245)
         self.text_color = (32, 32, 32)
         self.highlight_color = (220, 235, 250)
@@ -30,7 +31,9 @@ class InfoPanelRenderer:
         self.scroll = 0
         self.scroll_speed = 40
         self.content_height = self.simulator.env.SCREEN_H
-        self.surface = pygame.Surface((self.width, self.simulator.env.SCREEN_H))
+        self.surface: Optional[pygame.Surface] = pygame.Surface(
+            (self.width, self.simulator.env.SCREEN_H)
+        )
 
     # ------------------------------------------------------------------
     # Public API
@@ -53,7 +56,10 @@ class InfoPanelRenderer:
             self.scroll = 0
 
     def draw(self) -> None:
-        if not self.visible:
+        if not self.visible or self.width <= 0:
+            self.simulator.present_info_panel_surface(
+                None, 0, self.simulator.env.SCREEN_H
+            )
             return
 
         while True:
@@ -61,25 +67,29 @@ class InfoPanelRenderer:
             target_width = max(self.min_width, required_inner_width + 2 * self.padding)
             if target_width == self.width:
                 break
+            if target_width == self._last_resize_target:
+                break
+            self._last_resize_target = target_width
             self.simulator.resize_display_surface(target_width)
 
         panel_height = max(self.simulator.env.SCREEN_H, required_height + self.padding)
         if (
-            self.surface.get_width() != self.width
+            self.surface is None
+            or self.surface.get_width() != self.width
             or self.surface.get_height() != panel_height
         ):
             self.surface = pygame.Surface((self.width, panel_height))
 
         self.content_height = panel_height
+        assert self.surface is not None
         self._render(resize_only=False, surface=self.surface)
 
         max_scroll = max(0, panel_height - self.simulator.env.SCREEN_H)
         self.scroll = max(0, min(self.scroll, max_scroll))
 
-        panel_left = self.simulator.env.SCREEN_W
-        dest_rect = pygame.Rect(panel_left, 0, self.width, self.simulator.env.SCREEN_H)
-        src_rect = pygame.Rect(0, self.scroll, self.width, self.simulator.env.SCREEN_H)
-        self.simulator.display_surface.blit(self.surface, dest_rect, src_rect)
+        self.simulator.present_info_panel_surface(
+            self.surface, self.scroll, self.simulator.env.SCREEN_H
+        )
 
     def scroll_panel(self, delta: float) -> None:
         max_scroll = max(0, self.content_height - self.simulator.env.SCREEN_H)
@@ -87,6 +97,10 @@ class InfoPanelRenderer:
 
     def update_width(self, new_width: int) -> None:
         self.width = new_width
+        self._last_resize_target = new_width
+        if self.width <= 0:
+            self.surface = None
+            return
         panel_height = max(self.simulator.env.SCREEN_H, self.content_height)
         self.surface = pygame.Surface((self.width, panel_height))
 

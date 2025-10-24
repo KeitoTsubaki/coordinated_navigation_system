@@ -4,6 +4,7 @@ reward:
   eta_r: 1.8
   rho_0: 1.5
   rho_1: 1
+  rho_2: 5
   k_1: 2
   k_2: 0.5
   k_3: 1
@@ -13,11 +14,14 @@ reward:
   k_7: 0.4
   k_8: 2400
   k_9: 2400
+  k_10: 0.5
   minor_penalty: -0.01
 
 lidar:
   n_l: 629         # Number of LiDAR points
   n_e: 11           # Number of extention points
   lidar_history_len: 4  # Number of previous LiDAR scans to stack
+
+angle_diff_threshold: 0.17453292519943295  # 約10度
 
 max_episode_steps: 600

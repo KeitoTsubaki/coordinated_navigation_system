@@ -39,6 +39,11 @@ class LiDARNetwork(nn.Module):
         self.static_fc = nn.Linear(cnn_output_dim, 40)
         self.dynamic_fc = nn.Linear(cnn_output_dim, 20)
 
+        # Expose the dimensionality of the concatenated feature vector so that
+        # downstream networks (e.g., the actor) do not have to rely on hard-
+        # coded values when constructing their layers.
+        self.output_dim = self.static_fc.out_features + self.dynamic_fc.out_features
+
     def _get_conv_output_dim(self, x):
         # Helper function to calculate the output dimension of the CNN layers
         x = self.static_conv1(x)
