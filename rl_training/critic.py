@@ -11,8 +11,18 @@ class CustomCritic(BasePolicy):
         super().__init__(observation_space, action_space, squash_output=False)
 
         self.lidar_network = shared_lidar_network
+
+        # Mirror the actor's feature sizing so the critic stays in sync with
+        # the environment's observation structure.
+        goal_dim = observation_space["goal"].shape[0]
+        velocity_dim = observation_space["velocity"].shape[0]
+        closest_obstacle_dim = observation_space["closest_obstacle"].shape[0]
+        discrete_dim = goal_dim + velocity_dim + closest_obstacle_dim
+        lidar_feature_dim = getattr(self.lidar_network, "output_dim", 60)
+        state_input_dim = lidar_feature_dim + discrete_dim
+
         self.state_net = nn.Sequential(
-            nn.Linear(66, 256),  # 60 is the output size of LiDARNetwork
+            nn.Linear(state_input_dim, 256),
             nn.LeakyReLU(0.01),
             nn.Linear(256, 128),
             nn.LeakyReLU(0.01),
