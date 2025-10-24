@@ -139,16 +139,19 @@ class MultiRobotSimulator:
 
         self.info_panel = InfoPanelRenderer(self)
         self.formation = FormationManager(self)
+        self._last_display_size: Optional[Tuple[int, int]] = None
 
         total_width = self.env.SCREEN_W + self.info_panel.width
         if self.env.render_mode == "human":
             pygame.display.set_mode((total_width, self.env.SCREEN_H))
             self.display_surface = pygame.display.get_surface()
+            self._last_display_size = self.display_surface.get_size()
             self.env.screen = pygame.Surface((self.env.SCREEN_W, self.env.SCREEN_H))
             self.env.map_creator.map = self.env.screen
             self.env.clear_all_layers()
         else:
             self.display_surface = pygame.Surface((total_width, self.env.SCREEN_H))
+            self._last_display_size = self.display_surface.get_size()
         self.simulation_surface = self.env.screen
 
         self.map_descriptions = {
@@ -701,11 +704,25 @@ class MultiRobotSimulator:
     def resize_display_surface(self, new_info_panel_width: int) -> None:
         self.info_panel.update_width(new_info_panel_width)
         total_width = self.env.SCREEN_W + self.info_panel.width
+        new_size = (total_width, self.env.SCREEN_H)
+
         if self.env.render_mode == "human":
-            pygame.display.set_mode((total_width, self.env.SCREEN_H))
-            self.display_surface = pygame.display.get_surface()
+            if self._last_display_size != new_size:
+                pygame.display.set_mode(new_size)
+                self.display_surface = pygame.display.get_surface()
+            else:
+                current_surface = pygame.display.get_surface()
+                if current_surface is not None:
+                    self.display_surface = current_surface
         else:
-            self.display_surface = pygame.Surface((total_width, self.env.SCREEN_H))
+            needs_new_surface = (
+                self._last_display_size != new_size
+                or self.display_surface.get_size() != new_size
+            )
+            if needs_new_surface:
+                self.display_surface = pygame.Surface(new_size)
+
+        self._last_display_size = new_size
 
         self.display_surface.fill(self.env.BACKGROUND_COLOR)
         self.display_surface.blit(self.simulation_surface, (0, 0))

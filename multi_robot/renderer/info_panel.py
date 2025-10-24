@@ -22,6 +22,7 @@ class InfoPanelRenderer:
         self.min_width = 320
         self.width = max(self.min_width, int(self.simulator.env.SCREEN_W * 0.4))
         self._last_width = self.width
+        self._last_resize_target = self.width
         self.background = (245, 245, 245)
         self.text_color = (32, 32, 32)
         self.highlight_color = (220, 235, 250)
@@ -61,6 +62,9 @@ class InfoPanelRenderer:
             target_width = max(self.min_width, required_inner_width + 2 * self.padding)
             if target_width == self.width:
                 break
+            if target_width == self._last_resize_target:
+                break
+            self._last_resize_target = target_width
             self.simulator.resize_display_surface(target_width)
 
         panel_height = max(self.simulator.env.SCREEN_H, required_height + self.padding)
@@ -87,6 +91,7 @@ class InfoPanelRenderer:
 
     def update_width(self, new_width: int) -> None:
         self.width = new_width
+        self._last_resize_target = new_width
         panel_height = max(self.simulator.env.SCREEN_H, self.content_height)
         self.surface = pygame.Surface((self.width, panel_height))
 
