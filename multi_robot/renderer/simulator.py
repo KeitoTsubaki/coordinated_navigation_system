@@ -167,6 +167,11 @@ class MultiRobotSimulator:
             self._last_display_size = self.display_surface.get_size()
         self.simulation_surface = self.env.screen
 
+        if self.info_panel.visible:
+            self.resize_display_surface(self.info_panel.width)
+        else:
+            self.resize_display_surface(0)
+
         self.map_descriptions = {
             "trap_shaped": "Trap-shaped course with a narrow passage leading to the target zone.",
             "zigzag": "Zigzag corridors that require repeated tight turns to reach the goal.",
@@ -834,15 +839,7 @@ class MultiRobotSimulator:
             self.env.robot_and_lidar_layer.blit(label, text_position)
 
     def _draw_hud(self) -> None:
-        if not self.robot_states:
-            return
-        font = pygame.font.SysFont("arial", 16)
-        hud_lines = [
-            "Controls: TAB/0-9 select, W move forward, Q/E rotate, C cycle map, SPACE reset, L toggle LiDAR, P toggle path, I toggle info panel, D toggle debug text, F toggle formation follow, V toggle vertical constraint",
-        ]
-        for index, text in enumerate(hud_lines):
-            label = font.render(text, True, (0, 0, 0))
-            self.env.robot_and_lidar_layer.blit(label, (10, 10 + index * 20))
+        return
 
     def toggle_info_panel(self) -> None:
         self.info_panel.toggle()
