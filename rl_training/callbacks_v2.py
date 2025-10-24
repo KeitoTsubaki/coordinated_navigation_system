@@ -253,7 +253,7 @@ class EpisodeLoggerV2(BaseCallback):
                         )
                     self.best_success_rate = overall_success_rate
                     self.no_improve_counter = 0
-                else:
+                elif random_success_rate > 0.8:
                     self.no_improve_counter += self.eval_freq_episodes
                     self.logger.record(
                         "evaluation/episodes_without_improvement", self.no_improve_counter
