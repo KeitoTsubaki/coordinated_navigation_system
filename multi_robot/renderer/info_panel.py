@@ -19,14 +19,14 @@ class InfoPanelRenderer:
     def __init__(self, simulator: "MultiRobotSimulator") -> None:
         self.simulator = simulator
         self.visible = True
-        self.min_width = 420
-        base_width = int(self.simulator.env.SCREEN_W * 0.45)
+        self.min_width = 640
+        base_width = int(self.simulator.env.SCREEN_W * 0.55)
         self.width = max(self.min_width, base_width)
         self.default_width = self.width
         self.background = (245, 245, 245)
         self.text_color = (32, 32, 32)
-        self.highlight_color = (220, 235, 250)
-        self.divider_color = (200, 200, 200)
+        self.highlight_color = (230, 240, 255)
+        self.divider_color = (210, 210, 210)
         self.padding = 16
         self.scroll = 0
         self.scroll_speed = 40
@@ -128,11 +128,23 @@ class InfoPanelRenderer:
             key = f"{label}:"
             return f"{key:<{label_field_width}} {value}"
 
-        x_offset = self.padding
-        y_offset = self.padding
+        column_gap = self.padding
+        usable_width = max(0, self.width - 3 * self.padding)
+        left_column_width = max(240, int(usable_width * 0.45))
+        right_column_width = max(usable_width - left_column_width, 320)
+        if left_column_width + right_column_width > usable_width:
+            right_column_width = max(320, usable_width - left_column_width)
+        if right_column_width < 0:
+            right_column_width = 0
+        left_column_width = max(0, usable_width - right_column_width)
+
+        left_x_offset = self.padding
+        right_x_offset = left_x_offset + left_column_width + column_gap
+        left_y_offset = self.padding
+        right_column_bottom = self.padding
         max_required_inner_width = 0
 
-        def render_line(
+        def render_left_line(
             text: str,
             font: pygame.font.Font,
             color: Color,
@@ -140,17 +152,20 @@ class InfoPanelRenderer:
             indent: int = 0,
             spacing: int = 4,
         ) -> None:
-            nonlocal y_offset, max_required_inner_width
+            nonlocal left_y_offset, max_required_inner_width
             if not text:
                 return
             width, height = font.size(text)
-            max_required_inner_width = max(max_required_inner_width, indent + width)
+            text_x = left_x_offset + indent
+            max_required_inner_width = max(
+                max_required_inner_width, text_x - self.padding + width
+            )
             if not resize_only and surface is not None:
                 label = font.render(text, True, color)
-                surface.blit(label, (x_offset + indent, y_offset))
-            y_offset += height + spacing
+                surface.blit(label, (text_x, left_y_offset))
+            left_y_offset += height + spacing
 
-        render_line("Simulation Info", title_font, self.text_color, spacing=10)
+        render_left_line("Simulation Info", title_font, self.text_color, spacing=10)
 
         selected_name = (
             self.simulator.robot_states[self.simulator.selected_robot_index].name
@@ -179,18 +194,18 @@ class InfoPanelRenderer:
             )
             general_lines.append(format_stat("Policy model", model_status))
         for line in general_lines:
-            render_line(line, value_font, self.text_color, spacing=4)
+            render_left_line(line, value_font, self.text_color, spacing=4)
 
         controller = self.simulator.policy_controller
         if controller is not None and controller.last_error:
-            render_line("Policy error:", value_font, self.text_color, spacing=2)
-            wrap_width = max(10, self.width - 2 * self.padding - 10)
+            render_left_line("Policy error:", value_font, self.text_color, spacing=2)
+            wrap_width = max(10, left_column_width - 10)
             for line in self._wrap_text_by_pixels(value_font, controller.last_error, wrap_width):
-                render_line(line, value_font, self.text_color, indent=10, spacing=2)
+                render_left_line(line, value_font, self.text_color, indent=10, spacing=2)
 
-        y_offset += 10
+        left_y_offset += 10
 
-        render_line("Map", title_font, self.text_color, spacing=8)
+        render_left_line("Map", title_font, self.text_color, spacing=8)
 
         map_width_m = self.simulator.env.SCREEN_W / self.simulator.env.PIXELS_PER_METER
         map_height_m = self.simulator.env.SCREEN_H / self.simulator.env.PIXELS_PER_METER
@@ -199,19 +214,25 @@ class InfoPanelRenderer:
             format_stat("Size", f"{map_width_m:.1f}m x {map_height_m:.1f}m"),
         ]
         for line in map_lines:
-            render_line(line, value_font, self.text_color, spacing=4)
+            render_left_line(line, value_font, self.text_color, spacing=4)
 
         description = self.simulator.map_descriptions.get(self.simulator.env.map_type)
         if description:
-            render_line("Description:", value_font, self.text_color, spacing=4)
+            render_left_line("Description:", value_font, self.text_color, spacing=4)
             desc_indent = 10
-            wrap_width = max(10, self.width - 2 * self.padding - desc_indent)
+            wrap_width = max(10, left_column_width - desc_indent)
             for line in self._wrap_text_by_pixels(value_font, description, wrap_width):
-                render_line(line, value_font, self.text_color, indent=desc_indent, spacing=2)
+                render_left_line(
+                    line,
+                    value_font,
+                    self.text_color,
+                    indent=desc_indent,
+                    spacing=2,
+                )
 
-            y_offset += 6
+            left_y_offset += 6
 
-        render_line("Controls", title_font, self.text_color, spacing=8)
+        render_left_line("Controls", title_font, self.text_color, spacing=8)
 
         control_descriptions = [
             ("TAB / 0-9", "Select robot"),
@@ -228,7 +249,7 @@ class InfoPanelRenderer:
         ]
 
         for key, description_text in control_descriptions:
-            render_line(
+            render_left_line(
                 format_stat(key, description_text),
                 value_font,
                 self.text_color,
@@ -236,11 +257,11 @@ class InfoPanelRenderer:
                 spacing=2,
             )
 
-        y_offset += 12
+        left_y_offset += 12
 
         formation = self.simulator.formation
         if formation.plan_candidates:
-            render_line("Formation Plans", title_font, self.text_color, spacing=8)
+            render_left_line("Formation Plans", title_font, self.text_color, spacing=8)
 
             for ego_index in sorted(formation.plan_candidates):
                 plan = formation.plan_candidates[ego_index]
@@ -272,7 +293,7 @@ class InfoPanelRenderer:
                     f"{indicator} {robot_name}: {plan.formation_type.title()}"
                     f" θ={heading_deg:.1f}° cost={cost_text}"
                 )
-                render_line(summary, value_font, summary_color, spacing=2)
+                render_left_line(summary, value_font, summary_color, spacing=2)
 
                 if highlight:
                     detail_lines = [
@@ -280,9 +301,15 @@ class InfoPanelRenderer:
                         f"Center: ({center_m[0]:.2f}, {center_m[1]:.2f}) m",
                     ]
                     for line in detail_lines:
-                        render_line(line, value_font, self.text_color, indent=10, spacing=2)
+                        render_left_line(
+                            line,
+                            value_font,
+                            self.text_color,
+                            indent=10,
+                            spacing=2,
+                        )
 
-                    render_line(
+                    render_left_line(
                         "Assignments:",
                         value_font,
                         self.text_color,
@@ -295,7 +322,7 @@ class InfoPanelRenderer:
                             if 0 <= robot_index < len(self.simulator.robot_states)
                             else f"Robot {robot_index}"
                         )
-                        render_line(
+                        render_left_line(
                             f"- {robot_name} → T{target_index}",
                             value_font,
                             self.text_color,
@@ -303,7 +330,7 @@ class InfoPanelRenderer:
                             spacing=2,
                         )
 
-                    y_offset += 8
+                    left_y_offset += 8
 
         else:
             active_targets = [
@@ -313,7 +340,9 @@ class InfoPanelRenderer:
                 for index, robot in enumerate(self.simulator.robot_states)
             ]
             if any(target is not None for target in active_targets):
-                render_line("Target Assignments", title_font, self.text_color, spacing=8)
+                render_left_line(
+                    "Target Assignments", title_font, self.text_color, spacing=8
+                )
 
                 for index, robot in enumerate(self.simulator.robot_states):
                     target = active_targets[index]
@@ -349,30 +378,41 @@ class InfoPanelRenderer:
                             f" / {direct_distance_m:.2f} m"
                         )
 
-                    render_line(text, value_font, self.text_color, indent=10, spacing=2)
+                    render_left_line(
+                        text, value_font, self.text_color, indent=10, spacing=2
+                    )
 
-            y_offset += 12
+            left_y_offset += 12
 
-        render_line("Robots", title_font, self.text_color, spacing=8)
+        right_title_y = right_column_bottom
+        if not resize_only and surface is not None and right_column_width > 0:
+            title_surface = title_font.render("Robots", True, self.text_color)
+            surface.blit(title_surface, (right_x_offset, right_title_y))
+        right_column_bottom = right_title_y + title_font.get_height() + 8
 
         if not self.simulator.robot_states:
-            render_line("No robots", value_font, self.text_color, spacing=4)
-            return max_required_inner_width, y_offset
+            if not resize_only and surface is not None and right_column_width > 0:
+                label = value_font.render("No robots", True, self.text_color)
+                surface.blit(label, (right_x_offset, right_column_bottom))
+            right_column_bottom += value_font.get_height() + 4
+            final_height = max(left_y_offset, right_column_bottom)
+            return max_required_inner_width, final_height
 
         line_height = value_font.get_height() + 4
 
         column_spacing = self.padding
-        # Determine whether we can fit two columns while keeping a reasonable width.
         desired_columns = 2
-        column_width = (
-            self.width - (desired_columns + 1) * column_spacing
-        ) // desired_columns
-        if column_width < 180:
+        column_width = max(
+            0,
+            (right_column_width - (desired_columns - 1) * column_spacing)
+            // desired_columns,
+        )
+        if column_width < 200:
             desired_columns = 1
-            column_width = self.width - 2 * column_spacing
+            column_width = max(0, right_column_width)
 
         column_origins = [
-            column_spacing + i * (column_width + column_spacing)
+            right_x_offset + i * (column_width + column_spacing)
             for i in range(desired_columns)
         ]
 
@@ -432,7 +472,7 @@ class InfoPanelRenderer:
             robot_blocks.append((block_rect, index, metric_lines, robot_name_text, text_width))
 
         # Lay out the robot blocks row-by-row across the available columns.
-        row_top = y_offset - 6
+        row_top = right_column_bottom
         row_height = 0
         column_index = 0
 
@@ -441,12 +481,14 @@ class InfoPanelRenderer:
             block_rect.x = column_x
             block_rect.y = row_top
 
-            text_indent = max(0, (block_rect.x + 10) - x_offset)
+            text_indent = block_rect.x + 10
             max_required_inner_width = max(
-                max_required_inner_width, text_indent + text_width
+                max_required_inner_width,
+                text_indent - self.padding + text_width,
             )
             max_required_inner_width = max(
-                max_required_inner_width, block_rect.x + block_rect.width - x_offset
+                max_required_inner_width,
+                block_rect.x + block_rect.width - self.padding,
             )
 
             if not resize_only and surface is not None:
@@ -491,9 +533,20 @@ class InfoPanelRenderer:
         if column_index != 0:
             row_top += row_height + 10
 
-        y_offset = row_top + 6
+        right_column_bottom = row_top + 6
 
-        return max_required_inner_width, y_offset
+        max_required_inner_width = max(
+            max_required_inner_width,
+            left_x_offset - self.padding + left_column_width,
+        )
+        max_required_inner_width = max(
+            max_required_inner_width,
+            right_x_offset - self.padding + right_column_width,
+        )
+
+        final_height = max(left_y_offset, right_column_bottom)
+
+        return max_required_inner_width, final_height
 
     def _wrap_text_by_pixels(
         self, font: pygame.font.Font, text: str, max_width: int
