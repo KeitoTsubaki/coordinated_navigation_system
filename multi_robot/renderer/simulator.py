@@ -601,12 +601,16 @@ class MultiRobotSimulator:
             self._draw_brake_overlay(robot)
 
     def _draw_velocity_arrow(self, robot: RobotState) -> None:
-        v_e = getattr(robot, "executable_velocity", 0.0)
-        if abs(v_e) < 1e-3:
+        v_o = getattr(
+            robot,
+            "output_velocity",
+            getattr(robot, "executable_velocity", 0.0),
+        )
+        if abs(v_o) < 1e-3:
             return
 
         pixels_per_meter = self.env.PIXELS_PER_METER
-        length_pixels = v_e * pixels_per_meter
+        length_pixels = v_o * pixels_per_meter
         if abs(length_pixels) < 1.0:
             return
 
@@ -648,11 +652,15 @@ class MultiRobotSimulator:
         )
 
     def _draw_angular_velocity_arc(self, robot: RobotState) -> None:
-        omega_e = getattr(robot, "executable_angular_velocity", 0.0)
-        if abs(omega_e) < 1e-3:
+        omega_o = getattr(
+            robot,
+            "output_angular_velocity",
+            getattr(robot, "executable_angular_velocity", 0.0),
+        )
+        if abs(omega_o) < 1e-3:
             return
 
-        arc_angle = min(abs(omega_e), math.tau)
+        arc_angle = min(abs(omega_o), math.tau)
         if arc_angle < 1e-3:
             return
 
@@ -665,7 +673,7 @@ class MultiRobotSimulator:
         # around the robot. The screen space Y axis is inverted (down is
         # positive), so we flip the sign when mapping from the angular velocity
         # to the direction of the arc sweep.
-        sign = -1.0 if omega_e >= 0.0 else 1.0
+        sign = -1.0 if omega_o >= 0.0 else 1.0
         segments = max(4, int(math.ceil(arc_angle / (math.pi / 24.0))))
 
         points: list[tuple[float, float]] = []
@@ -1188,6 +1196,8 @@ class MultiRobotSimulator:
         robot.braking = False
         robot.executable_velocity = 0.0
         robot.executable_angular_velocity = 0.0
+        robot.output_velocity = 0.0
+        robot.output_angular_velocity = 0.0
 
         if keys[pygame.K_w]:
             move_success = self._attempt_move(robot, -self.manual_step_pixels)
