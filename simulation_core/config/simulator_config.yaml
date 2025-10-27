@@ -19,7 +19,10 @@ speed_adjustment:
   omega_fixed: 1.2566370614 # 0.4 * pi rad/s
   T_df: 0.6
 robot:
-  radius_m: 0.4          # ロボットの半径（m）
+  radius_m: 0.6          # ロボットの安全半径（m）
+  width_m: 0.5           # ロボットの幅（m）
+  height_m: 1.0          # ロボットの高さ（m）
+  safety_radius_m: 0.6   # LiDAR フィルタリングなどに利用する安全半径（m）
   robot_color: "#1492C7"  # RGBでロボットの色
   target_color: "#F5BF98"    # RGBでゴールの色
   T_dt_m_trap_shaped: 20 # The threshold distance between the start and end position (meters)
