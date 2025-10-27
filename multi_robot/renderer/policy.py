@@ -134,6 +134,8 @@ class PolicyController:
                     robot.velocity = 0.0
                     robot.executable_velocity = 0.0
                     robot.executable_angular_velocity = 0.0
+                    robot.output_velocity = 0.0
+                    robot.output_angular_velocity = 0.0
                     control_state.current_v = 0.0
                     control_state.current_omega = 0.0
                     continue
@@ -144,6 +146,8 @@ class PolicyController:
                 robot.velocity = 0.0
                 robot.executable_velocity = 0.0
                 robot.executable_angular_velocity = 0.0
+                robot.output_velocity = 0.0
+                robot.output_angular_velocity = 0.0
                 control_state.current_v = 0.0
                 control_state.current_omega = 0.0
                 control_state.previous_v = 0.0
@@ -225,7 +229,10 @@ class PolicyController:
             v_o, omega_o = self._action_to_executable_action(
                 v_a, omega_a, control_state
             )
-                
+
+            robot.output_velocity = v_o
+            robot.output_angular_velocity = omega_o
+
             moved = self._apply_motion(robot, v_o, omega_o)
 
             if moved:
@@ -263,6 +270,8 @@ class PolicyController:
             robot.braking = False
             robot.executable_velocity = 0.0
             robot.executable_angular_velocity = 0.0
+            robot.output_velocity = 0.0
+            robot.output_angular_velocity = 0.0
 
     def _load_policy_config(self) -> None:
         config: Optional[Dict[str, object]] = None

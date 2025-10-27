@@ -34,6 +34,8 @@ class RobotState:
     braking: bool = False
     executable_velocity: float = 0.0
     executable_angular_velocity: float = 0.0
+    output_velocity: float = 0.0
+    output_angular_velocity: float = 0.0
 
 
 @dataclass
