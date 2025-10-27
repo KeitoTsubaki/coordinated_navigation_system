@@ -20,7 +20,7 @@ class InfoPanelRenderer:
         self.simulator = simulator
         self.visible = True
         self.min_width = 640
-        base_width = int(self.simulator.env.SCREEN_W * 0.55)
+        base_width = int(self.simulator.env.SCREEN_W)
         self.width = max(self.min_width, base_width)
         self.default_width = self.width
         self.background = (245, 245, 245)
