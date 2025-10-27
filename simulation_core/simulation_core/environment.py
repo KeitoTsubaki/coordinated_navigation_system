@@ -40,20 +40,28 @@ class SimCoreEnvironment:
         self.SCREEN_W = config["window"]["size"]
         self.SCREEN_H = config["window"]["size"]
 
-        self.ROBOT_RADIUS_M = config["robot"]["radius_m"]
-        self.ROBOT_COLOR = config["robot"]["robot_color"]
-        self.TARGET_COLOR = config["robot"]["target_color"]
-        self.T_DT_M_TRAP_SHAPED = config["robot"]["T_dt_m_trap_shaped"]
-        self.T_DT_M_ZIGZAG = config["robot"]["T_dt_m_zigzag"]
-        self.T_DT_M_RANDOM = config["robot"]["T_dt_m_random"]
-        self.T_DT_M_EMPTY = config["robot"]["T_dt_m_empty"]
-        self.V_MAX = config["robot"]["v_max"]
-        self.OMEGA_MAX = config["robot"]["omega_max"]
-        self.A_MAX = config["robot"]["a_max"]
-        self.ALPHA_MAX = config["robot"]["alpha_max"]
-        self.MAX_D = config["robot"]["max_d"]
-        self.MAX_THETA = config["robot"]["max_theta"]
-        self.NUM_CHECK_POINTS = config["robot"]["num_check_points"]
+        robot_cfg = config["robot"]
+        base_radius_m = float(robot_cfg["radius_m"])
+        self.ROBOT_SAFETY_RADIUS_M = float(
+            robot_cfg.get("safety_radius_m", base_radius_m)
+        )
+        self.ROBOT_RADIUS_M = self.ROBOT_SAFETY_RADIUS_M
+        self.ROBOT_BODY_RADIUS_M = base_radius_m
+        self.ROBOT_WIDTH_M = float(robot_cfg.get("width_m", self.ROBOT_RADIUS_M * 2.0))
+        self.ROBOT_HEIGHT_M = float(robot_cfg.get("height_m", self.ROBOT_RADIUS_M * 2.0))
+        self.ROBOT_COLOR = robot_cfg["robot_color"]
+        self.TARGET_COLOR = robot_cfg["target_color"]
+        self.T_DT_M_TRAP_SHAPED = robot_cfg["T_dt_m_trap_shaped"]
+        self.T_DT_M_ZIGZAG = robot_cfg["T_dt_m_zigzag"]
+        self.T_DT_M_RANDOM = robot_cfg["T_dt_m_random"]
+        self.T_DT_M_EMPTY = robot_cfg["T_dt_m_empty"]
+        self.V_MAX = robot_cfg["v_max"]
+        self.OMEGA_MAX = robot_cfg["omega_max"]
+        self.A_MAX = robot_cfg["a_max"]
+        self.ALPHA_MAX = robot_cfg["alpha_max"]
+        self.MAX_D = robot_cfg["max_d"]
+        self.MAX_THETA = robot_cfg["max_theta"]
+        self.NUM_CHECK_POINTS = robot_cfg["num_check_points"]
 
         formation_cfg = config.get("formation", {})
         self.DEFAULT_FORMATION_ROBOT_COUNT = int(formation_cfg.get("robot_count", 1))
@@ -120,7 +128,10 @@ class SimCoreEnvironment:
         self.PIXELS_PER_METER = self.SCREEN_W / (2 * self.LIDAR_RANGE_M)
 
         # ===== Post processing to convert parameters from meters to pixels =====
-        self.ROBOT_RADIUS_PIXELS = self.ROBOT_RADIUS_M * self.PIXELS_PER_METER
+        self.ROBOT_RADIUS_PIXELS = self.ROBOT_SAFETY_RADIUS_M * self.PIXELS_PER_METER
+        self.ROBOT_SAFETY_RADIUS_PIXELS = self.ROBOT_RADIUS_PIXELS
+        self.ROBOT_WIDTH_PIXELS = self.ROBOT_WIDTH_M * self.PIXELS_PER_METER
+        self.ROBOT_HEIGHT_PIXELS = self.ROBOT_HEIGHT_M * self.PIXELS_PER_METER
         self.LIDAR_RANGE_PIXELS = self.LIDAR_RANGE_M * self.PIXELS_PER_METER
         self.DEFAULT_FORMATION_SPACING_PIXELS = (
             self.DEFAULT_FORMATION_SPACING_M * self.PIXELS_PER_METER

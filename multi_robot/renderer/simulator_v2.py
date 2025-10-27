@@ -111,10 +111,21 @@ class MultiRobotSimulator:
         self._clock = pygame.time.Clock()
         self._fps = 0.0
 
-        self.robot_radius_pixels = (
-            self.env.ROBOT_RADIUS_M * 0.8 * self.env.PIXELS_PER_METER
+        self.robot_body_width_pixels = (
+            self.env.ROBOT_WIDTH_M * self.env.PIXELS_PER_METER
         )
-        self.robot_frame_radius = self.env.ROBOT_RADIUS_M * self.env.PIXELS_PER_METER
+        self.robot_body_height_pixels = (
+            self.env.ROBOT_HEIGHT_M * self.env.PIXELS_PER_METER
+        )
+        self.robot_body_half_width = self.robot_body_width_pixels / 2.0
+        self.robot_body_half_height = self.robot_body_height_pixels / 2.0
+        self.robot_radius_pixels = max(
+            self.robot_body_half_width, self.robot_body_half_height
+        )
+        self.robot_safety_radius_pixels = (
+            self.env.ROBOT_SAFETY_RADIUS_M * self.env.PIXELS_PER_METER
+        )
+        self.robot_frame_radius = self.robot_safety_radius_pixels
         self.obstacle_color_rgb = to_rgb(self.env.OBSTACLE_COLOR)
         self.lidar_line_color = to_rgb(self.env.LIDAR_LINE_COLOR)
         self.lidar_filtered_points_color: Color = (64, 224, 208)
@@ -558,40 +569,68 @@ class MultiRobotSimulator:
     # ------------------------------------------------------------------
     def _draw_robot(self, robot: RobotState) -> None:
         position = robot.position
-        body_rect = self._square_rect(position, self.robot_radius_pixels)
-        pygame.draw.rect(
-            self.env.robot_and_lidar_layer,
-            robot.color,
-            body_rect,
+        center_x, center_y = position
+        forward_x = -math.sin(robot.theta)
+        forward_y = -math.cos(robot.theta)
+        right_x = math.cos(robot.theta)
+        right_y = -math.sin(robot.theta)
+
+        front_offset_x = forward_x * self.robot_body_half_height
+        front_offset_y = forward_y * self.robot_body_half_height
+        right_offset_x = right_x * self.robot_body_half_width
+        right_offset_y = right_y * self.robot_body_half_width
+
+        corners = [
+            (
+                center_x + front_offset_x + right_offset_x,
+                center_y + front_offset_y + right_offset_y,
+            ),
+            (
+                center_x + front_offset_x - right_offset_x,
+                center_y + front_offset_y - right_offset_y,
+            ),
+            (
+                center_x - front_offset_x - right_offset_x,
+                center_y - front_offset_y - right_offset_y,
+            ),
+            (
+                center_x - front_offset_x + right_offset_x,
+                center_y - front_offset_y + right_offset_y,
+            ),
+        ]
+        point_list = [(int(round(x)), int(round(y))) for x, y in corners]
+
+        surface = self.env.robot_and_lidar_layer
+        pygame.draw.polygon(surface, robot.color, point_list)
+        pygame.draw.polygon(surface, brighten_color(robot.color), point_list, width=2)
+
+        pygame.draw.circle(
+            surface,
+            brighten_color(robot.color),
+            (int(round(center_x)), int(round(center_y))),
+            max(1, int(round(self.robot_safety_radius_pixels))),
+            width=2,
         )
+
         head_position = self._compute_orientation_endpoint(
             position, robot.theta, self.robot_frame_radius
         )
-        frame_rect = self._square_rect(position, self.robot_frame_radius)
-        pygame.draw.rect(
-            self.env.robot_and_lidar_layer,
-            robot.color,
-            frame_rect,
-            width=2,
-        )
         pygame.draw.line(
-            self.env.robot_and_lidar_layer,
+            surface,
             (255, 255, 255),
-            (int(position[0]), int(position[1])),
-            (int(head_position[0]), int(head_position[1])),
+            (int(round(center_x)), int(round(center_y))),
+            (int(round(head_position[0])), int(round(head_position[1]))),
             width=2,
         )
         if (
             robot is self.robot_states[self.selected_robot_index]
             and not self.policy_control_active
         ):
-            selection_rect = self._square_rect(
-                position, self.robot_frame_radius + 6
-            )
-            pygame.draw.rect(
-                self.env.robot_and_lidar_layer,
+            pygame.draw.circle(
+                surface,
                 (0, 255, 0),
-                selection_rect,
+                (int(round(center_x)), int(round(center_y))),
+                max(1, int(round(self.robot_frame_radius + 6))),
                 width=2,
             )
 
@@ -747,7 +786,7 @@ class MultiRobotSimulator:
         ratio = min(velocity / v_max, 1.0)
 
         bar_width = max(20, int(round(self.robot_frame_radius * 2)))
-        bar_height = max(6, int(round(self.robot_radius_pixels * 0.4)))
+        bar_height = max(6, int(round(self.robot_body_height_pixels * 0.2)))
         bar_offset = self.robot_frame_radius + bar_height + 6
 
         bar_left = robot.position[0] - bar_width / 2
@@ -791,7 +830,7 @@ class MultiRobotSimulator:
 
     def _draw_brake_overlay(self, robot: RobotState) -> None:
         if self._brake_font is None:
-            font_size = max(24, int(round(self.robot_radius_pixels*2)))
+            font_size = max(24, int(round(self.robot_safety_radius_pixels * 2)))
             self._brake_font = pygame.font.SysFont("arial", font_size, bold=True)
 
         font = self._brake_font
@@ -815,7 +854,7 @@ class MultiRobotSimulator:
             self.env.robot_and_lidar_layer,
             color,
             (int(robot.target[0]), int(robot.target[1])),
-            max(1, int(round(self.robot_radius_pixels))),
+            max(1, int(round(self.robot_frame_radius))),
             width=2,
         )
         if robot.target_theta is not None:
@@ -1305,10 +1344,14 @@ class MultiRobotSimulator:
             if other is robot:
                 continue
 
-            pygame.draw.rect(
+            pygame.draw.circle(
                 detection_surface,
                 self.obstacle_color_rgb,
-                self._square_rect(other.position, self.robot_frame_radius),
+                (
+                    int(round(other.position[0])),
+                    int(round(other.position[1])),
+                ),
+                max(1, int(round(self.robot_frame_radius))),
             )
 
         raw_sensor_data = robot.sensor.sense_obstacles(
