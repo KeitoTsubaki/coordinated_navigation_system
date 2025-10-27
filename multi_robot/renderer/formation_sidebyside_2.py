@@ -334,7 +334,7 @@ class FormationManager:
         if spacing is None:
             spacing = simulator.default_formation_spacing
 
-        weights = weights or (1.0, 1.0, 0.5, 0.3, 1.0)
+        weights = weights or (0.5, 0.5, 0.5, 0.3, 1.0)
         ego_index = ego_index if ego_index is not None else simulator.selected_robot_index
         if ego_index is not None and not (0 <= ego_index < len(simulator.robot_states)):
             raise IndexError("ego_index is out of range")

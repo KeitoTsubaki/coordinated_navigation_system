@@ -17,7 +17,7 @@ speed_adjustment:
   eta_d: 2.0
   k_d: 30
   omega_fixed: 1.2566370614 # 0.4 * pi rad/s
-  T_df: 0.5
+  T_df: 0.6
 robot:
   radius_m: 0.4          # ロボットの半径（m）
   robot_color: "#1492C7"  # RGBでロボットの色

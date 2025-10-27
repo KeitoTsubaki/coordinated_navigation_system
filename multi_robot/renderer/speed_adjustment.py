@@ -111,7 +111,8 @@ def adjust_velocity(
         omega_f = math.copysign(omega_magnitude, theta_f)
     omega_f = float(_clip(omega_f, -omega_max, omega_max))
     # print(omega_f)
-    blend = min(abs(d_o), 1.0)
+    blend = min(abs(2 * d_o), 1.0)
+    print(blend)
     omega_target = omega_e + blend * (omega_f - omega_e)
     omega_a = float(_clip(omega_target, -omega_max, omega_max))
     return v_a, omega_a
