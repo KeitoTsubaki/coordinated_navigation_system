@@ -117,5 +117,122 @@ def adjust_velocity(
     return v_a, omega_a
 
 
-__all__ = ["SpeedAdjustmentParameters", "adjust_velocity"]
+def plot_speed_adjustment_heatmap(
+    theta_range: tuple[float, float] = (-math.pi, math.pi),
+    distance_range: tuple[float, float] = (0.0, 2.0),
+    *,
+    samples_theta: int = 181,
+    samples_distance: int = 100,
+    parameters: SpeedAdjustmentParameters | Mapping[str, float] | None = None,
+    v_e: float = 1.0,
+    omega_e: float = 0.0,
+    d_o: float = 0.0,
+    v_max: float = 1.0,
+    omega_max: float = math.pi,
+):
+    """Visualise the attenuation applied by :func:`adjust_velocity`.
+
+    The helper samples the provided ``theta`` and ``distance`` ranges on a
+    regular grid and computes the forward speed ratio ``v_a / v_max`` for each
+    point. The resulting array is rendered as a heatmap using matplotlib where
+    warm colours indicate regions with higher executable velocity and cooler
+    colours highlight stronger attenuation.
+
+    Parameters
+    ----------
+    theta_range:
+        Inclusive range of heading errors (in radians) used for the horizontal
+        axis of the heatmap. Defaults to ``[-π, π]``.
+    distance_range:
+        Inclusive range of formation distance errors (in metres) used for the
+        vertical axis of the heatmap.
+    samples_theta / samples_distance:
+        Number of discrete samples for the respective axes. A minimum of two
+        samples is enforced so the grid has meaningful area.
+    parameters:
+        Optional :class:`SpeedAdjustmentParameters` instance or mapping used to
+        configure the constraint gains. When omitted, the defaults from the
+        dataclass are applied.
+    v_e, omega_e, d_o, v_max, omega_max:
+        Additional arguments forwarded to :func:`adjust_velocity` when
+        computing the attenuation field.
+
+    Returns
+    -------
+    tuple(matplotlib.figure.Figure, matplotlib.axes.Axes)
+        The figure and axis containing the rendered heatmap. The function keeps
+        matplotlib imports local so that the visualisation dependencies remain
+        optional for consumers who only require the numerical helper.
+    """
+
+    import matplotlib.pyplot as plt
+
+    if samples_theta < 2 or samples_distance < 2:
+        raise ValueError("At least two samples are required for each axis.")
+
+    if parameters is None:
+        params = SpeedAdjustmentParameters()
+    elif isinstance(parameters, SpeedAdjustmentParameters):
+        params = parameters
+    else:
+        params = SpeedAdjustmentParameters.from_mapping(parameters)
+
+    theta_min, theta_max = theta_range
+    distance_min, distance_max = distance_range
+
+    theta_step = (theta_max - theta_min) / (samples_theta - 1)
+    distance_step = (distance_max - distance_min) / (samples_distance - 1)
+
+    theta_values = [theta_min + idx * theta_step for idx in range(samples_theta)]
+    distance_values = [
+        distance_min + idx * distance_step for idx in range(samples_distance)
+    ]
+
+    attenuation_grid = []
+    vmax_safe = v_max if v_max > 0.0 else 1.0
+
+    for distance in distance_values:
+        row = []
+        for theta in theta_values:
+            v_adjusted, _ = adjust_velocity(
+                v_e=v_e,
+                omega_e=omega_e,
+                d_f=distance,
+                d_o=d_o,
+                theta_f=theta,
+                eta_theta=params.eta_theta,
+                eta_d=params.eta_d,
+                k_d=params.k_d,
+                omega_fixed=params.omega_fixed,
+                t_df=params.t_df,
+                v_max=v_max,
+                omega_max=omega_max,
+            )
+            row.append(v_adjusted / vmax_safe)
+        attenuation_grid.append(row)
+
+    fig, ax = plt.subplots()
+    heatmap = ax.imshow(
+        attenuation_grid,
+        origin="lower",
+        extent=(theta_min, theta_max, distance_min, distance_max),
+        aspect="auto",
+        vmin=0.0,
+        vmax=1.0,
+        cmap="viridis",
+    )
+
+    ax.set_xlabel("Heading error θ_f [rad]")
+    ax.set_ylabel("Formation distance d_f [m]")
+    ax.set_title("Speed adjustment attenuation (v_a / v_max)")
+    fig.colorbar(heatmap, ax=ax, label="Speed ratio")
+
+    return fig, ax
+
+
+__all__ = [
+    "SpeedAdjustmentParameters",
+    "adjust_velocity",
+    "plot_speed_adjustment_heatmap",
+]
 
