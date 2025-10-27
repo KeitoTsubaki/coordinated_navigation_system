@@ -228,8 +228,13 @@ def plot_speed_adjustment_heatmap(
     ax.set_title("Speed adjustment attenuation (v_a / v_max)")
     fig.colorbar(heatmap, ax=ax, label="Speed ratio")
 
+    plt.show()
+
     return fig, ax
 
+
+if __name__ == "__main__":
+    plot_speed_adjustment_heatmap()
 
 __all__ = [
     "SpeedAdjustmentParameters",
