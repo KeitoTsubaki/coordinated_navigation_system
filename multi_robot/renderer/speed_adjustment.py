@@ -13,6 +13,47 @@ def _clip(value: float, lower: float, upper: float) -> float:
     return min(max(value, lower), upper)
 
 
+def _compute_attenuation_terms(
+    *,
+    theta_f: float,
+    d_f: float,
+    eta_theta: float,
+    eta_d: float,
+    k_d: float,
+    t_df: float,
+) -> tuple[float, float, float]:
+    """Return the attenuation components ``(l_theta, l_d, l_t)``.
+
+    The helper encapsulates the shared maths between :func:`adjust_velocity` and
+    :func:`plot_speed_adjustment_heatmap`. Keeping the implementation in a
+    single place avoids subtle inconsistencies when tweaking the formation
+    control gains or the mathematical safeguards around the edge cases (for
+    instance zero distances or invalid configuration values).
+    """
+
+    base = (-math.cos(theta_f) + 1.0) / 2.0
+    base = _clip(base, 0.0, 1.0)
+    eta_theta = max(eta_theta, 0.0)
+    l_theta = float(base**eta_theta) if eta_theta != 0.0 else 1.0
+
+    if d_f < t_df and d_f > 0.0 and t_df > 0.0:
+        inv_distance = 1.0 / max(d_f, 1e-6)
+        inv_threshold = 1.0 / t_df
+        distance_term = max(inv_distance - inv_threshold, 0.0)
+        eta_d = max(eta_d, 0.0)
+        if eta_d == 0.0:
+            distance_power = 1.0
+        else:
+            distance_power = distance_term**eta_d
+        divisor = k_d if k_d > 0.0 else 1.0
+        l_d = min(distance_power / divisor, 1.0)
+    else:
+        l_d = 0.0
+
+    l_t = max(l_theta - l_d, 0.0)
+    return l_theta, l_d, l_t
+
+
 @dataclass(frozen=True)
 class SpeedAdjustmentParameters:
     """Container for the formation-aware velocity adjustment gains."""
@@ -81,26 +122,14 @@ def adjust_velocity(
     error.
     """
 
-    base = (-math.cos(theta_f) + 1.0) / 2.0
-    base = _clip(base, 0.0, 1.0)
-    eta_theta = max(eta_theta, 0.0)
-    l_theta = float(base**eta_theta) if eta_theta != 0.0 else 1.0
-
-    if d_f < t_df and d_f > 0.0 and t_df > 0.0:
-        inv_distance = 1.0 / max(d_f, 1e-6)
-        inv_threshold = 1.0 / t_df
-        distance_term = max(inv_distance - inv_threshold, 0.0)
-        eta_d = max(eta_d, 0.0)
-        if eta_d == 0.0:
-            distance_power = 1.0
-        else:
-            distance_power = distance_term**eta_d
-        divisor = k_d if k_d > 0.0 else 1.0
-        l_d = min(distance_power / divisor, 1.0)
-    else:
-        l_d = 0.0
-
-    l_t = max(l_theta - l_d, 0.0)
+    _, _, l_t = _compute_attenuation_terms(
+        theta_f=theta_f,
+        d_f=d_f,
+        eta_theta=eta_theta,
+        eta_d=eta_d,
+        k_d=k_d,
+        t_df=t_df,
+    )
 
     v_a = float(_clip(v_e * (1.0 - l_t), 0.0, v_max))
 
@@ -119,44 +148,33 @@ def adjust_velocity(
 
 
 def plot_speed_adjustment_heatmap(
-    theta_range: tuple[float, float] = (-math.pi, math.pi),
-    distance_range: tuple[float, float] = (0.0, 2.0),
+    x_range: tuple[float, float] = (-2.0, 2.0),
+    y_range: tuple[float, float] = (-2.0, 2.0),
     *,
-    samples_theta: int = 181,
-    samples_distance: int = 100,
+    samples_x: int = 200,
+    samples_y: int = 200,
     parameters: SpeedAdjustmentParameters | Mapping[str, float] | None = None,
-    v_e: float = 1.0,
-    omega_e: float = 0.0,
-    d_o: float = 0.0,
-    v_max: float = 1.0,
-    omega_max: float = math.pi,
 ):
     """Visualise the attenuation applied by :func:`adjust_velocity`.
 
-    The helper samples the provided ``theta`` and ``distance`` ranges on a
-    regular grid and computes the forward speed ratio ``v_a / v_max`` for each
-    point. The resulting array is rendered as a heatmap using matplotlib where
-    warm colours indicate regions with higher executable velocity and cooler
-    colours highlight stronger attenuation.
+    The helper samples the provided ``x`` and ``y`` ranges on a regular grid and
+    evaluates the attenuation term ``l_t`` derived from :func:`adjust_velocity`
+    at each location. The resulting array is rendered as a heatmap using
+    matplotlib where warm colours indicate strong reduction of the commanded
+    speed and cooler regions correspond to negligible attenuation.
 
     Parameters
     ----------
-    theta_range:
-        Inclusive range of heading errors (in radians) used for the horizontal
-        axis of the heatmap. Defaults to ``[-π, π]``.
-    distance_range:
-        Inclusive range of formation distance errors (in metres) used for the
-        vertical axis of the heatmap.
-    samples_theta / samples_distance:
+    x_range, y_range:
+        Inclusive ranges of the sampled workspace (in metres) used for the
+        horizontal and vertical axes of the heatmap respectively.
+    samples_x / samples_y:
         Number of discrete samples for the respective axes. A minimum of two
         samples is enforced so the grid has meaningful area.
     parameters:
         Optional :class:`SpeedAdjustmentParameters` instance or mapping used to
         configure the constraint gains. When omitted, the defaults from the
         dataclass are applied.
-    v_e, omega_e, d_o, v_max, omega_max:
-        Additional arguments forwarded to :func:`adjust_velocity` when
-        computing the attenuation field.
 
     Returns
     -------
@@ -168,7 +186,7 @@ def plot_speed_adjustment_heatmap(
 
     import matplotlib.pyplot as plt
 
-    if samples_theta < 2 or samples_distance < 2:
+    if samples_x < 2 or samples_y < 2:
         raise ValueError("At least two samples are required for each axis.")
 
     if parameters is None:
@@ -178,55 +196,48 @@ def plot_speed_adjustment_heatmap(
     else:
         params = SpeedAdjustmentParameters.from_mapping(parameters)
 
-    theta_min, theta_max = theta_range
-    distance_min, distance_max = distance_range
+    x_min, x_max = x_range
+    y_min, y_max = y_range
 
-    theta_step = (theta_max - theta_min) / (samples_theta - 1)
-    distance_step = (distance_max - distance_min) / (samples_distance - 1)
+    x_step = (x_max - x_min) / (samples_x - 1)
+    y_step = (y_max - y_min) / (samples_y - 1)
 
-    theta_values = [theta_min + idx * theta_step for idx in range(samples_theta)]
-    distance_values = [
-        distance_min + idx * distance_step for idx in range(samples_distance)
-    ]
+    x_values = [x_min + idx * x_step for idx in range(samples_x)]
+    y_values = [y_min + idx * y_step for idx in range(samples_y)]
 
     attenuation_grid = []
-    vmax_safe = v_max if v_max > 0.0 else 1.0
 
-    for distance in distance_values:
+    for y in y_values:
         row = []
-        for theta in theta_values:
-            v_adjusted, _ = adjust_velocity(
-                v_e=v_e,
-                omega_e=omega_e,
-                d_f=distance,
-                d_o=d_o,
-                theta_f=theta,
+        for x in x_values:
+            theta_f = math.atan2(y, x)
+            d_f = math.hypot(x, y)
+            _, _, l_t = _compute_attenuation_terms(
+                theta_f=theta_f,
+                d_f=d_f,
                 eta_theta=params.eta_theta,
                 eta_d=params.eta_d,
                 k_d=params.k_d,
-                omega_fixed=params.omega_fixed,
                 t_df=params.t_df,
-                v_max=v_max,
-                omega_max=omega_max,
             )
-            row.append(v_adjusted / vmax_safe)
+            row.append(l_t)
         attenuation_grid.append(row)
 
     fig, ax = plt.subplots()
     heatmap = ax.imshow(
         attenuation_grid,
         origin="lower",
-        extent=(theta_min, theta_max, distance_min, distance_max),
+        extent=(x_min, x_max, y_min, y_max),
         aspect="auto",
         vmin=0.0,
         vmax=1.0,
         cmap="viridis",
     )
 
-    ax.set_xlabel("Heading error θ_f [rad]")
-    ax.set_ylabel("Formation distance d_f [m]")
-    ax.set_title("Speed adjustment attenuation (v_a / v_max)")
-    fig.colorbar(heatmap, ax=ax, label="Speed ratio")
+    ax.set_xlabel("x position [m]")
+    ax.set_ylabel("y position [m]")
+    ax.set_title("Attenuation term l_t over the workspace")
+    fig.colorbar(heatmap, ax=ax, label="l_t")
 
     plt.show()
 
