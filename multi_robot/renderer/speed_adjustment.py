@@ -97,6 +97,7 @@ def adjust_velocity(
     d_o: float,
     theta_f: float,
     target_is_inner: bool,
+    obstacle_is_close: bool,
     eta_theta: float,
     eta_d: float,
     k_d: float,
@@ -146,6 +147,8 @@ def adjust_velocity(
     omega_f = float(_clip(omega_f, -omega_max, omega_max))
     # print(omega_f)
     multiplier = 2 if target_is_inner else 2.5
+    if obstacle_is_close:
+        multiplier = 1
     blend = min(abs(multiplier * d_o), 1.0)
     # print(blend)
     omega_target = omega_e + blend * (omega_f - omega_e)

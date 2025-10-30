@@ -237,6 +237,8 @@ class PolicyController:
                 # distance to the formation target.
                 d_o = -d_f * math.sin(theta_f)
                 env_params = self.simulator.env
+                closest_distance, _ = robot.closest_obstacle
+                obstacle_is_close = closest_distance <= env_params.ROBOT_RADIUS_M * 3
                 v_a, omega_a = adjust_velocity(
                     v_e,
                     omega_e,
@@ -244,6 +246,7 @@ class PolicyController:
                     d_o,
                     theta_f,
                     target_is_inner,
+                    obstacle_is_close,
                     env_params.ETA_THETA,
                     env_params.ETA_D,
                     env_params.K_D,
@@ -252,21 +255,6 @@ class PolicyController:
                     env_params.V_MAX,
                     env_params.OMEGA_MAX,
                 )
-                closest_distance, _ = robot.closest_obstacle
-                if math.isfinite(closest_distance):
-                    obstacle_buffer = env_params.ROBOT_RADIUS_M * 1.2
-                    if closest_distance <= obstacle_buffer:
-                        # Preserve the nominal angular command whenever an obstacle
-                        # is within the immediate buffer.  This bypasses the
-                        # blending performed by ``adjust_velocity`` so that the
-                        # executor receives ``omega_e`` unchanged.
-                        omega_a = omega_e
-                # if translation_blocked:
-                #     # Zero the nominal forward speed before applying the acceleration limits.
-                #     v_a = 0.0
-                # v_o, omega_o = self._action_to_executable_action(
-                #     v_a, omega_a, control_state
-                # )
             else:
                 v_a, omega_a = v_e, omega_e
             
