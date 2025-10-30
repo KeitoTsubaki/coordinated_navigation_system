@@ -40,7 +40,7 @@ robot:
 formation:
   robot_count: 2          # デフォルトで生成するロボット台数
   default_type: "line"  # 既定の隊形タイプ
-  spacing_m: 1.3          # ロボット間隔（m）
+  spacing_m: 1.5          # ロボット間隔（m）
   centroid_sampling_interval: 0.5  # C3: サンプリング周期（秒）
   look_back_steps: 2                # C3: 参照する過去サンプル数
   angular_tolerance: 5.0          # C3: 直交角度の許容誤差（度）
