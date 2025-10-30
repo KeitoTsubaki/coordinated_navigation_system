@@ -239,6 +239,7 @@ class InfoPanelRenderer:
             ("W", "Move forward"),
             ("Q / E", "Rotate"),
             ("C", "Cycle map"),
+            ("R", "Restart current map"),
             ("SPACE", "Reset simulation"),
             ("L", "Toggle LiDAR"),
             ("P", "Toggle path"),
