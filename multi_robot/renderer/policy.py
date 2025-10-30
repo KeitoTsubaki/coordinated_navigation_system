@@ -36,6 +36,39 @@ class PolicyRobotControlState:
     current_omega: float = 0.0
 
 
+def _determine_target_is_inner(
+    robot_position: Tuple[float, float],
+    target: Tuple[float, float],
+    *,
+    formation_center: Optional[Tuple[float, float]] = None,
+) -> bool:
+    """Return ``True`` when the formation target is no farther from the center.
+
+    The renderer treats a target as "inner" whenever its distance to the
+    formation centroid is shorter than or equal to the current robot's distance.
+    This matches the operators' rule of thumb: assignments closer to the center
+    should tighten the lateral gain, whereas targets further away remain on the
+    looser "outer" blend.
+    """
+
+    if formation_center is None:
+        return False
+
+    cx, cy = formation_center
+    rx, ry = robot_position
+    tx, ty = target
+
+    target_vec_x = tx - cx
+    target_vec_y = ty - cy
+    robot_vec_x = rx - cx
+    robot_vec_y = ry - cy
+
+    target_dist_sq = target_vec_x * target_vec_x + target_vec_y * target_vec_y
+    robot_dist_sq = robot_vec_x * robot_vec_x + robot_vec_y * robot_vec_y
+
+    return target_dist_sq <= robot_dist_sq
+
+
 class PolicyController:
     """Applies a trained policy to control a robot inside the simulator."""
 
@@ -183,6 +216,15 @@ class PolicyController:
                 robot_index
             )
             if formation_target is not None:
+                formation_plan = self.simulator.formation.current_plan
+                formation_center = (
+                    formation_plan.center if formation_plan is not None else None
+                )
+                target_is_inner = _determine_target_is_inner(
+                    robot.position,
+                    formation_target,
+                    formation_center=formation_center,
+                )
                 d_f, theta_f = self._compute_goal_info_for_target(
                     robot, formation_target
                 )
@@ -201,6 +243,7 @@ class PolicyController:
                     d_f,
                     d_o,
                     theta_f,
+                    target_is_inner,
                     env_params.ETA_THETA,
                     env_params.ETA_D,
                     env_params.K_D,
