@@ -96,6 +96,7 @@ def adjust_velocity(
     d_f: float,
     d_o: float,
     theta_f: float,
+    target_is_inner: bool,
     eta_theta: float,
     eta_d: float,
     k_d: float,
@@ -114,12 +115,16 @@ def adjust_velocity(
     * ``l_t = max(l_theta - l_d, 0)``
 
     The helper then computes ``v_a = K[v_e * (1 - l_t)]`` and
-    ``omega_a = K[omega_e + min(|d_o|, 1) * (omega_f - omega_e)]`` with ``K``
+    ``omega_a = K[omega_e + min(multiplier * |d_o|, 1) * (omega_f - omega_e)]``
+    with ``K``
     implemented via simple saturation to the platform limits ``[0, V_MAX]`` and
     ``[-OMEGA_MAX, OMEGA_MAX]``. ``omega_f`` uses a fixed magnitude (defaulting
     to ``0.4π``) and follows the sign of ``theta_f`` so the robot turns at a
     consistent speed toward the formation target regardless of the heading
-    error.
+    error. ``target_is_inner`` toggles the lateral blending gain between inner
+    and outer targets, tightening the turn when the assignment lies within the
+    formation hull—typically when the target is at least as close to the
+    formation centre as the robot itself.
     """
 
     _, _, l_t = _compute_attenuation_terms(
@@ -140,7 +145,8 @@ def adjust_velocity(
         omega_f = math.copysign(omega_magnitude, theta_f)
     omega_f = float(_clip(omega_f, -omega_max, omega_max))
     # print(omega_f)
-    blend = min(abs(2 * d_o), 1.0)
+    multiplier = 3.0 if target_is_inner else 2.0
+    blend = min(abs(multiplier * d_o), 1.0)
     # print(blend)
     omega_target = omega_e + blend * (omega_f - omega_e)
     omega_a = float(_clip(omega_target, -omega_max, omega_max))
