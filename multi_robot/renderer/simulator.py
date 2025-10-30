@@ -971,6 +971,46 @@ class MultiRobotSimulator:
         if not target_positions:
             return
 
+        map_type = self.env.map_type
+        if map_type == "trap_shaped":
+            min_distance_m = self.env.T_DT_M_TRAP_SHAPED
+        elif map_type == "zigzag":
+            min_distance_m = self.env.T_DT_M_ZIGZAG
+        elif map_type == "random":
+            min_distance_m = self.env.T_DT_M_RANDOM
+        else:
+            min_distance_m = self.env.T_DT_M_EMPTY
+        min_distance_pixels = min_distance_m * self.env.PIXELS_PER_METER
+
+        def targets_are_valid(candidate_targets: Sequence[Position]) -> bool:
+            return all(
+                math.hypot(
+                    float(target[0]) - float(robot.position[0]),
+                    float(target[1]) - float(robot.position[1]),
+                )
+                >= min_distance_pixels
+                for robot, target in zip(self.robot_states, candidate_targets)
+            )
+
+        initial_positions = list(target_positions)
+        max_attempts = 10
+        attempt = 0
+        while (
+            target_positions
+            and not targets_are_valid(target_positions)
+            and attempt < max_attempts
+        ):
+            attempt += 1
+            new_positions = self.formation.generate_randomized_positions(
+                target_spawn_area, len(self.robot_states), spacing
+            )
+            if not new_positions:
+                break
+            target_positions = new_positions
+
+        if target_positions and not targets_are_valid(target_positions):
+            target_positions = initial_positions
+
         for index, (robot, target) in enumerate(zip(self.robot_states, target_positions)):
             heading = self._infer_target_heading(robot.position, target)
             robot.target = target
