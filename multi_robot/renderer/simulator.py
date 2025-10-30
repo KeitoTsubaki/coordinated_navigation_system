@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import math
 from collections import deque
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -155,6 +156,8 @@ class MultiRobotSimulator:
         self._info_panel_window_size: Optional[Tuple[int, int]] = None
         self._info_panel_texture_size: Optional[Tuple[int, int]] = None
 
+        self._restart_snapshot: Optional[Dict[str, Any]] = None
+
         total_width = self.env.SCREEN_W + self.info_panel.width
         if self.env.render_mode == "human":
             pygame.display.set_mode((self.env.SCREEN_W, self.env.SCREEN_H))
@@ -285,10 +288,36 @@ class MultiRobotSimulator:
 
     def set_map(self, map_type: str) -> None:
         self._invalidate_obstacle_cache()
+        self._capture_restart_snapshot(map_type)
         self.env.reset(map_type)
         self.clear_paths()
         self._recenter_robots()
         self.formation.clear()
+
+    def _capture_restart_snapshot(self, map_type: str) -> None:
+        rng_state = copy.deepcopy(self.env.np_random.bit_generator.state)
+        self._restart_snapshot = {
+            "map_type": map_type,
+            "rng_state": rng_state,
+        }
+
+    def _restart_current_map(self) -> bool:
+        snapshot = self._restart_snapshot
+        if snapshot is None:
+            print("Restart unavailable: no map snapshot captured yet.")
+            return False
+
+        map_type = snapshot["map_type"]
+        rng_state = snapshot["rng_state"]
+
+        self.env.np_random.bit_generator.state = copy.deepcopy(rng_state)
+        self._invalidate_obstacle_cache()
+        self._capture_restart_snapshot(map_type)
+        self.env.reset(map_type)
+        self.clear_paths()
+        self._recenter_robots()
+        self.formation.clear()
+        return True
 
     # ------------------------------------------------------------------
     # Rendering utilities
@@ -464,6 +493,9 @@ class MultiRobotSimulator:
                     self._cycle_map()
                 elif event.key == pygame.K_SPACE:
                     self.set_map(self.env.map_type)
+                elif event.key == pygame.K_r:
+                    if not self._restart_current_map():
+                        print("Press SPACE to generate a map before restarting with R.")
                 elif event.key == pygame.K_TAB:
                     self._select_next_robot()
                 elif pygame.K_1 <= event.key <= pygame.K_9:
