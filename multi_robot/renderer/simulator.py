@@ -665,7 +665,7 @@ class MultiRobotSimulator:
             return
 
         center_x, center_y = robot.position
-        radius = self.robot_frame_radius + 10.0
+        radius = self.robot_frame_radius + 20.0
         direction_x = -math.sin(robot.theta)
         direction_y = -math.cos(robot.theta)
         forward_angle = math.atan2(direction_y, direction_x)
