@@ -252,6 +252,15 @@ class PolicyController:
                     env_params.V_MAX,
                     env_params.OMEGA_MAX,
                 )
+                closest_distance, _ = robot.closest_obstacle
+                if math.isfinite(closest_distance):
+                    obstacle_buffer = env_params.ROBOT_RADIUS_M * 1.2
+                    if closest_distance <= obstacle_buffer:
+                        # Preserve the nominal angular command whenever an obstacle
+                        # is within the immediate buffer.  This bypasses the
+                        # blending performed by ``adjust_velocity`` so that the
+                        # executor receives ``omega_e`` unchanged.
+                        omega_a = omega_e
                 # if translation_blocked:
                 #     # Zero the nominal forward speed before applying the acceleration limits.
                 #     v_a = 0.0
