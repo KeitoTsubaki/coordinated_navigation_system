@@ -466,24 +466,65 @@ class PolicyController:
 
     def _should_block_translation(self, robot: RobotState) -> bool:
         robot_radius = self.simulator.robot_frame_radius
+
+        def heading_vector(state: RobotState) -> Tuple[float, float]:
+            return (-math.sin(state.theta), -math.cos(state.theta))
+
+        def intersection_point(
+            start_a: Tuple[float, float],
+            end_a: Tuple[float, float],
+            start_b: Tuple[float, float],
+            end_b: Tuple[float, float],
+        ) -> Optional[Tuple[Tuple[float, float], float, float]]:
+            ax, ay = start_a
+            bx, by = start_b
+            r = (end_a[0] - ax, end_a[1] - ay)
+            s = (end_b[0] - bx, end_b[1] - by)
+            r_cross_s = r[0] * s[1] - r[1] * s[0]
+            if abs(r_cross_s) < 1e-8:
+                return None
+            qp = (bx - ax, by - ay)
+            qp_cross_r = qp[0] * r[1] - qp[1] * r[0]
+            qp_cross_s = qp[0] * s[1] - qp[1] * s[0]
+            t = qp_cross_s / r_cross_s
+            u = qp_cross_r / r_cross_s
+            if 0.0 <= t <= 1.0 and 0.0 <= u <= 1.0:
+                return ((ax + t * r[0], ay + t * r[1]), t, u)
+            return None
+
         for other in self.simulator.robot_states:
             if other is robot:
                 continue
+
             other_radius = self.simulator.robot_frame_radius
-            dx_pixels = other.position[0] - robot.position[0]
-            dy_pixels = other.position[1] - robot.position[1]
-            distance = math.hypot(dx_pixels, dy_pixels)
-            if distance <= other_radius + 1.5 * robot_radius:
-                dy_global = -dy_pixels
-                global_angle = math.atan2(dy_global, dx_pixels)
-                robot_global_angle = robot.theta + math.pi / 2
-                angle_diff = (
-                    (global_angle - robot_global_angle + math.pi) % (2 * math.pi)
-                    - math.pi
-                )
-                if abs(angle_diff) <= math.radians(20.0):
-                    # Respect the requested 1.5× radius buffer when neighbours are ahead.
-                    return True
+            max_intersection_distance = other_radius + 1.5 * robot_radius
+
+            self_heading = heading_vector(robot)
+            other_heading = heading_vector(other)
+
+            self_end = (
+                robot.position[0] + self_heading[0] * max_intersection_distance,
+                robot.position[1] + self_heading[1] * max_intersection_distance,
+            )
+            other_end = (
+                other.position[0] + other_heading[0] * max_intersection_distance,
+                other.position[1] + other_heading[1] * max_intersection_distance,
+            )
+
+            result = intersection_point(robot.position, self_end, other.position, other_end)
+            if result is None:
+                continue
+
+            intersection, t, _ = result
+            if t <= 0.0:
+                continue
+
+            distance_to_intersection = math.hypot(
+                intersection[0] - robot.position[0], intersection[1] - robot.position[1]
+            )
+            if distance_to_intersection <= max_intersection_distance:
+                return True
+
         return False
 
     def _process_lidar_data(self, robot: RobotState) -> np.ndarray:
