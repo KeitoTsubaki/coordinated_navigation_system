@@ -20,6 +20,8 @@ from geometry_msgs.msg import PoseStamped, Twist
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import PointCloud2
 
+from .policy_controller import PolicyVelocityController
+
 
 @dataclass
 class FormationState:
@@ -41,7 +43,7 @@ class CoordinatedNavigationNode(Node):
         robot_namespace: Optional[str] = None,
         robot_id: Optional[str] = None,
         formation_msg_type: Optional[Type[object]] = None,
-        timer_period: float = 0.5,
+        timer_period: float = 0.1,
     ) -> None:
         super().__init__(node_name)
 
@@ -49,9 +51,23 @@ class CoordinatedNavigationNode(Node):
         self.declare_parameter("robot_id", "1")
         self.declare_parameter("formation_msg_module", "coordinated_navigation_interfaces.msg")
         self.declare_parameter("formation_msg_name", "Formation")
+        self.declare_parameter("policy.model_path", "")
+        self.declare_parameter("policy.step_period", timer_period)
+        self.declare_parameter("policy.device", "cpu")
 
         self._robot_namespace = self._normalise_robot_namespace(robot_namespace, robot_id)
         self._formation_msg_type = self._resolve_formation_msg_type(formation_msg_type)
+
+        policy_model_path = self._parameter_string("policy.model_path")
+        policy_step_period = self._parameter_float("policy.step_period", timer_period)
+        policy_device = self._parameter_string("policy.device") or "cpu"
+
+        self._policy_controller = PolicyVelocityController(
+            model_path=policy_model_path,
+            step_period=policy_step_period,
+            logger=self.get_logger(),
+            device=policy_device,
+        )
 
         self.latest_target_pose: Optional[PoseStamped] = None
         self.latest_robot_pose: Optional[PoseStamped] = None
@@ -106,7 +122,9 @@ class CoordinatedNavigationNode(Node):
             cmd_vel_qos,
         )
 
-        self._coordination_timer = self.create_timer(timer_period, self._coordination_timer_callback)
+        self._coordination_timer = self.create_timer(
+            max(policy_step_period, 1e-3), self._coordination_timer_callback
+        )
 
     # ------------------------------------------------------------------
     # Initialisation helpers
@@ -136,6 +154,14 @@ class CoordinatedNavigationNode(Node):
     def _parameter_string(self, name: str) -> str:
         parameter_value = self.get_parameter(name).get_parameter_value()
         return parameter_value.string_value or ""
+
+    def _parameter_float(self, name: str, default: float) -> float:
+        parameter_value = self.get_parameter(name).get_parameter_value()
+        if parameter_value.type_ == parameter_value.Type.DOUBLE:
+            return float(parameter_value.double_value)
+        if parameter_value.type_ == parameter_value.Type.INTEGER:
+            return float(parameter_value.integer_value)
+        return float(default)
 
     @staticmethod
     def _format_namespace(namespace: str) -> str:
@@ -218,13 +244,47 @@ class CoordinatedNavigationNode(Node):
         self.latest_pointcloud = msg
 
     def _coordination_timer_callback(self) -> None:
-        if self.latest_target_pose is None:
-            self.get_logger().debug("Coordination timer tick - awaiting target pose")
+        if self._policy_controller is None:
+            self.get_logger().debug("Policy controller is not initialised")
             return
-        self.get_logger().debug(
-            "Coordination timer tick - target pose timestamp: %s",
-            self.latest_target_pose.header.stamp,
+
+        required_missing = []
+        if self.latest_target_pose is None:
+            required_missing.append("target pose")
+        if self.latest_robot_pose is None:
+            required_missing.append("robot pose")
+        if self.latest_pointcloud is None:
+            required_missing.append("pointcloud")
+
+        if required_missing:
+            self.get_logger().debug(
+                "Coordination timer waiting for %s",
+                ", ".join(required_missing),
+            )
+            return
+
+        twist = self._policy_controller.compute_velocity_command(
+            target_pose=self.latest_target_pose,
+            robot_pose=self.latest_robot_pose,
+            odometry=self.latest_odometry,
+            pointcloud=self.latest_pointcloud,
         )
+
+        if twist is None:
+            if self._policy_controller.last_error:
+                self.get_logger().warning(
+                    "Policy evaluation failed: %s", self._policy_controller.last_error
+                )
+            else:
+                self.get_logger().debug("Policy controller produced no command")
+            return
+
+        self.get_logger().debug(
+            "Publishing policy cmd_vel (v=%.3f m/s, omega=%.3f rad/s)",
+            twist.linear.x,
+            twist.angular.z,
+        )
+        self._cmd_vel_publisher.publish(twist)
 
     def _extract_formation_state(self, msg: object) -> Optional[FormationState]:
         """Convert a raw ROS message into a `FormationState` container."""
