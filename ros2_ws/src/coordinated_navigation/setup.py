@@ -27,6 +27,7 @@ setup(
     entry_points={
         "console_scripts": [
             "coordinated_navigation_node = coordinated_navigation.node:main",
+            "coordinated_navigation_policy_controller = coordinated_navigation.policy_controller:main",
         ],
     },
 )
