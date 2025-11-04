@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import importlib
-from typing import Optional, Sequence, Type
+from dataclasses import dataclass
+from typing import Optional, Sequence, Type, cast
 
 import rclpy
 from rclpy.any_msg import AnyMsg
@@ -18,6 +19,16 @@ from rclpy.qos import (
 from geometry_msgs.msg import PoseStamped, Twist
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import PointCloud2
+
+
+@dataclass
+class FormationState:
+    """Relevant details extracted from a `Formation` message."""
+
+    formation_id: str
+    theta: float
+    cost: float
+    header: Optional[object] = None
 
 
 class CoordinatedNavigationNode(Node):
@@ -44,7 +55,7 @@ class CoordinatedNavigationNode(Node):
 
         self.latest_target_pose: Optional[PoseStamped] = None
         self.latest_robot_pose: Optional[PoseStamped] = None
-        self.latest_formation: Optional[object] = None
+        self.latest_formation: Optional[FormationState] = None
         self.latest_odometry: Optional[Odometry] = None
         self.latest_pointcloud: Optional[PointCloud2] = None
 
@@ -184,7 +195,19 @@ class CoordinatedNavigationNode(Node):
 
     def _robot_formation_callback(self, msg: object) -> None:
         self.get_logger().debug("Formation update received")
-        self.latest_formation = msg
+        self.latest_formation = self._extract_formation_state(msg)
+        if self.latest_formation is None:
+            self.get_logger().warning(
+                "Formation message missing expected fields; ignoring update of type %s",
+                type(msg).__name__,
+            )
+        else:
+            self.get_logger().debug(
+                "Tracking formation '%s' (theta=%.3f rad, cost=%.3f)",
+                self.latest_formation.formation_id,
+                self.latest_formation.theta,
+                self.latest_formation.cost,
+            )
 
     def _robot_odometry_callback(self, msg: Odometry) -> None:
         self.get_logger().debug("Odometry update received")
@@ -201,6 +224,32 @@ class CoordinatedNavigationNode(Node):
         self.get_logger().debug(
             "Coordination timer tick - target pose timestamp: %s",
             self.latest_target_pose.header.stamp,
+        )
+
+    def _extract_formation_state(self, msg: object) -> Optional[FormationState]:
+        """Convert a raw ROS message into a `FormationState` container."""
+
+        if msg is None:
+            return None
+
+        required_fields = ("formation_id", "formation_theta", "optimization_cost")
+        missing_fields = [name for name in required_fields if not hasattr(msg, name)]
+        if missing_fields:
+            self.get_logger().debug(
+                "Formation message is missing fields %s", ", ".join(missing_fields)
+            )
+            return None
+
+        formation_id = cast(str, getattr(msg, "formation_id"))
+        formation_theta = cast(float, getattr(msg, "formation_theta"))
+        optimization_cost = cast(float, getattr(msg, "optimization_cost"))
+        header = getattr(msg, "header", None)
+
+        return FormationState(
+            formation_id=formation_id,
+            theta=float(formation_theta),
+            cost=float(optimization_cost),
+            header=header,
         )
 
 
