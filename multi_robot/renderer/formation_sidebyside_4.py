@@ -9,7 +9,7 @@ from typing import Deque, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pygame
-from scipy.optimize import linear_sum_assignment, minimize_scalar
+from scipy.optimize import linear_sum_assignment, minimize, minimize_scalar
 
 from .types import Color, FormationPlan, Position
 from .utils import brighten_color, with_alpha
@@ -319,22 +319,25 @@ class FormationManager:
         if not simulator.robot_states:
             raise ValueError("No robots available for formation optimisation")
 
-        center_x = sum(robot.position[0] for robot in simulator.robot_states) / len(
-            simulator.robot_states
-        )
-        center_y = sum(robot.position[1] for robot in simulator.robot_states) / len(
-            simulator.robot_states
-        )
-        center = (center_x, center_y)
-        self._record_centroid(center)
-
         if formation_type is None:
             formation_type = simulator.default_formation_type
 
         if spacing is None:
             spacing = simulator.default_formation_spacing
 
-        weights = weights or (1.0 , 0.8, 0.5, 0.3, 0.5)
+        center_x = sum(robot.position[0] for robot in simulator.robot_states) / len(
+            simulator.robot_states
+        )
+        center_y = sum(robot.position[1] for robot in simulator.robot_states) / len(
+            simulator.robot_states
+        )
+        current_center = (center_x, center_y)
+        center = self._refine_formation_center(
+            current_center, formation_type, spacing
+        )
+        self._record_centroid(center)
+
+        weights = weights or (1.0, 0.8, 0.5, 0.3, 0.5)
         ego_index = ego_index if ego_index is not None else simulator.selected_robot_index
         if ego_index is not None and not (0 <= ego_index < len(simulator.robot_states)):
             raise IndexError("ego_index is out of range")
@@ -388,6 +391,153 @@ class FormationManager:
             self.current_plan = plan
 
         return plan
+
+    def _evaluate_center_candidate(
+        self,
+        candidate: Position,
+        *,
+        current_center: Position,
+        team_radius: float,
+        search_radius: float,
+    ) -> Tuple[float, bool]:
+        """Return the cost for *candidate* and whether it is feasible."""
+
+        simulator = self.simulator
+        dx = float(candidate[0] - current_center[0])
+        dy = float(candidate[1] - current_center[1])
+        displacement = math.hypot(dx, dy)
+        if displacement > search_radius + 1e-6:
+            return float("inf"), False
+
+        clearance = simulator._distance_to_nearest_obstacle_map(candidate) - team_radius
+        if clearance <= 0.0:
+            return float("inf"), False
+
+        clearance_weight = float(
+            getattr(simulator, "formation_center_clearance_weight", 1.0)
+        )
+        displacement_weight = float(
+            getattr(simulator, "formation_center_displacement_weight", 1.0)
+        )
+
+        scaled_clearance_cost = clearance_weight / max(clearance, 1e-6)
+        scaled_displacement_cost = displacement_weight * (
+            displacement / max(search_radius, 1e-6)
+        )
+        return scaled_clearance_cost + scaled_displacement_cost, True
+
+    def _refine_formation_center(
+        self, current_center: Position, formation_type: str, spacing: float
+    ) -> Position:
+        """Search for a collision-aware formation center near *current_center*."""
+
+        simulator = self.simulator
+        search_radius = float(getattr(simulator, "robot_radius_pixels", 0.0))
+        if search_radius <= 0.0:
+            return current_center
+
+        robot_count = len(simulator.robot_states)
+        offsets = self._formation_offsets(robot_count, formation_type, spacing)
+        if not offsets:
+            return current_center
+
+        max_offset_radius = max(math.hypot(x, y) for x, y in offsets) if offsets else 0.0
+        frame_radius = float(getattr(simulator, "robot_frame_radius", 0.0))
+        team_radius = max_offset_radius + frame_radius
+        if team_radius <= 0.0:
+            team_radius = max_offset_radius
+        if team_radius <= 0.0:
+            return current_center
+
+        best_center: Optional[Position] = None
+        best_cost = float("inf")
+
+        def consider(candidate: Position) -> None:
+            nonlocal best_center, best_cost
+            cost, feasible = self._evaluate_center_candidate(
+                candidate,
+                current_center=current_center,
+                team_radius=team_radius,
+                search_radius=search_radius,
+            )
+            if feasible and cost < best_cost:
+                best_center = (float(candidate[0]), float(candidate[1]))
+                best_cost = cost
+
+        consider(current_center)
+
+        radial_steps = max(1, int(getattr(simulator, "formation_center_radial_steps", 4)))
+        angular_steps = max(6, int(getattr(simulator, "formation_center_angular_steps", 16)))
+
+        for radial_index in range(1, radial_steps + 1):
+            radius = search_radius * (radial_index / radial_steps)
+            for angular_index in range(angular_steps):
+                angle = 2.0 * math.pi * (angular_index / angular_steps)
+                candidate = (
+                    current_center[0] + radius * math.cos(angle),
+                    current_center[1] + radius * math.sin(angle),
+                )
+                consider(candidate)
+
+        if best_center is None:
+            return current_center
+
+        large_penalty = 1e6
+
+        def objective(delta: np.ndarray) -> float:
+            candidate = (
+                current_center[0] + float(delta[0]),
+                current_center[1] + float(delta[1]),
+            )
+            cost, feasible = self._evaluate_center_candidate(
+                candidate,
+                current_center=current_center,
+                team_radius=team_radius,
+                search_radius=search_radius,
+            )
+            return cost if feasible else large_penalty
+
+        initial_delta = np.array(
+            [best_center[0] - current_center[0], best_center[1] - current_center[1]],
+            dtype=float,
+        )
+
+        constraints = (
+            {
+                "type": "ineq",
+                "fun": lambda delta: search_radius**2
+                - (delta[0] ** 2 + delta[1] ** 2),
+            },
+        )
+
+        try:
+            result = minimize(
+                objective,
+                initial_delta,
+                method="SLSQP",
+                constraints=constraints,
+            )
+        except Exception:
+            result = None
+
+        if result is not None and getattr(result, "success", False):
+            refined_candidate = (
+                current_center[0] + float(result.x[0]),
+                current_center[1] + float(result.x[1]),
+            )
+            cost, feasible = self._evaluate_center_candidate(
+                refined_candidate,
+                current_center=current_center,
+                team_radius=team_radius,
+                search_radius=search_radius,
+            )
+            if feasible and cost < best_cost:
+                best_center = refined_candidate
+                best_cost = cost
+
+        if best_center is None:
+            return current_center
+        return best_center
 
     def register_direct_target(
         self,
