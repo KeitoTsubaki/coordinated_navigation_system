@@ -335,9 +335,9 @@ class FormationManager:
         center = self._refine_formation_center(
             current_center, formation_type, spacing
         )
-        self._record_centroid(center)
+        self._record_centroid(current_center)
 
-        weights = weights or (1.0, 0.8, 0.5, 0.3, 0.5)
+        weights = weights or (0.5, 0.5, 0.5, 0.3, 1.0)
         ego_index = ego_index if ego_index is not None else simulator.selected_robot_index
         if ego_index is not None and not (0 <= ego_index < len(simulator.robot_states)):
             raise IndexError("ego_index is out of range")
@@ -409,22 +409,22 @@ class FormationManager:
         if displacement > search_radius + 1e-6:
             return float("inf"), False
 
+        # print("distance: ", simulator._distance_to_nearest_obstacle_map(candidate), "team_radius: ", team_radius)
         clearance = simulator._distance_to_nearest_obstacle_map(candidate) - team_radius
         if clearance <= 0.0:
             return float("inf"), False
+        
+        clearance_weight = 1.0
+        displacement_weight = 1.0
 
-        clearance_weight = float(
-            getattr(simulator, "formation_center_clearance_weight", 1.0)
-        )
-        displacement_weight = float(
-            getattr(simulator, "formation_center_displacement_weight", 1.0)
-        )
-
-        scaled_clearance_cost = clearance_weight / max(clearance, 1e-6)
+        # scaled_clearance_cost = clearance_weight / max(clearance, 1e-6)
+        scaled_clearance_cost = clearance_weight * max(3 - clearance, 0)
         scaled_displacement_cost = displacement_weight * (
             displacement / max(search_radius, 1e-6)
         )
-        return scaled_clearance_cost + scaled_displacement_cost, True
+        total_cost = scaled_clearance_cost + scaled_displacement_cost
+        # total_cost = scaled_clearance_cost
+        return total_cost, True
 
     def _refine_formation_center(
         self, current_center: Position, formation_type: str, spacing: float
@@ -442,8 +442,10 @@ class FormationManager:
             return current_center
 
         max_offset_radius = max(math.hypot(x, y) for x, y in offsets) if offsets else 0.0
-        frame_radius = float(getattr(simulator, "robot_frame_radius", 0.0))
-        team_radius = max_offset_radius + frame_radius
+        # frame_radius = float(getattr(simulator, "robot_frame_radius", 0.0))
+        # team_radius = max_offset_radius + frame_radius
+        robot_radius_m = float(getattr(simulator.env, "ROBOT_RADIUS_M", 0.0))
+        team_radius = simulator.default_formation_spacing_m/2  + robot_radius_m
         if team_radius <= 0.0:
             team_radius = max_offset_radius
         if team_radius <= 0.0:
@@ -460,6 +462,7 @@ class FormationManager:
                 team_radius=team_radius,
                 search_radius=search_radius,
             )
+            # print("feasible: ", feasible, "cost: ", cost)
             if feasible and cost < best_cost:
                 best_center = (float(candidate[0]), float(candidate[1]))
                 best_cost = cost
@@ -480,6 +483,7 @@ class FormationManager:
                 consider(candidate)
 
         if best_center is None:
+            # print("best centroid is None")
             return current_center
 
         large_penalty = 1e6
@@ -537,6 +541,7 @@ class FormationManager:
 
         if best_center is None:
             return current_center
+        # print("best centor is found")
         return best_center
 
     def register_direct_target(
