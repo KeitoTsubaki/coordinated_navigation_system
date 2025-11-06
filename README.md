@@ -143,6 +143,12 @@ exposed in `MultiRobotSimulator.default_formation_spacing` (pixels) and
 when constructing the simulator or optimising a formation causes these
 defaults to be used.
 
-
+To visualise the formation-centre cost landscape during optimisation, set
+`formation_debug_plot_enabled` to `true` in the simulator configuration or
+toggle the attribute on a `MultiRobotSimulator` instance. When enabled, the
+renderer collects every candidate centre and displays a scatter plot coloured by
+cost using Matplotlib; this requires the optional `matplotlib` dependency to be
+installed.
 
 ## Roadmap
+
