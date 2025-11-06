@@ -1,0 +1,467 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+    <!--includes-->
+    <xacro:include filename="inertial_macros.xacro"/>
+    <xacro:include filename="materials.xacro"/>
+
+    <!-- BASE LINK -->
+    <link name="base_link">
+    </link>
+
+    <!-- BASE FOOTPRINT LINK -->
+    <joint name="base_footprint_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="base_footprint"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+
+    <link name="base_footprint"/>
+
+
+    <!-- CHASSIS LINK -->
+    <joint name="chassis_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="chassis"/>
+        <origin xyz="0.3 0 0.1325" rpy="0 0 0"/>
+    </joint>
+
+    <link name="chassis">
+        <visual>
+            <geometry>
+                <box size="0.985 0.406 0.03"/>
+            </geometry>
+            <material name="body"/>
+        </visual>
+        <collision>
+            <geometry>
+                <box size="0.985 0.406 0.03"/>
+            </geometry>
+        </collision>
+        <xacro:inertial_box mass="30" x="0.985" y="0.406" z="0.03">
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+        </xacro:inertial_box>
+    </link>
+
+    <gazebo reference="chassis">
+        <material>Gazebo/FlatBlack</material>
+    </gazebo>
+
+    <!-- LEFT WHEEL LINK -->
+    <joint name="left_wheel_joint" type="continuous">
+        <parent link="chassis" />
+        <child link="left_wheel" />
+        <origin xyz="-0.3 0.260 0" rpy="-${pi/2} 0 0" />
+        <axis xyz="0 0 1" />
+        <dynamics damping="0.1" friction="0.02"/>
+    </joint>
+
+    <link name="left_wheel">
+        <visual>
+            <geometry>
+                <cylinder length="0.05" radius="0.1325"/>
+            </geometry>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <material name="tire"/>
+        </visual>
+        <collision>
+            <geometry>
+                <cylinder length="0.05" radius="0.1325"/>
+            </geometry>
+        </collision>
+        <xacro:inertial_cylinder mass="0.5" length="0.05" radius="0.1325">
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+        </xacro:inertial_cylinder>
+    </link>
+
+    <gazebo reference="left_wheel">
+        <material>Gazebo/DarkGrey</material>
+        <mu1 value="1.0"/>
+        <mu2 value="1.0"/>
+    </gazebo>
+
+    <!-- RIGHT WHEEL LINK -->
+    <joint name="right_wheel_joint" type="continuous">
+        <parent link="chassis" />
+        <child link="right_wheel" />
+        <origin xyz="-0.3 -0.260 0" rpy="${pi/2} 0 0" />
+        <axis xyz="0 0 -1" />
+        <dynamics damping="0.1" friction="0.02"/>
+    </joint>
+
+    <link name="right_wheel">
+        <visual>
+            <geometry>
+                <cylinder length="0.05" radius="0.1325"/>
+            </geometry>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <material name="tire"/>
+        </visual>
+        <collision>
+            <geometry>
+                <cylinder length="0.05" radius="0.1325"/>
+            </geometry>
+        </collision>
+        <xacro:inertial_cylinder mass="0.5" length="0.05" radius="0.1325">
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+        </xacro:inertial_cylinder>
+    </link>
+
+    <gazebo reference="right_wheel">
+        <material>Gazebo/DarkGrey</material>
+        <mu1 value="1.0"/>
+        <mu2 value="1.0"/>
+    </gazebo>
+
+    
+    <!-- LEFT FRONT WHEEL LINK -->
+    <joint name="left_front_wheel_joint" type="fixed">
+        <parent link="chassis" />
+        <child link="left_front_wheel" />
+        <origin xyz="0.330 0.235 0" rpy="-${pi/2} 0 0" />
+        <axis xyz="0 0 1" />
+    </joint>
+
+    <link name="left_front_wheel">
+        <visual>
+            <geometry>
+                <cylinder length="0.05" radius="0.1325"/>
+            </geometry>
+            <material name="tire"/>
+        </visual>
+        <collision>
+            <geometry>
+                <cylinder length="0.05" radius="0.1325"/>
+            </geometry>
+        </collision>
+        <xacro:inertial_cylinder mass="0.5" length="0.05" radius="0.1325">
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+        </xacro:inertial_cylinder>
+    </link>
+
+    <gazebo reference="left_front_wheel">
+        <material>Gazebo/DarkGrey</material>
+        <mu1 value="0.01"/> <!-- friction -->
+        <mu2 value="0.01"/>
+    </gazebo>
+
+    <!-- RIGHT FRONT WHEEL LINK -->
+    <joint name="right_front_wheel_joint" type="fixed">
+        <parent link="chassis" />
+        <child link="right_front_wheel" />
+        <origin xyz="0.330 -0.235 0" rpy="${pi/2} 0 0" />
+        <axis xyz="0 0 -1" />
+    </joint>
+
+    <link name="right_front_wheel">
+        <visual>
+            <geometry>
+                <cylinder length="0.05" radius="0.1325"/>
+            </geometry>
+            <material name="tire"/>
+        </visual>
+        <collision>
+            <geometry>
+                <cylinder length="0.05" radius="0.1325"/>
+            </geometry>
+        </collision>
+        <xacro:inertial_cylinder mass="0.5" length="0.05" radius="0.1325">
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+        </xacro:inertial_cylinder>
+    </link>
+
+    <gazebo reference="right_front_wheel">
+        <material>Gazebo/DarkGrey</material>
+        <mu1 value="0.01"/> <!-- friction -->
+        <mu2 value="0.01"/>
+    </gazebo>
+    
+    <!-- SEAT LINK -->
+    <joint name="seat_joint" type="fixed">
+        <parent link="chassis" />
+        <child link="seat" />
+        <origin xyz="-0.10 0 0.215" rpy="0 0 0"/>
+    </joint>
+
+    <link name="seat">
+        <visual>
+            <geometry>
+                <box size="0.42 0.42 0.40"/>
+            </geometry>
+            <material name="body"/>
+        </visual>
+        <collision>
+            <geometry>
+                <box size="0.42 0.42 0.40"/>
+            </geometry>
+        </collision>
+        <xacro:inertial_box mass="12" x="0.42" y="0.42" z="0.4">
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+        </xacro:inertial_box>
+    </link>
+
+    <gazebo reference="seat">
+        <material>Gazebo/FlatBlack</material>
+    </gazebo>
+
+    <!-- LEFT SENSOR ARM LINK -->
+    <joint name="left_sensor_arm_joint" type="fixed">
+        <parent link="seat"/>
+        <child link="left_sensor_arm"/>
+        <origin xyz="0.20 0.235 0.07" rpy="0 0 0"/>
+    </joint>
+    <link name="left_sensor_arm">
+        <visual>
+            <geometry>
+                <cylinder length="0.11" radius="0.013"/>
+            </geometry>
+            <material name="body"/>
+        </visual>
+        <collision>
+            <geometry>
+                <cylinder length="0.11" radius="0.013"/>
+            </geometry>
+        </collision>
+    </link>
+
+    <gazebo reference="left_sensor_arm">
+        <material>Gazebo/FlatBlack</material>
+    </gazebo>
+
+    <!-- RIGHT SENSOR ARM LINK -->
+    <joint name="right_sensor_arm_joint" type="fixed">
+        <parent link="seat"/>
+        <child link="right_sensor_arm"/>
+        <origin xyz="0.20 -0.235 0.07" rpy="0 0 0"/>
+    </joint>
+    <link name="right_sensor_arm">
+        <visual>
+            <geometry>
+                <cylinder length="0.11" radius="0.013"/>
+            </geometry>
+            <material name="body"/>
+        </visual>
+        <collision>
+            <geometry>
+                <cylinder length="0.11" radius="0.013"/>
+            </geometry>
+        </collision>
+    </link>
+
+    <gazebo reference="right_sensor_arm">
+        <material>Gazebo/FlatBlack</material>
+    </gazebo>
+
+    <!-- BACKREST LINK -->
+    <joint name="backrest_joint" type="fixed">
+        <parent link="chassis" />
+        <child link="backrest" />
+        <origin xyz="-0.36 0 0.375" rpy="0 0 0"/>
+    </joint>
+    <link name="backrest">
+        <visual>
+            <geometry>
+                <box size="0.10 0.42 0.72"/>
+            </geometry>
+            <material name="body"/>
+        </visual>
+        <collision>
+            <geometry>
+                <box size="0.10 0.42 0.72"/>
+            </geometry>
+        </collision>
+        <xacro:inertial_box mass="12" x="0.10" y="0.42" z="0.72">
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+        </xacro:inertial_box>
+    </link>
+
+    <gazebo reference="backrest">
+        <material>Gazebo/FlatBlack</material>
+    </gazebo>
+
+    <!-- LEFT ARM LINK -->
+    <joint name="left_arm_joint" type="fixed">
+        <parent link="seat" />
+        <child link="left_arm" />
+        <origin xyz="0.2 0.245 0.20" rpy="0 1.0 0"/>
+    </joint>
+    <link name="left_arm">
+        <visual>
+            <geometry>
+                <box size="0.12 0.07 0.385"/>
+            </geometry>
+            <material name="body"/>
+        </visual>
+        <collision>
+            <geometry>
+                <box size="0.12 0.07 0.385"/>
+            </geometry>
+        </collision>
+        <xacro:inertial_box mass="1" x="0.12" y="0.07" z="0.385">
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+        </xacro:inertial_box>
+    </link>
+
+    <gazebo reference="left_arm">
+        <material>Gazebo/FlatBlack</material>
+    </gazebo>
+
+    <!-- LEFT ARM COVER LINK -->
+    <joint name="left_arm_cover_joint" type="fixed">
+        <parent link="left_arm" />
+        <child link="left_arm_cover" />
+        <origin xyz="0 0.04 0" rpy="0 0 1.57"/>
+    </joint>
+
+    <link name="left_arm_cover">
+        <visual>
+            <geometry>
+                <box size="0.01 0.12 0.385"/>
+            </geometry>
+            <material name="arm"/>
+        </visual>
+        <collision>
+            <geometry>
+                <box size="0.01 0.12 0.385"/>
+            </geometry>
+        </collision>
+    </link>
+
+    <gazebo reference="left_arm_cover">
+        <material>Gazebo/White</material>
+    </gazebo>
+    
+    <!-- RIGHT ARM LINK -->
+    <joint name="right_arm_joint" type="fixed">
+        <parent link="seat" />
+        <child link="right_arm" />
+        <origin xyz="0.2 -0.245 0.20" rpy="0 1.0 0"/>
+    </joint>
+    <link name="right_arm">
+        <visual>
+            <geometry>
+                <box size="0.12 0.07 0.385"/>
+            </geometry>
+            <material name="body"/>
+        </visual>
+        <collision>
+            <geometry>
+                <box size="0.12 0.07 0.385"/>
+            </geometry>
+        </collision>
+        <xacro:inertial_box mass="1" x="0.12" y="0.07" z="0.385">
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+        </xacro:inertial_box>
+    </link>
+
+    <gazebo reference="right_arm">
+        <material>Gazebo/FlatBlack</material>
+    </gazebo>
+
+    <!-- RIGHT ARM COVER LINK -->
+    <joint name="right_arm_cover_joint" type="fixed">
+        <parent link="right_arm" />
+        <child link="right_arm_cover" />
+        <origin xyz="0 -0.04 0" rpy="0 0 1.57"/>
+    </joint>
+    
+    <link name="right_arm_cover">
+        <visual>
+            <geometry>
+                <box size="0.01 0.12 0.385"/>
+            </geometry>
+            <material name="arm"/>
+        </visual>
+        <collision>
+            <geometry>
+                <box size="0.01 0.12 0.385"/>
+            </geometry>
+        </collision>
+    </link>
+
+    <gazebo reference="right_arm_cover">
+        <material>Gazebo/White</material>
+    </gazebo>
+
+    <!-- SENSOR FRAME LINK -->
+    <joint name="sensor_frame_left_joint" type="fixed">
+        <parent link="chassis" />
+        <child link="sensor_frame_left" />
+        <origin xyz="-0.44 0.17 0.74" rpy="0 0 0"/>
+    </joint>
+
+    <joint name="sensor_frame_right_joint" type="fixed">
+        <parent link="chassis" />
+        <child link="sensor_frame_right" />
+        <origin xyz="-0.44 -0.17 0.74" rpy="0 0 0"/>
+    </joint>
+
+    <joint name="sensor_frame_top_joint" type="fixed">
+        <parent link="chassis" />
+        <child link="sensor_frame_top" />
+        <origin xyz="-0.44 0 1.325" rpy="0 0 0"/>
+    </joint>
+    
+    <link name="sensor_frame_left">
+        <visual>
+            <geometry>
+                <box size="0.05 0.05 1.22"/>
+            </geometry>
+            <material name="sensor_frame"/>
+        </visual>
+        <collision>
+            <geometry>
+                <box size="0.05 0.05 1.22"/>
+            </geometry>
+        </collision>
+        <xacro:inertial_box mass="1" x="0.05" y="0.05" z="1.22">
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+        </xacro:inertial_box>
+    </link>
+
+    <link name="sensor_frame_right">
+        <visual>
+            <geometry>
+                <box size="0.05 0.05 1.22"/>
+            </geometry>
+            <material name="sensor_frame"/>
+        </visual>
+        <collision>
+            <geometry>
+                <box size="0.05 0.05 1.22"/>
+            </geometry>
+        </collision>
+        <xacro:inertial_box mass="1" x="0.05" y="0.05" z="1.22">
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+        </xacro:inertial_box>
+    </link>
+
+
+    <link name="sensor_frame_top">
+        <visual>
+            <geometry>
+                <box size="0.05 0.34 0.05"/>
+            </geometry>
+            <material name="sensor_frame"/>
+        </visual>
+        <collision>
+            <geometry>
+                <box size="0.05 0.34 0.05"/>
+            </geometry>
+        </collision>
+        <xacro:inertial_box mass="1" x="0.05" y="0.34" z="0.05">
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+        </xacro:inertial_box>
+    </link>
+
+    <gazebo reference="sensor_frame_left">
+        <material>Gazebo/Grey</material>
+    </gazebo>
+
+    <gazebo reference="sensor_frame_right">
+        <material>Gazebo/Grey</material>
+    </gazebo>
+
+    <gazebo reference="sensor_frame_top">
+        <material>Gazebo/Grey</material>
+    </gazebo>
+</robot>
