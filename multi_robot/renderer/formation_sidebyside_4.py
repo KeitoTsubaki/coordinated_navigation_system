@@ -600,11 +600,7 @@ class FormationManager:
                 plt.figure("Formation center cost samples")
                 plt.clf()
 
-                legend_handles: List[object] = []
-                legend_labels: List[str] = []
-
                 contour_set = None
-                scatter = None
 
                 if feasible_samples:
                     feasible_x = np.array([sample[0] for sample in feasible_samples], dtype=float)
@@ -674,43 +670,17 @@ class FormationManager:
                         except Exception:
                             contour_set = None
 
-                    scatter = plt.scatter(
-                        feasible_x,
-                        feasible_y,
-                        c=feasible_cost,
-                        cmap="viridis",
-                        vmin=vmin,
-                        vmax=vmax,
-                        marker="o",
-                        edgecolors="black",
-                        linewidths=0.5,
-                        label="feasible",
-                    )
-                    legend_handles.append(scatter)
-                    legend_labels.append("feasible")
-
-                if infeasible_samples:
-                    infeasible_x = np.array([sample[0] for sample in infeasible_samples], dtype=float)
-                    infeasible_y = np.array([sample[1] for sample in infeasible_samples], dtype=float)
-                    infeasible_scatter = plt.scatter(
-                        infeasible_x,
-                        infeasible_y,
-                        marker="x",
-                        color="red",
-                        label="infeasible",
-                    )
-                    legend_handles.append(infeasible_scatter)
-                    legend_labels.append("infeasible")
-
-                colorbar_source = contour_set if contour_set is not None else scatter
-                if colorbar_source is not None:
-                    plt.colorbar(colorbar_source, label="Formation cost")
+                if contour_set is not None:
+                    plt.colorbar(contour_set, label="Formation cost")
 
                 plt.xlabel("Center X (pixels)")
                 plt.ylabel("Center Y (pixels)")
+                # Align the debug plot orientation with the simulator view by
+                # flipping the Y axis. In the simulator, the Y axis increases
+                # downwards, so inverting it here ensures the cost map matches
+                # what the operator sees on screen.
+                plt.gca().invert_yaxis()
                 plt.title("Formation center candidate costs")
-                if legend_handles:
-                    plt.legend(legend_handles, legend_labels, loc="best")
                 plt.show(block=False)
                 plt.pause(0.001)
 
