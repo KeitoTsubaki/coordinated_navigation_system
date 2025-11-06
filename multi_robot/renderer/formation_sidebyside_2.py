@@ -334,7 +334,7 @@ class FormationManager:
         if spacing is None:
             spacing = simulator.default_formation_spacing
 
-        weights = weights or (0.5, 0.5, 0.5, 0.3, 1.0)
+        weights = weights or (1.0 , 0.8, 0.5, 0.3, 1.0)
         ego_index = ego_index if ego_index is not None else simulator.selected_robot_index
         if ego_index is not None and not (0 <= ego_index < len(simulator.robot_states)):
             raise IndexError("ego_index is out of range")
@@ -1171,7 +1171,10 @@ class FormationManager:
                 clamped_dot_product = max(-1.0, min(1.0, dot_product))
                 angle_difference = math.acos(clamped_dot_product)
 
-        c5 = 2.0 * abs(angle_difference - math.pi / 2.0) / math.pi
+        # c5 = 2.0 * abs(angle_difference - math.pi / 2.0) / math.pi
+        # c5 = abs(np.cos(angle_difference))
+        c5 = (np.cos(2 * angle_difference) + 1) / 2.0
+
 
         cost_matrix = np.full((robot_count, robot_count), penalty, dtype=float)
         per_robot_costs: Dict[int, float] = {}
