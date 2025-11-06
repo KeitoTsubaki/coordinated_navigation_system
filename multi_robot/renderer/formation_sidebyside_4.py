@@ -9,6 +9,7 @@ from typing import Deque, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pygame
+from scipy.interpolate import griddata
 from scipy.optimize import linear_sum_assignment, minimize, minimize_scalar
 
 from .types import Color, FormationPlan, Position
@@ -602,21 +603,89 @@ class FormationManager:
                 legend_handles: List[object] = []
                 legend_labels: List[str] = []
 
+                contour_set = None
+                scatter = None
+
                 if feasible_samples:
                     feasible_x = np.array([sample[0] for sample in feasible_samples], dtype=float)
                     feasible_y = np.array([sample[1] for sample in feasible_samples], dtype=float)
                     feasible_cost = np.array(
                         [sample[2] for sample in feasible_samples], dtype=float
                     )
+
+                    vmin = float(np.min(feasible_cost))
+                    vmax = float(np.max(feasible_cost))
+
+                    # Build a contour map by interpolating the sampled costs on a grid.
+                    try:
+                        grid_x, grid_y = np.meshgrid(
+                            np.linspace(np.min(feasible_x), np.max(feasible_x), 100),
+                            np.linspace(np.min(feasible_y), np.max(feasible_y), 100),
+                        )
+                        grid_z = griddata(
+                            np.column_stack((feasible_x, feasible_y)),
+                            feasible_cost,
+                            (grid_x, grid_y),
+                            method="cubic",
+                        )
+                    except Exception:
+                        grid_z = None
+
+                    if grid_z is None or np.all(np.isnan(grid_z)):
+                        try:
+                            grid_z = griddata(
+                                np.column_stack((feasible_x, feasible_y)),
+                                feasible_cost,
+                                (grid_x, grid_y),
+                                method="linear",
+                            )
+                        except Exception:
+                            grid_z = None
+
+                    if grid_z is not None and np.isnan(grid_z).any():
+                        try:
+                            nearest = griddata(
+                                np.column_stack((feasible_x, feasible_y)),
+                                feasible_cost,
+                                (grid_x, grid_y),
+                                method="nearest",
+                            )
+                        except Exception:
+                            nearest = None
+                        else:
+                            if nearest is not None:
+                                mask = np.isnan(grid_z)
+                                grid_z[mask] = nearest[mask]
+
+                    if grid_z is not None and not np.all(np.isnan(grid_z)):
+                        if math.isclose(vmin, vmax):
+                            levels = np.linspace(vmin - 1.0, vmax + 1.0, 3)
+                        else:
+                            levels = np.linspace(vmin, vmax, 15)
+                        try:
+                            contour_set = plt.contourf(
+                                grid_x,
+                                grid_y,
+                                grid_z,
+                                levels=levels,
+                                cmap="viridis",
+                                alpha=0.75,
+                            )
+                        except Exception:
+                            contour_set = None
+
                     scatter = plt.scatter(
                         feasible_x,
                         feasible_y,
                         c=feasible_cost,
                         cmap="viridis",
+                        vmin=vmin,
+                        vmax=vmax,
                         marker="o",
+                        edgecolors="black",
+                        linewidths=0.5,
                         label="feasible",
                     )
-                    plt.colorbar(scatter, label="Formation cost")
                     legend_handles.append(scatter)
                     legend_labels.append("feasible")
 
@@ -632,6 +701,10 @@ class FormationManager:
                     )
                     legend_handles.append(infeasible_scatter)
                     legend_labels.append("infeasible")
+
+                colorbar_source = contour_set if contour_set is not None else scatter
+                if colorbar_source is not None:
+                    plt.colorbar(colorbar_source, label="Formation cost")
 
                 plt.xlabel("Center X (pixels)")
                 plt.ylabel("Center Y (pixels)")
