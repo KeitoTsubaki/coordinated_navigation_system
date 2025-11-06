@@ -75,6 +75,10 @@ class FormationManager:
         self._last_centroid_sample_time: Optional[float] = None
         self._last_centroid_progress: Optional[Tuple[float, float, float]] = None
         self.previous_center = None
+        self._formation_debug_plot_enabled = bool(
+            getattr(simulator, "formation_debug_plot_enabled", False)
+        )
+        simulator.formation_debug_plot_enabled = self._formation_debug_plot_enabled
 
     # ------------------------------------------------------------------
     # Public API
@@ -449,6 +453,9 @@ class FormationManager:
         """Search for a collision-aware formation center near *current_center*."""
 
         simulator = self.simulator
+        debug_enabled = bool(
+            getattr(simulator, "formation_debug_plot_enabled", self._formation_debug_plot_enabled)
+        )
         search_radius = float(getattr(simulator, "robot_radius_pixels", 0.0))
         if search_radius <= 0.0:
             return current_center
@@ -470,6 +477,18 @@ class FormationManager:
 
         best_center: Optional[Position] = None
         best_cost = float("inf")
+        cost_samples: List[Tuple[float, float, float, bool, str]] = []
+
+        def record_sample(candidate: Position, cost: float, feasible: bool, stage: str) -> None:
+            cost_samples.append(
+                (
+                    float(candidate[0]),
+                    float(candidate[1]),
+                    float(cost),
+                    bool(feasible),
+                    stage,
+                )
+            )
 
         def consider(candidate: Position) -> None:
             nonlocal best_center, best_cost
@@ -479,6 +498,7 @@ class FormationManager:
                 team_radius=team_radius,
                 search_radius=search_radius,
             )
+            record_sample(candidate, cost, feasible, "grid")
             # print("feasible: ", feasible, "cost: ", cost)
             if feasible and cost < best_cost:
                 best_center = (float(candidate[0]), float(candidate[1]))
@@ -516,6 +536,7 @@ class FormationManager:
                 team_radius=team_radius,
                 search_radius=search_radius,
             )
+            record_sample(candidate, cost, feasible, "refine")
             return cost if feasible else large_penalty
 
         initial_delta = np.array(
@@ -552,14 +573,74 @@ class FormationManager:
                 team_radius=team_radius,
                 search_radius=search_radius,
             )
+            record_sample(refined_candidate, cost, feasible, "refine_result")
             if feasible and cost < best_cost:
                 best_center = refined_candidate
                 best_cost = cost
 
         if best_center is None:
-            return current_center
-        # print("best centor is found")
-        return best_center
+            candidate_to_return = current_center
+        else:
+            candidate_to_return = best_center
+
+        if debug_enabled and cost_samples:
+            try:
+                import matplotlib.pyplot as plt
+            except ImportError:  # pragma: no cover - optional dependency
+                print(
+                    "formation_debug_plot_enabled requires matplotlib; "
+                    "please install it to view cost samples."
+                )
+            else:
+                feasible_samples = [sample for sample in cost_samples if sample[3]]
+                infeasible_samples = [sample for sample in cost_samples if not sample[3]]
+
+                plt.figure("Formation center cost samples")
+                plt.clf()
+
+                legend_handles: List[object] = []
+                legend_labels: List[str] = []
+
+                if feasible_samples:
+                    feasible_x = np.array([sample[0] for sample in feasible_samples], dtype=float)
+                    feasible_y = np.array([sample[1] for sample in feasible_samples], dtype=float)
+                    feasible_cost = np.array(
+                        [sample[2] for sample in feasible_samples], dtype=float
+                    )
+                    scatter = plt.scatter(
+                        feasible_x,
+                        feasible_y,
+                        c=feasible_cost,
+                        cmap="viridis",
+                        marker="o",
+                        label="feasible",
+                    )
+                    plt.colorbar(scatter, label="Formation cost")
+                    legend_handles.append(scatter)
+                    legend_labels.append("feasible")
+
+                if infeasible_samples:
+                    infeasible_x = np.array([sample[0] for sample in infeasible_samples], dtype=float)
+                    infeasible_y = np.array([sample[1] for sample in infeasible_samples], dtype=float)
+                    infeasible_scatter = plt.scatter(
+                        infeasible_x,
+                        infeasible_y,
+                        marker="x",
+                        color="red",
+                        label="infeasible",
+                    )
+                    legend_handles.append(infeasible_scatter)
+                    legend_labels.append("infeasible")
+
+                plt.xlabel("Center X (pixels)")
+                plt.ylabel("Center Y (pixels)")
+                plt.title("Formation center candidate costs")
+                if legend_handles:
+                    plt.legend(legend_handles, legend_labels, loc="best")
+                plt.show(block=False)
+                plt.pause(0.001)
+
+        return candidate_to_return
 
     def register_direct_target(
         self,
