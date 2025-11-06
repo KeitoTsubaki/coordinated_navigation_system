@@ -76,7 +76,7 @@ class FormationManager:
         self._last_centroid_progress: Optional[Tuple[float, float, float]] = None
         self.previous_center = None
         self._formation_debug_plot_enabled = bool(
-            getattr(simulator, "formation_debug_plot_enabled", False)
+            getattr(simulator, "formation_debug_plot_enabled", True)
         )
         simulator.formation_debug_plot_enabled = self._formation_debug_plot_enabled
 
@@ -442,9 +442,10 @@ class FormationManager:
             displacement / max(search_radius, 1e-6)
         )
         previous_distance_cost = previous_weight * distance_previous
-        print(f"scaled_clearance_cost: {scaled_clearance_cost}, scaled_displacement_cost: {scaled_displacement_cost}, previous_distance_cost: {previous_distance_cost}")
+        # print(f"scaled_clearance_cost: {scaled_clearance_cost}, scaled_displacement_cost: {scaled_displacement_cost}, previous_distance_cost: {previous_distance_cost}")
         total_cost = scaled_clearance_cost + scaled_displacement_cost + previous_distance_cost
-        # total_cost = scaled_clearance_cost
+        total_cost = scaled_clearance_cost
+        total_cost = scaled_clearance_cost + previous_distance_cost
         return total_cost, True
 
     def _refine_formation_center(
