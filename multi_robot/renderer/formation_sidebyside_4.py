@@ -74,6 +74,7 @@ class FormationManager:
         self._centroid_history: Deque[Tuple[float, Position]] = deque(maxlen=history_limit)
         self._last_centroid_sample_time: Optional[float] = None
         self._last_centroid_progress: Optional[Tuple[float, float, float]] = None
+        self.previous_center = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -335,6 +336,7 @@ class FormationManager:
         center = self._refine_formation_center(
             current_center, formation_type, spacing
         )
+        self.previous_center = center
         self._record_centroid(current_center)
 
         weights = weights or (0.5, 0.5, 0.5, 0.3, 1.0)
@@ -416,13 +418,28 @@ class FormationManager:
         
         clearance_weight = 1.0
         displacement_weight = 1.0
+        previous_weight = 0.5
+
+        if self.previous_center is not None:
+            # print(f"candidate: {candidate}, previous_center: {self.previous_center}")
+            previous_dx = candidate[0] - self.previous_center[0]
+            previous_dy = candidate[1] - self.previous_center[1]
+            distance_previous = (
+                math.hypot(previous_dx, previous_dy)
+                / simulator.env.PIXELS_PER_METER
+            )
+        else:
+            distance_previous = 0
 
         # scaled_clearance_cost = clearance_weight / max(clearance, 1e-6)
+        # print(f"clearance: {clearance}")
         scaled_clearance_cost = clearance_weight * max(3 - clearance, 0)
         scaled_displacement_cost = displacement_weight * (
             displacement / max(search_radius, 1e-6)
         )
-        total_cost = scaled_clearance_cost + scaled_displacement_cost
+        previous_distance_cost = previous_weight * distance_previous
+        print(f"scaled_clearance_cost: {scaled_clearance_cost}, scaled_displacement_cost: {scaled_displacement_cost}, previous_distance_cost: {previous_distance_cost}")
+        total_cost = scaled_clearance_cost + scaled_displacement_cost + previous_distance_cost
         # total_cost = scaled_clearance_cost
         return total_cost, True
 
