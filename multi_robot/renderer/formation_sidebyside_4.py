@@ -481,6 +481,17 @@ class FormationManager:
         best_cost = float("inf")
         cost_samples: List[Tuple[float, float, float, bool, str]] = []
 
+        progress_state = self._centroid_progress_vector()
+        forward_direction: Optional[Tuple[float, float]] = None
+        if progress_state is not None:
+            progress_dx, progress_dy, progress_displacement = progress_state
+            if progress_displacement > 0.0:
+                inverse_displacement = 1.0 / progress_displacement
+                forward_direction = (
+                    float(progress_dx * inverse_displacement),
+                    float(progress_dy * inverse_displacement),
+                )
+
         def record_sample(candidate: Position, cost: float, feasible: bool, stage: str) -> None:
             cost_samples.append(
                 (
@@ -492,8 +503,23 @@ class FormationManager:
                 )
             )
 
+        def is_forward(candidate: Position) -> bool:
+            if forward_direction is None:
+                return True
+
+            delta_x = float(candidate[0] - current_center[0])
+            delta_y = float(candidate[1] - current_center[1])
+            if delta_x * delta_x + delta_y * delta_y <= 1e-9:
+                return True
+
+            dot_product = delta_x * forward_direction[0] + delta_y * forward_direction[1]
+            tolerance = search_radius * 1e-6
+            return dot_product >= -tolerance
+
         def consider(candidate: Position) -> None:
             nonlocal best_center, best_cost
+            if not is_forward(candidate):
+                return
             cost, feasible = self._evaluate_center_candidate(
                 candidate,
                 current_center=current_center,
@@ -532,6 +558,9 @@ class FormationManager:
                 current_center[0] + float(delta[0]),
                 current_center[1] + float(delta[1]),
             )
+            if not is_forward(candidate):
+                record_sample(candidate, float("inf"), False, "refine_filtered")
+                return large_penalty
             cost, feasible = self._evaluate_center_candidate(
                 candidate,
                 current_center=current_center,
@@ -546,13 +575,24 @@ class FormationManager:
             dtype=float,
         )
 
-        constraints = (
+        constraints: Tuple[Dict[str, object], ...]
+        constraint_list: List[Dict[str, object]] = [
             {
                 "type": "ineq",
                 "fun": lambda delta: search_radius**2
                 - (delta[0] ** 2 + delta[1] ** 2),
-            },
-        )
+            }
+        ]
+        if forward_direction is not None:
+            constraint_list.append(
+                {
+                    "type": "ineq",
+                    "fun": lambda delta, direction=forward_direction: (
+                        delta[0] * direction[0] + delta[1] * direction[1]
+                    ),
+                }
+            )
+        constraints = tuple(constraint_list)
 
         try:
             result = minimize(
@@ -569,16 +609,19 @@ class FormationManager:
                 current_center[0] + float(result.x[0]),
                 current_center[1] + float(result.x[1]),
             )
-            cost, feasible = self._evaluate_center_candidate(
-                refined_candidate,
-                current_center=current_center,
-                team_radius=team_radius,
-                search_radius=search_radius,
-            )
-            record_sample(refined_candidate, cost, feasible, "refine_result")
-            if feasible and cost < best_cost:
-                best_center = refined_candidate
-                best_cost = cost
+            if is_forward(refined_candidate):
+                cost, feasible = self._evaluate_center_candidate(
+                    refined_candidate,
+                    current_center=current_center,
+                    team_radius=team_radius,
+                    search_radius=search_radius,
+                )
+                record_sample(refined_candidate, cost, feasible, "refine_result")
+                if feasible and cost < best_cost:
+                    best_center = refined_candidate
+                    best_cost = cost
+            else:
+                record_sample(refined_candidate, float("inf"), False, "refine_result_filtered")
 
         if best_center is None:
             candidate_to_return = current_center
