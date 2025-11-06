@@ -9,7 +9,7 @@ from typing import Deque, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pygame
-from scipy.optimize import linear_sum_assignment, minimize_scalar
+from scipy.optimize import linear_sum_assignment, minimize
 
 from .types import Color, FormationPlan, Position
 from .utils import brighten_color, with_alpha
@@ -319,15 +319,6 @@ class FormationManager:
         if not simulator.robot_states:
             raise ValueError("No robots available for formation optimisation")
 
-        center_x = sum(robot.position[0] for robot in simulator.robot_states) / len(
-            simulator.robot_states
-        )
-        center_y = sum(robot.position[1] for robot in simulator.robot_states) / len(
-            simulator.robot_states
-        )
-        center = (center_x, center_y)
-        self._record_centroid(center)
-
         if formation_type is None:
             formation_type = simulator.default_formation_type
 
@@ -339,15 +330,86 @@ class FormationManager:
         if ego_index is not None and not (0 <= ego_index < len(simulator.robot_states)):
             raise IndexError("ego_index is out of range")
 
+        robot_positions = [robot.position for robot in simulator.robot_states]
+        average_center = (
+            sum(position[0] for position in robot_positions) / len(robot_positions),
+            sum(position[1] for position in robot_positions) / len(robot_positions),
+        )
+
         angle_min, angle_max = self._formation_angle_bounds(formation_type)
         penalty = 1e6
         self._prune_direct_target_cache()
         best_plan: Dict[str, Optional[FormationPlan]] = {"plan": None}
 
-        def objective(theta: float) -> float:
+        offsets = self._formation_offsets(
+            len(simulator.robot_states), formation_type, spacing
+        )
+        max_offset_radius = (
+            max(math.hypot(offset_x, offset_y) for offset_x, offset_y in offsets)
+            if offsets
+            else 0.0
+        )
+        safety_margin = max_offset_radius + simulator.robot_frame_radius
+
+        screen_width = float(simulator.env.SCREEN_W)
+        screen_height = float(simulator.env.SCREEN_H)
+        screen_center = (screen_width / 2.0, screen_height / 2.0)
+
+        env_min_x = safety_margin
+        env_max_x = screen_width - safety_margin
+        env_min_y = safety_margin
+        env_max_y = screen_height - safety_margin
+
+        if env_min_x > env_max_x:
+            env_min_x = env_max_x = screen_center[0]
+        if env_min_y > env_max_y:
+            env_min_y = env_max_y = screen_center[1]
+
+        bbox_min_x = min(position[0] for position in robot_positions) - max_offset_radius
+        bbox_max_x = max(position[0] for position in robot_positions) + max_offset_radius
+        bbox_min_y = min(position[1] for position in robot_positions) - max_offset_radius
+        bbox_max_y = max(position[1] for position in robot_positions) + max_offset_radius
+
+        center_min_x = max(env_min_x, bbox_min_x)
+        center_max_x = min(env_max_x, bbox_max_x)
+        center_min_y = max(env_min_y, bbox_min_y)
+        center_max_y = min(env_max_y, bbox_max_y)
+
+        if center_min_x > center_max_x:
+            center_min_x, center_max_x = env_min_x, env_max_x
+        if center_min_y > center_max_y:
+            center_min_y, center_max_y = env_min_y, env_max_y
+
+        if center_min_x > center_max_x:
+            center_min_x = center_max_x = screen_center[0]
+        if center_min_y > center_max_y:
+            center_min_y = center_max_y = screen_center[1]
+
+        theta_initial = (
+            self.current_plan.theta
+            if self.current_plan is not None
+            and self.current_plan.formation_type == formation_type
+            else (angle_min + angle_max) / 2.0
+        )
+
+        initial_guess = (
+            float(min(max(average_center[0], center_min_x), center_max_x)),
+            float(min(max(average_center[1], center_min_y), center_max_y)),
+            float(min(max(theta_initial, angle_min), angle_max)),
+        )
+
+        bounds = (
+            (float(center_min_x), float(center_max_x)),
+            (float(center_min_y), float(center_max_y)),
+            (float(angle_min), float(angle_max)),
+        )
+
+        def objective(params: Sequence[float]) -> float:
+            center_candidate = (float(params[0]), float(params[1]))
+            theta_candidate = float(params[2])
             plan = self._evaluate_plan(
-                center,
-                theta,
+                center_candidate,
+                theta_candidate,
                 formation_type,
                 spacing,
                 weights,
@@ -360,15 +422,28 @@ class FormationManager:
                 best_plan["plan"] = plan
             return plan.cost
 
-        result = minimize_scalar(objective, bounds=(angle_min, angle_max), method="bounded")
-        objective(float(result.x))
-        objective(angle_min)
-        objective(angle_max)
+        objective(initial_guess)
+        result = minimize(
+            objective,
+            x0=np.array(initial_guess, dtype=float),
+            bounds=bounds,
+            method="L-BFGS-B",
+        )
+
+        if result.success:
+            objective(result.x)
+
+        for candidate_theta in (angle_min, angle_max):
+            for candidate_center_x in (center_min_x, center_max_x):
+                for candidate_center_y in (center_min_y, center_max_y):
+                    objective((candidate_center_x, candidate_center_y, candidate_theta))
 
         plan = best_plan["plan"]
         if plan is None:
             self._reset_plan_state()
             raise ValueError("Unable to find a feasible formation configuration")
+
+        self._record_centroid(plan.center)
 
         if apply:
             plans_for_selection: List[FormationPlan]
