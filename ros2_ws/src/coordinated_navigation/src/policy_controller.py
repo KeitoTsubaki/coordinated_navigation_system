@@ -20,7 +20,7 @@ import yaml
 from geometry_msgs.msg import Pose, PoseStamped, Twist
 from nav_msgs.msg import Odometry
 from rclpy.logging import Logger
-from sensor_msgs.msg import PointCloud2
+from sensor_msgs.msg import LaserScan, PointCloud2
 
 from .policy_utils import ensure_repo_root_on_path, process_lidar_for_observation
 
@@ -79,6 +79,25 @@ def pointcloud2_to_polar(msg: Optional[PointCloud2]) -> List[Tuple[float, float]
     return samples
 
 
+def laser_scan_to_polar(msg: Optional[LaserScan]) -> List[Tuple[float, float]]:
+    """Convert a :class:`sensor_msgs.msg.LaserScan` into polar LiDAR samples."""
+
+    if msg is None:
+        return []
+
+    samples: List[Tuple[float, float]] = []
+    angle = float(msg.angle_min)
+    for distance in msg.ranges:
+        if not math.isfinite(distance):
+            samples.append((float("inf"), angle))
+        elif distance < msg.range_min:
+            samples.append((float(msg.range_min), angle))
+        else:
+            samples.append((float(distance), angle))
+        angle += float(msg.angle_increment)
+    return samples
+
+
 class PolicyVelocityController:
     """Load and execute a trained DDPG policy to generate velocity commands."""
 
@@ -128,6 +147,7 @@ class PolicyVelocityController:
         robot_pose: Optional[PoseStamped],
         odometry: Optional[Odometry],
         pointcloud: Optional[PointCloud2],
+        laser_scan: Optional[LaserScan] = None,
     ) -> Optional[Twist]:
         if self._model is None:
             self._initialise_model()
@@ -139,6 +159,7 @@ class PolicyVelocityController:
             robot_pose=robot_pose,
             odometry=odometry,
             pointcloud=pointcloud,
+            laser_scan=laser_scan,
         )
         if observation is None:
             return None
@@ -339,8 +360,9 @@ class PolicyVelocityController:
         robot_pose: Optional[PoseStamped],
         odometry: Optional[Odometry],
         pointcloud: Optional[PointCloud2],
+        laser_scan: Optional[LaserScan],
     ) -> Optional[Dict[str, np.ndarray]]:
-        if target_pose is None or pointcloud is None:
+        if target_pose is None:
             return None
 
         pose_source: Optional[Pose]
@@ -365,7 +387,11 @@ class PolicyVelocityController:
         angle_to_target = wrap_to_pi(target_heading - robot_heading)
         goal_angle_n = float(np.clip(angle_to_target / math.pi, -1.0, 1.0))
 
-        polar_samples = pointcloud2_to_polar(pointcloud)
+        polar_samples: List[Tuple[float, float]]
+        if pointcloud is not None:
+            polar_samples = pointcloud2_to_polar(pointcloud)
+        else:
+            polar_samples = laser_scan_to_polar(laser_scan)
         lidar_measurement = process_lidar_for_observation(
             polar_samples,
             self._n_l,
@@ -457,6 +483,7 @@ def main() -> None:  # pragma: no cover - convenience CLI
 __all__ = [
     "PolicyVelocityController",
     "pointcloud2_to_polar",
+    "laser_scan_to_polar",
     "quaternion_to_yaw",
     "wrap_to_pi",
 ]
