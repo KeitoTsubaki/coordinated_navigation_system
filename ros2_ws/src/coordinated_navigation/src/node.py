@@ -8,6 +8,7 @@ import asyncio
 import importlib
 import math
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional, Sequence, Type, cast
 
 import rclpy
@@ -65,11 +66,13 @@ class CoordinatedNavigationNode(Node):
     ) -> None:
         super().__init__(node_name)
 
+        default_policy_model = self._default_policy_model_path()
+
         self.declare_parameter("robot_namespace", "")
         self.declare_parameter("robot_id", "1")
         self.declare_parameter("formation_msg_module", "coordinated_navigation_interfaces.msg")
         self.declare_parameter("formation_msg_name", "Formation")
-        self.declare_parameter("policy.model_path", "")
+        self.declare_parameter("policy.model_path", default_policy_model)
         self.declare_parameter("policy.step_period", timer_period)
         self.declare_parameter("policy.device", "cpu")
         self.declare_parameter("navigation.distance_tolerance", 0.3)
@@ -80,6 +83,16 @@ class CoordinatedNavigationNode(Node):
         self._formation_msg_type = self._resolve_formation_msg_type(formation_msg_type)
 
         policy_model_path = self._parameter_string("policy.model_path")
+        if not policy_model_path and default_policy_model:
+            policy_model_path = default_policy_model
+            self.get_logger().info(
+                f"Using packaged DDPG policy model at {policy_model_path}"
+            )
+        elif not policy_model_path:
+            self.get_logger().warn(
+                "No policy model path has been configured; the controller will "
+                "remain idle until one is provided."
+            )
         policy_step_period = self._parameter_float("policy.step_period", timer_period)
         policy_device = self._parameter_string("policy.device") or "cpu"
         self._goal_distance_tolerance = self._parameter_float(
@@ -192,6 +205,28 @@ class CoordinatedNavigationNode(Node):
         if parameter_value.type_ == parameter_value.Type.INTEGER:
             return float(parameter_value.integer_value)
         return float(default)
+
+    def _default_policy_model_path(self) -> str:
+        """Return the packaged default policy model if it is available."""
+
+        share_candidate: Optional[Path] = None
+        try:
+            from ament_index_python.packages import get_package_share_directory
+
+            share_dir = Path(get_package_share_directory("coordinated_navigation"))
+            share_candidate = share_dir / "models" / "model_ep3700.zip"
+        except Exception:  # pragma: no cover - environment-specific lookup failure
+            share_candidate = None
+
+        if share_candidate is not None and share_candidate.is_file():
+            return str(share_candidate)
+
+        source_candidate = Path(__file__).resolve().parents[1] / "models" / "model_ep3700.zip"
+        if source_candidate.is_file():
+            return str(source_candidate)
+
+        return ""
+
 
     @staticmethod
     def _format_namespace(namespace: str) -> str:

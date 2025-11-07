@@ -24,6 +24,7 @@ def generate_launch_description():
     # Launch Arguments
     use_sim_time = LaunchConfiguration('use_sim_time', default='true')
     namespace = LaunchConfiguration('namespace')
+    policy_model_path = LaunchConfiguration('policy_model_path')
 
     map_dir = LaunchConfiguration(
         'map',
@@ -130,9 +131,14 @@ def generate_launch_description():
     # Coordinated navigation node
     coordinated_nav = Node(
         package='coordinated_navigation',
-        executable='node.py',
+        executable='coordinated_navigation_node',
         name='coordinated_navigation',
-        output='screen'
+        output='screen',
+        parameters=[
+            {
+                'policy.model_path': policy_model_path,
+            }
+        ]
     )
 
     # Lifecycle Manager for map_server and amcl
@@ -180,6 +186,15 @@ def generate_launch_description():
           'use_sim_time',
           default_value='true',
           description='Use simulation/Gazebo clock'
+        ),
+        DeclareLaunchArgument(
+            'policy_model_path',
+            default_value=os.path.join(
+                pkg_coordination,
+                'models',
+                'model_ep3700.zip'
+            ),
+            description='Absolute path to the trained policy model zip file.'
         ),
         rsp,
         gazebo,

@@ -29,7 +29,7 @@ if(BUILD_TESTING)
 endif()
 
 install(
-  DIRECTORY  config description launch params resource rviz worlds
+  DIRECTORY  config description launch models params resource rviz worlds
   DESTINATION share/${PROJECT_NAME}
 )
 
@@ -38,6 +38,7 @@ ament_python_install_package(${PROJECT_NAME} PACKAGE_DIR src)
 install(
   PROGRAMS src/node.py
   DESTINATION lib/${PROJECT_NAME}
+  RENAME coordinated_navigation_node
 )
 
 
