@@ -86,7 +86,7 @@ class CoordinatedNavigationNode(Node):
         self._policy_controller = PolicyVelocityController(
             model_path=policy_model_path,
             step_period=policy_step_period,
-            logger=self.get_logger(),
+            node=self,
             device=policy_device,
         )
 
