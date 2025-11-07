@@ -14,19 +14,8 @@ def generate_launch_description():
     
     xacro_file = os.path.join(pkg_coordination, 'description', 'whill.urdf.xacro')
     urdf = xacro.process_file(xacro_file)
-    
-    set_env_library = SetEnvironmentVariable(
-        name='LD_LIBRARY_PATH',
-        value=os.environ.get('LD_LIBRARY_PATH', '') + ':/opt/ros/humble/lib'
-    )
-
-    set_env_ament = SetEnvironmentVariable(
-        name='AMENT_PREFIX_PATH',
-        value=os.environ.get('AMENT_PREFIX_PATH', '') + ':/opt/ros/humble'
-    )
 
     world_file_path = os.path.join(pkg_coordination, 'worlds', 'test.world')
-    robot_path = '/path/to/your_robot.urdf'
 
     use_sim_time = LaunchConfiguration(
         'use_sim_time',
@@ -104,8 +93,6 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        set_env_library,
-        set_env_ament,
         DeclareLaunchArgument(
           'map',
           default_value=map_dir,
@@ -125,7 +112,6 @@ def generate_launch_description():
         gazebo,
         spawn_room,
         spawn_whill,
-        LogInfo(msg=  ["map_dir is ", map_dir]),
         # This action executes other launch file
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
@@ -133,18 +119,17 @@ def generate_launch_description():
             ),
             launch_arguments={
                 'map': map_dir,
-                'use_sim_time': LaunchConfiguration('use_sim_time'),
-                'params_file': str(os.path.join(pkg_coordination, 'params', 'whill_nav2_params.yaml')),
+                'use_sim_time': use_sim_time,
+                'params_file': param_dir,
             }.items(),
         ),
-        LogInfo(msg=  ["rviz_config_dir is ", rviz_config_dir]),
         Node(
             package='rviz2',
             executable='rviz2',
             name='rviz2',
             arguments=['-d', rviz_config_dir],
             parameters=[{
-                'use_sim_time': LaunchConfiguration('use_sim_time'),
+                'use_sim_time': use_sim_time,
             }],
             output='screen'
         ),
