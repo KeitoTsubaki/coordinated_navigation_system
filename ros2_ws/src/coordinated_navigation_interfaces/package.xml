@@ -7,14 +7,18 @@
   <maintainer email="user@example.com">Autonomous Systems Team</maintainer>
   <license>Apache-2.0</license>
 
+  <!-- Build dependencies -->
   <buildtool_depend>ament_cmake</buildtool_depend>
-
   <build_depend>rosidl_default_generators</build_depend>
   <build_depend>std_msgs</build_depend>
 
+  <!-- Execution dependencies -->
   <exec_depend>rosidl_default_runtime</exec_depend>
-  <member_of_group>rosidl_interface_packages</member_of_group>
+  <exec_depend>std_msgs</exec_depend>
 
+  <member_of_group>rosidl_interface_packages</member_of_group>
+  <!-- Export section must include both build_type and member_of_group -->
   <export>
+    <build_type>ament_cmake</build_type>
   </export>
 </package>
