@@ -520,3 +520,6 @@ def main(args: Optional[Sequence[str]] = None) -> None:
 
 
 __all__ = ["CoordinatedNavigationNode", "main"]
+
+if __name__ == "__main__":
+    main()
