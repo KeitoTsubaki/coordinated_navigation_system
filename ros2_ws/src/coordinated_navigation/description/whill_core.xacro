@@ -4,51 +4,59 @@
     <xacro:include filename="inertial_macros.xacro"/>
     <xacro:include filename="materials.xacro"/>
 
-    <!-- BASE LINK -->
-    <link name="base_link">
-    </link>
-
-    <!-- BASE FOOTPRINT LINK -->
-    <joint name="base_footprint_joint" type="fixed">
-        <parent link="base_link"/>
+    <!-- BASE FOOTPRINT LINK JOINT -->
+    <!-- <joint name="base_footprint_joint" type="fixed">
+        <parent link="odom"/>
         <child link="base_footprint"/>
         <origin xyz="0 0 0" rpy="0 0 0"/>
-    </joint>
+    </joint> -->
+    
+    <!-- BASE LINK JOINT -->
+    <!-- <joint name="base_link_joint" type="fixed">
+        <parent link="base_footprint"/>
+        <child link="base_link"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint> -->
 
     <link name="base_footprint"/>
+    <!-- BASE LINK -->
+    <!-- <link name="base_link">
+    </link> -->
 
 
-    <!-- CHASSIS LINK -->
-    <joint name="chassis_joint" type="fixed">
-        <parent link="base_link"/>
-        <child link="chassis"/>
+    <!-- base_link LINK -->
+    <joint name="base_link_joint" type="fixed">
+        <parent link="base_footprint"/>
+        <child link="base_link"/>
         <origin xyz="0.3 0 0.1325" rpy="0 0 0"/>
     </joint>
 
-    <link name="chassis">
+    <link name="base_link">
         <visual>
+            <pose>0.3 0 0 0 0 0</pose>
             <geometry>
                 <box size="0.985 0.406 0.03"/>
             </geometry>
             <material name="body"/>
         </visual>
         <collision>
+            <pose>0.3 0 0 0 0 0</pose>
             <geometry>
                 <box size="0.985 0.406 0.03"/>
             </geometry>
         </collision>
         <xacro:inertial_box mass="30" x="0.985" y="0.406" z="0.03">
-            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <origin xyz="0.3 0 0" rpy="0 0 0"/>
         </xacro:inertial_box>
     </link>
 
-    <gazebo reference="chassis">
+    <gazebo reference="base_link">
         <material>Gazebo/FlatBlack</material>
     </gazebo>
 
     <!-- LEFT WHEEL LINK -->
     <joint name="left_wheel_joint" type="continuous">
-        <parent link="chassis" />
+        <parent link="base_link" />
         <child link="left_wheel" />
         <origin xyz="-0.3 0.260 0" rpy="-${pi/2} 0 0" />
         <axis xyz="0 0 1" />
@@ -81,7 +89,7 @@
 
     <!-- RIGHT WHEEL LINK -->
     <joint name="right_wheel_joint" type="continuous">
-        <parent link="chassis" />
+        <parent link="base_link" />
         <child link="right_wheel" />
         <origin xyz="-0.3 -0.260 0" rpy="${pi/2} 0 0" />
         <axis xyz="0 0 -1" />
@@ -115,7 +123,7 @@
     
     <!-- LEFT FRONT WHEEL LINK -->
     <joint name="left_front_wheel_joint" type="fixed">
-        <parent link="chassis" />
+        <parent link="base_link" />
         <child link="left_front_wheel" />
         <origin xyz="0.330 0.235 0" rpy="-${pi/2} 0 0" />
         <axis xyz="0 0 1" />
@@ -146,7 +154,7 @@
 
     <!-- RIGHT FRONT WHEEL LINK -->
     <joint name="right_front_wheel_joint" type="fixed">
-        <parent link="chassis" />
+        <parent link="base_link" />
         <child link="right_front_wheel" />
         <origin xyz="0.330 -0.235 0" rpy="${pi/2} 0 0" />
         <axis xyz="0 0 -1" />
@@ -177,7 +185,7 @@
     
     <!-- SEAT LINK -->
     <joint name="seat_joint" type="fixed">
-        <parent link="chassis" />
+        <parent link="base_link" />
         <child link="seat" />
         <origin xyz="-0.10 0 0.215" rpy="0 0 0"/>
     </joint>
@@ -253,7 +261,7 @@
 
     <!-- BACKREST LINK -->
     <joint name="backrest_joint" type="fixed">
-        <parent link="chassis" />
+        <parent link="base_link" />
         <child link="backrest" />
         <origin xyz="-0.36 0 0.375" rpy="0 0 0"/>
     </joint>
@@ -384,19 +392,19 @@
 
     <!-- SENSOR FRAME LINK -->
     <joint name="sensor_frame_left_joint" type="fixed">
-        <parent link="chassis" />
+        <parent link="base_link" />
         <child link="sensor_frame_left" />
         <origin xyz="-0.44 0.17 0.74" rpy="0 0 0"/>
     </joint>
 
     <joint name="sensor_frame_right_joint" type="fixed">
-        <parent link="chassis" />
+        <parent link="base_link" />
         <child link="sensor_frame_right" />
         <origin xyz="-0.44 -0.17 0.74" rpy="0 0 0"/>
     </joint>
 
     <joint name="sensor_frame_top_joint" type="fixed">
-        <parent link="chassis" />
+        <parent link="base_link" />
         <child link="sensor_frame_top" />
         <origin xyz="-0.44 0 1.325" rpy="0 0 0"/>
     </joint>

@@ -422,8 +422,8 @@ class FormationManager:
             return float("inf"), False
         
         clearance_weight = 1.0
-        displacement_weight = 1.0
-        previous_weight = 0.5
+        displacement_weight = 0.5
+        previous_weight = 1.0
 
         if self.previous_center is not None:
             # print(f"candidate: {candidate}, previous_center: {self.previous_center}")
@@ -438,14 +438,14 @@ class FormationManager:
 
         # scaled_clearance_cost = clearance_weight / max(clearance, 1e-6)
         # print(f"clearance: {clearance}")
-        scaled_clearance_cost = clearance_weight * max(3 - clearance, 0)
+        scaled_clearance_cost = clearance_weight * max(2 - clearance, 0)
         scaled_displacement_cost = displacement_weight * (
             displacement / max(search_radius, 1e-6)
         )
         previous_distance_cost = previous_weight * distance_previous
         # print(f"scaled_clearance_cost: {scaled_clearance_cost}, scaled_displacement_cost: {scaled_displacement_cost}, previous_distance_cost: {previous_distance_cost}")
-        total_cost = scaled_clearance_cost + scaled_displacement_cost + previous_distance_cost
-        total_cost = scaled_clearance_cost
+        # total_cost = scaled_clearance_cost + scaled_displacement_cost + previous_distance_cost
+        # total_cost = scaled_clearance_cost
         total_cost = scaled_clearance_cost + previous_distance_cost
         return total_cost, True
 

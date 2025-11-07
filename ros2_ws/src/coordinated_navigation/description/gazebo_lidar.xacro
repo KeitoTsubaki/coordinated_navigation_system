@@ -4,7 +4,8 @@
     <joint name="lidar_sensor_joint" type="fixed">
         <parent link="sensor_frame_top"/>
         <child link="lidar_sensor"/>
-        <origin xyz="0 0 0.067" rpy="0 0 0"/>
+        <!-- <origin xyz="0 0 0.067" rpy="0 0 0"/> -->
+        <origin xyz="0 0 -1.2" rpy="0 0 0"/>
     </joint>
     
     <link name="lidar_sensor">
