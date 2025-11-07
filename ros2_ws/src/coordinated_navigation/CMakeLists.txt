@@ -7,6 +7,7 @@ endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
+find_package(ament_cmake_python REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
@@ -27,9 +28,11 @@ if(BUILD_TESTING)
 endif()
 
 install(
-  DIRECTORY  description src launch worlds config params rviz
+  DIRECTORY  config description launch params resource rviz worlds
   DESTINATION share/${PROJECT_NAME}
 )
+
+ament_python_install_package(${PROJECT_NAME} PACKAGE_DIR src)
 
 install(
   PROGRAMS src/node.py
