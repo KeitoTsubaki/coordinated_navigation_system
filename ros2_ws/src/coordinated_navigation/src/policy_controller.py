@@ -13,13 +13,12 @@ import math
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Deque, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Deque, Dict, List, Optional, Protocol, Tuple
 
 import numpy as np
 import yaml
 from geometry_msgs.msg import Pose, PoseStamped, Twist
 from nav_msgs.msg import Odometry
-from rclpy.logging import Logger
 from sensor_msgs.msg import LaserScan, PointCloud2
 
 from .policy_utils import ensure_repo_root_on_path, process_lidar_for_observation
@@ -98,6 +97,17 @@ def laser_scan_to_polar(msg: Optional[LaserScan]) -> List[Tuple[float, float]]:
     return samples
 
 
+if TYPE_CHECKING:
+    from rclpy.node import Node
+
+
+class _LoggerProtocol(Protocol):
+    """Minimal protocol describing the logger interface used in this module."""
+
+    def error(self, message: str) -> None:
+        ...
+
+
 class PolicyVelocityController:
     """Load and execute a trained DDPG policy to generate velocity commands."""
 
@@ -106,12 +116,14 @@ class PolicyVelocityController:
         *,
         model_path: str,
         step_period: float,
-        logger: Optional[Logger] = None,
+        node: Optional["Node"] = None,
+        logger: Optional[_LoggerProtocol] = None,
         device: str = "cuda",
     ) -> None:
         self.model_path = model_path
         self._dt = float(step_period)
-        self._logger = logger
+        self._node = node
+        self._logger = node.get_logger() if node is not None else logger
         self._model_device = device
         self._model = None
         self._last_error: Optional[str] = None
