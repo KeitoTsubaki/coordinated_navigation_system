@@ -28,11 +28,18 @@ from nav2_msgs.action import NavigateToPose
 
 from coordinated_navigation_interfaces.msg import Formation as FormationMsg
 
-from coordinated_navigation.policy_controller import (
-    PolicyVelocityController,
-    quaternion_to_yaw,
-    wrap_to_pi,
-)
+try:
+    from .policy_controller import (
+        PolicyVelocityController,
+        quaternion_to_yaw,
+        wrap_to_pi,
+    )
+except:
+    from coordinated_navigation.policy_controller import (
+        PolicyVelocityController,
+        quaternion_to_yaw,
+        wrap_to_pi,
+    )
 
 @dataclass
 class FormationState:
