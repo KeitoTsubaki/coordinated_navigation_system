@@ -20,6 +20,7 @@ from rclpy.qos import (
     QoSReliabilityPolicy,
     qos_profile_sensor_data,
 )
+from rclpy.parameter import ParameterType
 
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Twist
 from nav_msgs.msg import Odometry
@@ -200,10 +201,15 @@ class CoordinatedNavigationNode(Node):
 
     def _parameter_float(self, name: str, default: float) -> float:
         parameter_value = self.get_parameter(name).get_parameter_value()
-        if parameter_value.type_ == parameter_value.Type.DOUBLE:
+        parameter_type = getattr(
+            parameter_value, "type", getattr(parameter_value, "type_", None)
+        )
+
+        if parameter_type == ParameterType.PARAMETER_DOUBLE:
             return float(parameter_value.double_value)
-        if parameter_value.type_ == parameter_value.Type.INTEGER:
+        if parameter_type == ParameterType.PARAMETER_INTEGER:
             return float(parameter_value.integer_value)
+
         return float(default)
 
     def _default_policy_model_path(self) -> str:
