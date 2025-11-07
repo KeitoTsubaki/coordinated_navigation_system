@@ -31,10 +31,10 @@ install(
   DESTINATION share/${PROJECT_NAME}
 )
 
-#install(
-#  PROGRAMS src/generic_spawn.py
-#  DESTINATION lib/${PROJECT_NAME}
-#)
+install(
+  PROGRAMS src/node.py
+  DESTINATION lib/${PROJECT_NAME}
+)
 
 
 ament_package()
