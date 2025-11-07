@@ -12,7 +12,6 @@ from typing import Optional, Sequence, Type, cast
 
 import rclpy
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
-from rclpy.any_msg import AnyMsg
 from rclpy.node import Node
 from rclpy.qos import (
     QoSHistoryPolicy,
@@ -27,12 +26,13 @@ from sensor_msgs.msg import LaserScan
 
 from nav2_msgs.action import NavigateToPose
 
+from coordinated_navigation_interfaces.msg import Formation as FormationMsg
+
 from .policy_controller import (
     PolicyVelocityController,
     quaternion_to_yaw,
     wrap_to_pi,
 )
-
 
 @dataclass
 class FormationState:
@@ -200,26 +200,38 @@ class CoordinatedNavigationNode(Node):
         if override is not None:
             return override
 
-        module_name = self._parameter_string("formation_msg_module")
-        type_name = self._parameter_string("formation_msg_name")
-        if not module_name or not type_name:
-            self.get_logger().warning(
-                "Formation message parameters are unset; defaulting to AnyMsg for subscriptions.",
-            )
-            return AnyMsg
+        module_name = (
+            self._parameter_string("formation_msg_module")
+            or "coordinated_navigation_interfaces.msg"
+        )
+        type_name = self._parameter_string("formation_msg_name") or "Formation"
+
+        if (
+            module_name == "coordinated_navigation_interfaces.msg"
+            and type_name == "Formation"
+        ):
+            return cast(Type[object], FormationMsg)
 
         try:
             module = importlib.import_module(module_name)
+        except ImportError as exc:  # pragma: no cover - depends on runtime env
+            raise RuntimeError(
+                "Unable to import formation message module '{module}'. Ensure the package is installed and the node's parameters are correct.".format(
+                    module=module_name,
+                )
+            ) from exc
+
+        try:
             msg_type = getattr(module, type_name)
-        except (ImportError, AttributeError) as exc:
-            self.get_logger().warning(
-                "Failed to import formation message type '%s.%s': %s. Falling back to AnyMsg.",
-                module_name,
-                type_name,
-                exc,
-            )
-            return AnyMsg
-        return msg_type
+        except AttributeError as exc:
+            raise RuntimeError(
+                "Module '{module}' does not define a formation message named '{name}'. Verify the formation_msg_name parameter.".format(
+                    module=module_name,
+                    name=type_name,
+                )
+            ) from exc
+
+        return cast(Type[object], msg_type)
 
     def _topic(self, suffix: str) -> str:
         suffix = suffix.strip()
