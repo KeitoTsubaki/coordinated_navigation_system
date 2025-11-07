@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib
+import math
 from dataclasses import dataclass
 from typing import Optional, Sequence, Type, cast
 
 import rclpy
+from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.any_msg import AnyMsg
 from rclpy.node import Node
 from rclpy.qos import (
@@ -16,11 +19,17 @@ from rclpy.qos import (
     qos_profile_sensor_data,
 )
 
-from geometry_msgs.msg import PoseStamped, Twist
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Twist
 from nav_msgs.msg import Odometry
-from sensor_msgs.msg import PointCloud2
+from sensor_msgs.msg import LaserScan
 
-from .policy_controller import PolicyVelocityController
+from nav2_msgs.action import NavigateToPose
+
+from .policy_controller import (
+    PolicyVelocityController,
+    quaternion_to_yaw,
+    wrap_to_pi,
+)
 
 
 @dataclass
@@ -54,6 +63,9 @@ class CoordinatedNavigationNode(Node):
         self.declare_parameter("policy.model_path", "")
         self.declare_parameter("policy.step_period", timer_period)
         self.declare_parameter("policy.device", "cpu")
+        self.declare_parameter("navigation.distance_tolerance", 0.3)
+        self.declare_parameter("navigation.yaw_tolerance", 0.5)
+        self.declare_parameter("navigation.feedback_period", 0.5)
 
         self._robot_namespace = self._normalise_robot_namespace(robot_namespace, robot_id)
         self._formation_msg_type = self._resolve_formation_msg_type(formation_msg_type)
@@ -61,6 +73,13 @@ class CoordinatedNavigationNode(Node):
         policy_model_path = self._parameter_string("policy.model_path")
         policy_step_period = self._parameter_float("policy.step_period", timer_period)
         policy_device = self._parameter_string("policy.device") or "cpu"
+        self._goal_distance_tolerance = self._parameter_float(
+            "navigation.distance_tolerance", 0.3
+        )
+        self._goal_yaw_tolerance = self._parameter_float("navigation.yaw_tolerance", 0.5)
+        self._action_feedback_period = max(
+            self._parameter_float("navigation.feedback_period", 0.5), 0.05
+        )
 
         self._policy_controller = PolicyVelocityController(
             model_path=policy_model_path,
@@ -73,14 +92,16 @@ class CoordinatedNavigationNode(Node):
         self.latest_robot_pose: Optional[PoseStamped] = None
         self.latest_formation: Optional[FormationState] = None
         self.latest_odometry: Optional[Odometry] = None
-        self.latest_pointcloud: Optional[PointCloud2] = None
+        self.latest_scan: Optional[LaserScan] = None
+        self._active_goal_handle = None
 
-        qos_reliable = QoSProfile(depth=10, reliability=QoSReliabilityPolicy.RELIABLE)
-        self._target_pose_subscription = self.create_subscription(
-            PoseStamped,
-            "/target_pose",
-            self._target_pose_callback,
-            qos_reliable,
+        self._navigate_action_server = ActionServer(
+            self,
+            NavigateToPose,
+            self._topic("navigate_to_pose"),
+            execute_callback=self._execute_navigation,
+            goal_callback=self._navigate_goal_callback,
+            cancel_callback=self._navigate_cancel_callback,
         )
 
         pose_qos = QoSProfile(depth=10, reliability=QoSReliabilityPolicy.RELIABLE)
@@ -92,10 +113,10 @@ class CoordinatedNavigationNode(Node):
             history=QoSHistoryPolicy.KEEP_LAST,
         )
 
-        self._pose_subscription = self.create_subscription(
-            PoseStamped,
-            self._topic("pose"),
-            self._robot_pose_callback,
+        self._amcl_subscription = self.create_subscription(
+            PoseWithCovarianceStamped,
+            "/amcl_pose",
+            self._amcl_pose_callback,
             pose_qos,
         )
         self._formation_subscription = self.create_subscription(
@@ -110,10 +131,10 @@ class CoordinatedNavigationNode(Node):
             self._robot_odometry_callback,
             odometry_qos,
         )
-        self._pointcloud_subscription = self.create_subscription(
-            PointCloud2,
-            self._topic("points"),
-            self._robot_pointcloud_callback,
+        self._scan_subscription = self.create_subscription(
+            LaserScan,
+            self._topic("scan"),
+            self._robot_scan_callback,
             qos_profile_sensor_data,
         )
         self._cmd_vel_publisher = self.create_publisher(
@@ -211,13 +232,66 @@ class CoordinatedNavigationNode(Node):
     # ------------------------------------------------------------------
     # Callback implementations
     # ------------------------------------------------------------------
-    def _target_pose_callback(self, msg: PoseStamped) -> None:
-        self.get_logger().debug("Received new target pose")
-        self.latest_target_pose = msg
+    def _navigate_goal_callback(self, goal_request: NavigateToPose.Goal) -> GoalResponse:
+        if self._active_goal_handle is not None and self._active_goal_handle.is_active:
+            self.get_logger().warning(
+                "Rejecting NavigateToPose goal while another goal is active"
+            )
+            return GoalResponse.REJECT
 
-    def _robot_pose_callback(self, msg: PoseStamped) -> None:
-        self.get_logger().debug("Robot pose update received")
-        self.latest_robot_pose = msg
+        self.get_logger().info(
+            "NavigateToPose goal received (x=%.3f, y=%.3f)",
+            goal_request.pose.pose.position.x,
+            goal_request.pose.pose.position.y,
+        )
+        return GoalResponse.ACCEPT
+
+    def _navigate_cancel_callback(self, goal_handle) -> CancelResponse:
+        self.get_logger().info("NavigateToPose cancellation requested")
+        return CancelResponse.ACCEPT
+
+    async def _execute_navigation(self, goal_handle):
+        goal_pose = goal_handle.request.pose
+        self.get_logger().info(
+            "NavigateToPose goal accepted (x=%.3f, y=%.3f)",
+            goal_pose.pose.position.x,
+            goal_pose.pose.position.y,
+        )
+
+        start_time = self.get_clock().now()
+        self.latest_target_pose = goal_pose
+        self._active_goal_handle = goal_handle
+
+        try:
+            while rclpy.ok():
+                if goal_handle.is_cancel_requested:
+                    self.get_logger().info("NavigateToPose goal cancelled")
+                    goal_handle.canceled()
+                    self.latest_target_pose = None
+                    self._stop_robot()
+                    result = self._populate_navigation_result(start_time, success=False)
+                    return result
+
+                if self._has_reached_goal(goal_pose):
+                    self.get_logger().info("NavigateToPose goal reached")
+                    goal_handle.succeed()
+                    self.latest_target_pose = None
+                    self._stop_robot()
+                    result = self._populate_navigation_result(start_time, success=True)
+                    return result
+
+                self._publish_navigation_feedback(goal_handle, start_time)
+                await asyncio.sleep(self._action_feedback_period)
+        finally:
+            if self._active_goal_handle is goal_handle:
+                self._active_goal_handle = None
+
+    def _amcl_pose_callback(self, msg: PoseWithCovarianceStamped) -> None:
+        self.get_logger().debug("AMCL pose update received")
+        pose = PoseStamped()
+        pose.header = msg.header
+        pose.pose = msg.pose.pose
+        self.latest_robot_pose = pose
 
     def _robot_formation_callback(self, msg: object) -> None:
         self.get_logger().debug("Formation update received")
@@ -239,9 +313,9 @@ class CoordinatedNavigationNode(Node):
         self.get_logger().debug("Odometry update received")
         self.latest_odometry = msg
 
-    def _robot_pointcloud_callback(self, msg: PointCloud2) -> None:
-        self.get_logger().debug("Pointcloud update received")
-        self.latest_pointcloud = msg
+    def _robot_scan_callback(self, msg: LaserScan) -> None:
+        self.get_logger().debug("Laser scan update received")
+        self.latest_scan = msg
 
     def _coordination_timer_callback(self) -> None:
         if self._policy_controller is None:
@@ -253,8 +327,8 @@ class CoordinatedNavigationNode(Node):
             required_missing.append("target pose")
         if self.latest_robot_pose is None:
             required_missing.append("robot pose")
-        if self.latest_pointcloud is None:
-            required_missing.append("pointcloud")
+        if self.latest_scan is None:
+            required_missing.append("laser scan")
 
         if required_missing:
             self.get_logger().debug(
@@ -267,7 +341,8 @@ class CoordinatedNavigationNode(Node):
             target_pose=self.latest_target_pose,
             robot_pose=self.latest_robot_pose,
             odometry=self.latest_odometry,
-            pointcloud=self.latest_pointcloud,
+            pointcloud=None,
+            laser_scan=self.latest_scan,
         )
 
         if twist is None:
@@ -285,6 +360,71 @@ class CoordinatedNavigationNode(Node):
             twist.angular.z,
         )
         self._cmd_vel_publisher.publish(twist)
+
+    def _publish_navigation_feedback(self, goal_handle, start_time) -> None:
+        if self.latest_robot_pose is None:
+            return
+
+        feedback = NavigateToPose.Feedback()
+        if hasattr(feedback, "current_pose"):
+            current_pose = PoseStamped()
+            current_pose.header = self.latest_robot_pose.header
+            current_pose.pose = self.latest_robot_pose.pose
+            feedback.current_pose = current_pose
+
+        duration = self.get_clock().now() - start_time
+        if hasattr(feedback, "navigation_time"):
+            navigation_time = getattr(feedback, "navigation_time")
+            seconds = duration.nanoseconds / 1e9
+            if hasattr(navigation_time, "sec") and hasattr(navigation_time, "nanosec"):
+                feedback.navigation_time = duration.to_msg()
+            else:
+                feedback.navigation_time = float(seconds)
+        if hasattr(feedback, "number_of_recoveries"):
+            feedback.number_of_recoveries = 0
+
+        goal_handle.publish_feedback(feedback)
+
+    def _populate_navigation_result(self, start_time, *, success: bool) -> NavigateToPose.Result:
+        duration = self.get_clock().now() - start_time
+        result = NavigateToPose.Result()
+        if hasattr(result, "total_time"):
+            result.total_time = duration.to_msg()
+        if hasattr(result, "success"):
+            result.success = bool(success)
+        if hasattr(result, "result_code"):
+            if success:
+                result_code = getattr(NavigateToPose.Result, "RESULT_SUCCEEDED", 0)
+            else:
+                result_code = getattr(NavigateToPose.Result, "RESULT_CANCELED", 0)
+            result.result_code = int(result_code)
+        return result
+
+    def _stop_robot(self) -> None:
+        twist = Twist()
+        self._cmd_vel_publisher.publish(twist)
+
+    def _has_reached_goal(self, goal_pose: PoseStamped) -> bool:
+        if self.latest_robot_pose is None:
+            return False
+
+        robot_position = self.latest_robot_pose.pose.position
+        goal_position = goal_pose.pose.position
+        dx = float(goal_position.x - robot_position.x)
+        dy = float(goal_position.y - robot_position.y)
+        distance = math.hypot(dx, dy)
+        if distance > self._goal_distance_tolerance:
+            return False
+
+        robot_yaw = quaternion_to_yaw(self.latest_robot_pose.pose.orientation)
+        goal_yaw = quaternion_to_yaw(goal_pose.pose.orientation)
+        yaw_error = wrap_to_pi(goal_yaw - robot_yaw)
+        return abs(yaw_error) <= self._goal_yaw_tolerance
+
+    def destroy_node(self) -> bool:
+        if hasattr(self, "_navigate_action_server") and self._navigate_action_server is not None:
+            self._navigate_action_server.destroy()
+        return super().destroy_node()
 
     def _extract_formation_state(self, msg: object) -> Optional[FormationState]:
         """Convert a raw ROS message into a `FormationState` container."""
