@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """Primary ROS 2 node for coordinating navigation of a single robot."""
 
 from __future__ import annotations
