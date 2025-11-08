@@ -7,7 +7,6 @@ logic so that a pre-trained DDPG policy can be executed inside a ROS 2 node.
 from __future__ import annotations
 
 import argparse
-import importlib.abc
 import importlib.resources
 import math
 from collections import deque
@@ -22,6 +21,16 @@ from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan, PointCloud2
 
 from .policy_utils import ensure_repo_root_on_path, process_lidar_for_observation
+
+
+_POLICY_LIDAR_HISTORY_LEN = 4
+"""Number of LiDAR scans stacked when generating observations."""
+
+_POLICY_LIDAR_POINTS = 629
+"""Number of raw LiDAR samples expected by the trained policy."""
+
+_POLICY_LIDAR_EXTENSION_POINTS = 11
+"""Number of extension points appended to each LiDAR scan."""
 
 
 try:  # pragma: no cover - optional dependency path
@@ -127,16 +136,16 @@ class PolicyVelocityController:
         self._model_device = device
         self._model = None
         self._last_error: Optional[str] = None
-        self._lidar_history_len = 1
-        self._n_l = 0
-        self._n_e = 0
+        self._lidar_history_len = _POLICY_LIDAR_HISTORY_LEN
+        self._n_l = _POLICY_LIDAR_POINTS
+        self._n_e = _POLICY_LIDAR_EXTENSION_POINTS
         self._lidar_range_m = 10.0
         self._v_max = 1.0
         self._omega_max = 1.0
         self._a_max = 1.0
         self._alpha_max = 1.0
         self._state = _PolicyTemporalState()
-        self._lidar_history: Deque[np.ndarray] = deque(maxlen=1)
+        self._lidar_history: Deque[np.ndarray] = deque(maxlen=self._lidar_history_len)
 
         self._load_policy_config()
         self._initialise_model()
@@ -213,88 +222,57 @@ class PolicyVelocityController:
             self._logger.error(message)
 
     def _load_policy_config(self) -> None:
-        config: Optional[Dict[str, object]] = None
+        limits_cfg: Optional[Dict[str, object]] = None
         last_exc: Optional[Exception] = None
-        package_files: Optional[importlib.abc.Traversable] = None
 
         try:
-            package_files = importlib.resources.files("rl_training")
-        except ModuleNotFoundError:
-            repo_root = ensure_repo_root_on_path()
-            try:
-                package_files = importlib.resources.files("rl_training")
-            except ModuleNotFoundError:
-                fallback = repo_root / "rl_training" / "config" / "ddpg_config.yaml"
-                if fallback.exists():
-                    try:
-                        with open(fallback, "r", encoding="utf-8") as handle:
-                            config = yaml.safe_load(handle)
-                    except Exception as exc:  # pragma: no cover - defensive path
-                        last_exc = exc
-                else:
-                    last_exc = FileNotFoundError(fallback)
+            limits_resource = importlib.resources.files("coordinated_navigation").joinpath(
+                "config", "policy_simulator_limits.yaml"
+            )
+        except ModuleNotFoundError as exc:
+            limits_resource = None
+            last_exc = exc
 
-        if config is None and package_files is not None:
+        if limits_resource is not None:
             try:
-                config_path = package_files.joinpath("config", "ddpg_config.yaml")
-                with importlib.resources.as_file(config_path) as path:
+                with importlib.resources.as_file(limits_resource) as path:
                     with open(path, "r", encoding="utf-8") as handle:
-                        config = yaml.safe_load(handle)
+                        limits_cfg = yaml.safe_load(handle)
             except Exception as exc:  # pragma: no cover - defensive path
                 last_exc = exc
 
-        if config is None:
-            message = "unknown error" if last_exc is None else str(last_exc)
-            self._set_error(f"Failed to read DDPG config: {message}")
-            return
-
-        lidar_cfg = config.get("lidar", {}) if isinstance(config, dict) else {}
-        self._lidar_history_len = int(lidar_cfg.get("lidar_history_len", 1))
-        self._n_l = int(lidar_cfg.get("n_l", 0))
-        self._n_e = int(lidar_cfg.get("n_e", 0))
-
-        self._lidar_history = deque(maxlen=self._lidar_history_len)
-
-        simulator_cfg: Optional[Dict[str, object]] = None
-        last_exc = None
-        sim_package_files: Optional[importlib.abc.Traversable] = None
-
-        try:
-            sim_package_files = importlib.resources.files("simulation_core")
-        except ModuleNotFoundError:
-            repo_root = ensure_repo_root_on_path()
-            candidate = repo_root / "simulation_core" / "config" / "simulator_config.yaml"
-            if candidate.exists():
+        if limits_cfg is None:
+            local_candidate = (
+                Path(__file__).resolve().parent.parent / "config" / "policy_simulator_limits.yaml"
+            )
+            if local_candidate.exists():
                 try:
-                    with open(candidate, "r", encoding="utf-8") as handle:
-                        simulator_cfg = yaml.safe_load(handle)
+                    with open(local_candidate, "r", encoding="utf-8") as handle:
+                        limits_cfg = yaml.safe_load(handle)
                 except Exception as exc:  # pragma: no cover - defensive path
                     last_exc = exc
-            else:
-                last_exc = FileNotFoundError(candidate)
 
-        if simulator_cfg is None and sim_package_files is not None:
-            try:
-                simulator_path = sim_package_files.joinpath("config", "simulator_config.yaml")
-                with importlib.resources.as_file(simulator_path) as path:
-                    with open(path, "r", encoding="utf-8") as handle:
-                        simulator_cfg = yaml.safe_load(handle)
-            except Exception as exc:  # pragma: no cover - defensive path
-                last_exc = exc
+        if not isinstance(limits_cfg, dict):
+            limits_cfg = None
 
-        if simulator_cfg is None:
+        if limits_cfg is None:
             message = "unknown error" if last_exc is None else str(last_exc)
-            self._set_error(f"Failed to read simulator config: {message}")
+            self._set_error(f"Failed to read simulator limits: {message}")
             return
 
-        robot_cfg = simulator_cfg.get("robot", {})
-        lidar_cfg_sim = simulator_cfg.get("lidar", {})
+        robot_cfg = limits_cfg.get("robot", {})
+        lidar_cfg_sim = limits_cfg.get("lidar", {})
 
         self._v_max = float(robot_cfg.get("v_max", self._v_max))
         self._omega_max = float(robot_cfg.get("omega_max", self._omega_max))
         self._a_max = float(robot_cfg.get("a_max", self._a_max))
         self._alpha_max = float(robot_cfg.get("alpha_max", self._alpha_max))
         self._lidar_range_m = float(lidar_cfg_sim.get("range_m", self._lidar_range_m))
+
+        self._lidar_history_len = _POLICY_LIDAR_HISTORY_LEN
+        self._n_l = _POLICY_LIDAR_POINTS
+        self._n_e = _POLICY_LIDAR_EXTENSION_POINTS
+        self._lidar_history = deque(maxlen=self._lidar_history_len)
 
     def _initialise_model(self) -> None:
         if self._model is not None:
