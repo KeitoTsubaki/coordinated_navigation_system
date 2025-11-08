@@ -138,7 +138,7 @@ class CoordinatedNavigationNode(Node):
 
         self._amcl_subscription = self.create_subscription(
             PoseWithCovarianceStamped,
-            "/amcl_pose",
+            self._topic("amcl_pose"),
             self._amcl_pose_callback,
             pose_qos,
         )

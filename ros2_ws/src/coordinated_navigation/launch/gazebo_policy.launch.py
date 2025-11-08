@@ -73,10 +73,11 @@ def generate_launch_description():
     rsp = Node(
         package='robot_state_publisher',
         executable='robot_state_publisher',
+        namespace=namespace,
         output='screen',
         parameters=[
             {'robot_description': urdf.toxml()},
-            {'use_sim_time': use_sim_time}, 
+            {'use_sim_time': use_sim_time},
             ]
     )
 
@@ -104,12 +105,14 @@ def generate_launch_description():
     )
 
     spawn_whill = Node(
-        package='gazebo_ros', 
+        package='gazebo_ros',
         executable='spawn_entity.py',
+        namespace=namespace,
         output='screen',
         arguments=[
             '-topic', 'robot_description',   # The the robot description is published by the rsp node on the /robot_description topic
             '-entity', 'whill',
+            '-robot_namespace', namespace,
             '-x', '-5.0', '-y', '-5.0', '-z', '0.0'
             ],        # The name of the entity to spawn (doesn't matter if you only have one robot)
     )
@@ -117,6 +120,7 @@ def generate_launch_description():
     map_server = Node(
         package='nav2_map_server',
         executable='map_server',
+        namespace=namespace,
         name='map_server',
         output='screen',
         parameters=[configured_params],
@@ -126,6 +130,7 @@ def generate_launch_description():
     amcl = Node(
         package='nav2_amcl',
         executable='amcl',
+        namespace=namespace,
         name='amcl',
         output='screen',
         parameters=[configured_params],
@@ -137,22 +142,13 @@ def generate_launch_description():
         executable='coordinated_navigation_node',
         name='coordinated_navigation',
         output='screen',
+        namespace=namespace,
         parameters=[
             {
                 'use_sim_time': use_sim_time,
-                'robot_namespace': '',  
+                'robot_namespace': namespace,
                 'policy.model_path': policy_model_path,
             }
-        ],
-        remappings=[
-            # Action: RViz の Nav2Goal は /navigate_to_pose に投げるので、そこへ見せる
-            ('/robot_1/navigate_to_pose', '/navigate_to_pose'),
-
-            # I/O トピック類を無接頭辞へ合わせる（Gazeboのdiff_driveは /cmd_vel を購読）
-            ('/robot_1/cmd_vel', '/cmd_vel'),
-            ('/robot_1/scan', '/scan'),
-            ('/robot_1/odom', '/odom'),
-            ('/robot_1/formation', '/formation'),  # 使っていれば
         ],
     )
 
@@ -162,6 +158,7 @@ def generate_launch_description():
         executable='lifecycle_manager',
         name='lifecycle_manager_localization',
         output='screen',
+        namespace=namespace,
         parameters=[{
             'use_sim_time': use_sim_time,
             'autostart': True,
@@ -175,6 +172,7 @@ def generate_launch_description():
         executable='rviz2',
         name='rviz2',
         arguments=['-d', rviz_config_dir],
+        namespace=namespace,
         parameters=[{
             'use_sim_time': use_sim_time,
         }],
