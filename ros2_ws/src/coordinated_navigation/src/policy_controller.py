@@ -221,6 +221,14 @@ class PolicyVelocityController:
         if self._logger is not None:
             self._logger.error(message)
 
+    def _log_info(self, message: str) -> None:
+        if self._logger is not None and hasattr(self._logger, "info"):
+            self._logger.info(message)
+
+    def _log_warning(self, message: str) -> None:
+        if self._logger is not None and hasattr(self._logger, "warning"):
+            self._logger.warning(message)
+
     def _load_policy_config(self) -> None:
         limits_cfg: Optional[Dict[str, object]] = None
         last_exc: Optional[Exception] = None
@@ -269,7 +277,9 @@ class PolicyVelocityController:
 
         if limits_cfg is None:
             message = "unknown error" if last_exc is None else str(last_exc)
-            self._set_error(f"Failed to read simulator limits: {message}")
+            self._log_warning(
+                "Unable to read policy simulator limits; using built-in defaults"
+            )
             return
 
         robot_cfg = limits_cfg.get("robot", {})
@@ -294,31 +304,7 @@ class PolicyVelocityController:
             self._set_error("No policy model path has been provided.")
             return
 
-        original_path = Path(self.model_path)
-        candidate_paths: List[Path] = []
-
-        if original_path.is_absolute():
-            candidate_paths.append(original_path)
-        else:
-            candidate_paths.append(original_path)
-            package_root = Path(__file__).resolve().parents[2]
-            candidate_paths.append(package_root / original_path)
-            candidate_paths.append(package_root / original_path.name)
-            try:
-                repo_root = ensure_repo_root_on_path()
-            except Exception:  # pragma: no cover - defensive path
-                repo_root = None
-            if repo_root is not None:
-                repo_root = Path(repo_root)
-                candidate_paths.append(repo_root / original_path)
-                candidate_paths.append(repo_root / original_path.name)
-
-        resolved_path: Optional[Path] = None
-        for candidate in candidate_paths:
-            if candidate.exists():
-                resolved_path = candidate
-                break
-
+        resolved_path = self._resolve_model_path(self.model_path)
         if resolved_path is None:
             self._set_error(f"Policy model not found: {self.model_path}")
             return
@@ -363,9 +349,44 @@ class PolicyVelocityController:
             self._model = DDPG.load(self.model_path, device=self._model_device)
             self._model.policy.set_training_mode(False)
             self._last_error = None
+            self._log_info(f"Loaded policy model from {self.model_path}")
         except Exception as exc:  # pragma: no cover - model loading failure
             self._set_error(f"Failed to load policy model: {exc}")
             self._model = None
+
+    def _resolve_model_path(self, path_str: str) -> Optional[Path]:
+        path = Path(path_str)
+        candidates: List[Path] = []
+
+        if path.is_absolute():
+            candidates.append(path)
+        else:
+            candidates.append(path)
+            package_root = Path(__file__).resolve().parents[2]
+            candidates.append(package_root / path)
+            candidates.append(package_root / path.name)
+            try:
+                repo_root_str = ensure_repo_root_on_path()
+            except Exception:  # pragma: no cover - defensive path
+                repo_root_str = None
+            if repo_root_str:
+                repo_root = Path(repo_root_str)
+                candidates.append(repo_root / path)
+                candidates.append(repo_root / path.name)
+            try:
+                from ament_index_python.packages import get_package_share_directory
+
+                share_dir = Path(get_package_share_directory("coordinated_navigation"))
+                candidates.append(share_dir / path)
+                if path.name:
+                    candidates.append(share_dir / "models" / path.name)
+            except Exception:  # pragma: no cover - ament not available
+                pass
+
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate.resolve()
+        return None
 
     def _build_observation(
         self,

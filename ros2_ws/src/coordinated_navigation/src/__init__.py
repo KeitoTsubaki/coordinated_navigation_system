@@ -3,4 +3,7 @@
 from .node import CoordinatedNavigationNode
 from .policy_controller import PolicyVelocityController
 
-__all__ = ["CoordinatedNavigationNode", "PolicyVelocityController"]
+__all__ = [
+    "CoordinatedNavigationNode",
+    "PolicyVelocityController",
+]
