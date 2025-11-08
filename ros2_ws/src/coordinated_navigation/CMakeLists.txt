@@ -8,6 +8,7 @@ endif()
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(ament_cmake_python REQUIRED)
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
 find_package(rclcpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
@@ -15,6 +16,24 @@ find_package(nav_msgs REQUIRED)
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
 find_package(coordinated_navigation_interfaces REQUIRED)
+
+set(_policy_pip_requirement "stable-baselines3[extra]>=2.7.0")
+set(_policy_check_script "import sys\nfrom importlib import metadata\nfrom packaging.specifiers import SpecifierSet\nspecifier = SpecifierSet('>=2.7.0')\ntry:\n    version = metadata.version('stable-baselines3')\nexcept metadata.PackageNotFoundError:\n    sys.exit(1)\nif version in specifier:\n    sys.exit(0)\nsys.exit(1)\n")
+execute_process(
+  COMMAND "${Python3_EXECUTABLE}" -c "${_policy_check_script}"
+  RESULT_VARIABLE _policy_requirement_satisfied
+)
+if(NOT _policy_requirement_satisfied EQUAL 0)
+  execute_process(
+    COMMAND "${Python3_EXECUTABLE}" -m pip install --disable-pip-version-check "${_policy_pip_requirement}"
+    RESULT_VARIABLE _pip_install_result
+    ERROR_VARIABLE _pip_install_error
+    ERROR_STRIP_TRAILING_WHITESPACE
+  )
+  if(NOT _pip_install_result EQUAL 0)
+    message(FATAL_ERROR "Failed to install ${_policy_pip_requirement}: ${_pip_install_error}")
+  endif()
+endif()
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)

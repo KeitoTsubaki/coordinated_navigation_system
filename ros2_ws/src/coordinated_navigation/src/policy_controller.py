@@ -346,6 +346,18 @@ class PolicyVelocityController:
                     f" ({exc})"
                 )
                 return
+            except Exception as exc:  # pragma: no cover - unexpected import failure
+                self._set_error(
+                    "Unexpected error while importing rl_training for the policy model."
+                    f" ({exc})"
+                )
+                return
+        except Exception as exc:  # pragma: no cover - unexpected import failure
+            self._set_error(
+                "Unexpected error while importing rl_training for the policy model."
+                f" ({exc})"
+            )
+            return
 
         try:
             self._model = DDPG.load(self.model_path, device=self._model_device)
