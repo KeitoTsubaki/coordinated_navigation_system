@@ -41,7 +41,8 @@ coordinated_navigation_system\
     │       │   ├── environment.py        # Defines the 2D world.
     │       │   └── robot.py              # Simulates robot physics & LiDAR.
     │       ├── config/
-    │       │   └── simulator_config.yaml # All simulation parameters.
+    │       │   ├── policy_simulator_limits.yaml # Policy controller actuator/sensor limits.
+    │       │   └── simulator_config.yaml        # Broader simulator parameters.
     │       ├── launch/
     │       │   └── simulator.launch.py   # A convenient way to run the node.
     │       ├── resource/
@@ -104,7 +105,9 @@ while `omega_f` keeps a fixed magnitude of `0.4π rad/s` (its sign follows the
 heading error) so the robot turns at a consistent rate in the direction of the
 formation target.
 
-The tuning constants live in `simulation_core/config/simulator_config.yaml`:
+The tuning constants live in `simulation_core/config/simulator_config.yaml`, while the
+policy controllers read their actuator limits from
+`coordinated_navigation/config/policy_simulator_limits.yaml`:
 
 ```yaml
 speed_adjustment:
