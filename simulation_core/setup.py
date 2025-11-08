@@ -11,7 +11,7 @@ setup(
         ("share/" + package_name, ["package.xml"]),
         ("share/" + package_name + "/config", ["config/simulator_config.yaml"])
     ],
-    install_requires=["setuptools", "pygame", "numpy>=1.23,<2", "pyyaml"],
+    install_requires=["setuptools", "pygame", "numpy", "pyyaml"],
     zip_safe=True,
     maintainer="tsubaki",
     maintainer_email="tsubaki.fs@tut.ac.jp",
