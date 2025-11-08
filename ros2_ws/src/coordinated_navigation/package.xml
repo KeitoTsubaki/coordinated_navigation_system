@@ -28,6 +28,6 @@
   <!-- <exec_depend>coordinated_navigation_interfaces</exec_depend> -->
   <exec_depend>python3-numpy</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
-  <exec_depend>python3-pip</exec_depend>
+  <exec_depend>python3-stable-baselines3</exec_depend>
   <exec_depend>python3-torch</exec_depend>
 </package>
