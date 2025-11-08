@@ -301,10 +301,9 @@ class CoordinatedNavigationNode(Node):
             )
             return GoalResponse.REJECT
 
+        goal_position = goal_request.pose.pose.position
         self.get_logger().info(
-            "NavigateToPose goal received (x=%.3f, y=%.3f)",
-            goal_request.pose.pose.position.x,
-            goal_request.pose.pose.position.y,
+            f"NavigateToPose goal received (x={goal_position.x:.3f}, y={goal_position.y:.3f})"
         )
         return GoalResponse.ACCEPT
 
@@ -314,10 +313,9 @@ class CoordinatedNavigationNode(Node):
 
     async def _execute_navigation(self, goal_handle):
         goal_pose = goal_handle.request.pose
+        goal_position = goal_pose.pose.position
         self.get_logger().info(
-            "NavigateToPose goal accepted (x=%.3f, y=%.3f)",
-            goal_pose.pose.position.x,
-            goal_pose.pose.position.y,
+            f"NavigateToPose goal accepted (x={goal_position.x:.3f}, y={goal_position.y:.3f})"
         )
 
         start_time = self.get_clock().now()
@@ -360,15 +358,18 @@ class CoordinatedNavigationNode(Node):
         self.latest_formation = self._extract_formation_state(msg)
         if self.latest_formation is None:
             self.get_logger().warning(
-                "Formation message missing expected fields; ignoring update of type %s",
-                type(msg).__name__,
+                (
+                    "Formation message missing expected fields; ignoring update of type "
+                    f"{type(msg).__name__}"
+                )
             )
         else:
             self.get_logger().debug(
-                "Tracking formation '%s' (theta=%.3f rad, cost=%.3f)",
-                self.latest_formation.formation_id,
-                self.latest_formation.theta,
-                self.latest_formation.cost,
+                (
+                    f"Tracking formation '{self.latest_formation.formation_id}' "
+                    f"(theta={self.latest_formation.theta:.3f} rad, "
+                    f"cost={self.latest_formation.cost:.3f})"
+                )
             )
 
     def _robot_odometry_callback(self, msg: Odometry) -> None:
@@ -393,9 +394,9 @@ class CoordinatedNavigationNode(Node):
             required_missing.append("laser scan")
 
         if required_missing:
+            missing_fields = ", ".join(required_missing)
             self.get_logger().debug(
-                "Coordination timer waiting for %s",
-                ", ".join(required_missing),
+                f"Coordination timer waiting for {missing_fields}"
             )
             return
 
@@ -410,16 +411,17 @@ class CoordinatedNavigationNode(Node):
         if twist is None:
             if self._policy_controller.last_error:
                 self.get_logger().warning(
-                    "Policy evaluation failed: %s", self._policy_controller.last_error
+                    f"Policy evaluation failed: {self._policy_controller.last_error}"
                 )
             else:
                 self.get_logger().debug("Policy controller produced no command")
             return
 
         self.get_logger().debug(
-            "Publishing policy cmd_vel (v=%.3f m/s, omega=%.3f rad/s)",
-            twist.linear.x,
-            twist.angular.z,
+            (
+                f"Publishing policy cmd_vel (v={twist.linear.x:.3f} m/s, "
+                f"omega={twist.angular.z:.3f} rad/s)"
+            )
         )
         self._cmd_vel_publisher.publish(twist)
 
@@ -497,8 +499,9 @@ class CoordinatedNavigationNode(Node):
         required_fields = ("formation_id", "formation_theta", "optimization_cost")
         missing_fields = [name for name in required_fields if not hasattr(msg, name)]
         if missing_fields:
+            missing_fields_str = ", ".join(missing_fields)
             self.get_logger().debug(
-                "Formation message is missing fields %s", ", ".join(missing_fields)
+                f"Formation message is missing fields {missing_fields_str}"
             )
             return None
 
