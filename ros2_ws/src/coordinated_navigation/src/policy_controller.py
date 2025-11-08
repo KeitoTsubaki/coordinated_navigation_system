@@ -252,6 +252,18 @@ class PolicyVelocityController:
                 except Exception as exc:  # pragma: no cover - defensive path
                     last_exc = exc
 
+        if limits_cfg is None:
+            try:
+                from ament_index_python.packages import get_package_share_directory
+
+                share_directory = Path(get_package_share_directory("coordinated_navigation"))
+                share_candidate = share_directory / "config" / "policy_simulator_limits.yaml"
+                if share_candidate.exists():
+                    with open(share_candidate, "r", encoding="utf-8") as handle:
+                        limits_cfg = yaml.safe_load(handle)
+            except Exception as exc:  # pragma: no cover - defensive path
+                last_exc = exc
+
         if not isinstance(limits_cfg, dict):
             limits_cfg = None
 
