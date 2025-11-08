@@ -30,4 +30,5 @@
   <exec_depend>python3-yaml</exec_depend>
   <exec_depend>python3-stable-baselines3</exec_depend>
   <exec_depend>python3-torch</exec_depend>
+  <exec_depend>python3-lxml</exec_depend>
 </package>

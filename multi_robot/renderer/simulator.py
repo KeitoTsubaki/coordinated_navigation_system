@@ -52,10 +52,7 @@ class MultiRobotSimulator:
         if config_path is None:
             import importlib.resources
 
-            config_path = str(
-                importlib.resources.files("simulation_core")
-                .joinpath("config", "simulator_config.yaml")
-            )
+            config_path = importlib.resources.files("simulation_core") / "config" / "simulator_config.yaml"
 
         self._policy_controller: Optional[PolicyController] = (
             PolicyController(self, policy_model_path)

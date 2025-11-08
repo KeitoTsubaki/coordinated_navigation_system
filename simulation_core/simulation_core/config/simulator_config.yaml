@@ -1,0 +1,70 @@
+# Parameters for the simulation
+# This file will store all the parameters for your simulation, making it easy to adjust without changing the code.
+#   - Environment: map_size, num_obstacles, obstacle_size_range.
+#   - Robot: start_pos, target_pos (can be set to 'random'), radius.
+#   - LiDAR: lidar_range, lidar_fov (field of view), num_scan_points.
+#   - ROS Topics: twist_topic: /cmd_vel, scan_topic: /cloud.
+#   - Teleop: linear_speed, angular_speed.
+
+#! Prerequisites: 
+#!  - Map size is twice the length of the lidar range.
+#!  - Map shape is square.
+simulation:
+  k8: 2400
+  k9: 2400
+speed_adjustment:
+  eta_theta: 0.5
+  eta_d: 2.0
+  k_d: 30
+  omega_fixed: 1.2566370614 # 0.4 * pi rad/s
+  T_df: 0.6
+robot:
+  radius_m: 0.6          # ロボットの安全半径（m）
+  width_m: 0.5           # ロボットの幅（m）
+  height_m: 1.0          # ロボットの高さ（m）
+  safety_radius_m: 0.6   # LiDAR フィルタリングなどに利用する安全半径（m）
+  robot_color: "#1492C7"  # RGBでロボットの色
+  target_color: "#F5BF98"    # RGBでゴールの色
+  T_dt_m_trap_shaped: 20 # The threshold distance between the start and end position (meters)
+  T_dt_m_zigzag: 15 # The threshold distance between the start and end position (meters)
+  T_dt_m_random: 10 # The threshold distance between the start and end position (
+  T_dt_m_empty: 20
+  v_max: 1.2            # 最大線速度（m/s）
+  omega_max: 4.71        # 最大角速度（rad/s） 1.5 * pi
+  a_max: 2            # 最大線加速度（m/ss）
+  alpha_max: 12.61        # 最大角加速度（rad/ss） 4 * pi
+  max_d: 0.12          # 1ステップで進む最大距離（m）
+  max_theta: 0.47    # 1ステップで回転する最大角度（rad）0.15 * pi
+  num_check_points: 16  # ロボット周囲の障害物チェックポイントの数
+
+formation:
+  robot_count: 2          # デフォルトで生成するロボット台数
+  default_type: "line"  # 既定の隊形タイプ
+  spacing_m: 1.5          # ロボット間隔（m）
+  centroid_sampling_interval: 0.5  # C3: サンプリング周期（秒）
+  look_back_steps: 2                # C3: 参照する過去サンプル数
+  angular_tolerance: 5.0          # C3: 直交角度の許容誤差（度）
+  min_displacement: 0.1            # C3: 判定に必要な最小移動量（m）
+
+lidar:
+  range_m: 10           # 最大距離（m）
+  resolution: 629       # スキャン点の数（例：360°で60点 → 6度ごと）
+  noise: 1.0           # ノイズの強さ（標準偏差）
+  angle_start: 0       # 開始角（ラジアン）
+  angle_end: 6.28318   # 終了角（2πラジアン）
+  line_color: "#D2E0DF"
+  points_color: "#04C4CD"  # スキャン点の色
+
+window:
+  window_title: "2D LiDAR Simulation"
+  size: 800 # マップのサイズ（ピクセル）
+  background_color: "#FFFFFF"
+
+obstacles:
+  default_map_type: "random"  # "trap_shaped", "zigzag", "random", "empty"
+  count: 6            # ランダム障害物の数
+  min_size_m: 20
+  max_size_m: 80
+  T_do_m: 7.5 # The threshold distance between each objects (meters)
+  color: "#C2C4D0"  # 障害物の色（黒）
+  l_passage: 0 # length of the passage in the zigzag-shaped map (meters)

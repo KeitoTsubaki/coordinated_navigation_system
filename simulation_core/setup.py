@@ -11,6 +11,8 @@ setup(
         ("share/" + package_name, ["package.xml"]),
         ("share/" + package_name + "/config", ["config/simulator_config.yaml"])
     ],
+    include_package_data=True,
+    package_data={"simulation_core": ["config/*.yaml"]},
     install_requires=["setuptools", "pygame", "numpy", "pyyaml"],
     zip_safe=True,
     maintainer="tsubaki",

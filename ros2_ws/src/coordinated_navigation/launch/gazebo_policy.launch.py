@@ -74,7 +74,10 @@ def generate_launch_description():
         package='robot_state_publisher',
         executable='robot_state_publisher',
         output='screen',
-        parameters=[{'robot_description': urdf.toxml()}]
+        parameters=[
+            {'robot_description': urdf.toxml()},
+            {'use_sim_time': use_sim_time}, 
+            ]
     )
 
     # Include the Gazebo launch file, provided by the gazebo_ros package
@@ -136,9 +139,21 @@ def generate_launch_description():
         output='screen',
         parameters=[
             {
+                'use_sim_time': use_sim_time,
+                'robot_namespace': '',  
                 'policy.model_path': policy_model_path,
             }
-        ]
+        ],
+        remappings=[
+            # Action: RViz の Nav2Goal は /navigate_to_pose に投げるので、そこへ見せる
+            ('/robot_1/navigate_to_pose', '/navigate_to_pose'),
+
+            # I/O トピック類を無接頭辞へ合わせる（Gazeboのdiff_driveは /cmd_vel を購読）
+            ('/robot_1/cmd_vel', '/cmd_vel'),
+            ('/robot_1/scan', '/scan'),
+            ('/robot_1/odom', '/odom'),
+            ('/robot_1/formation', '/formation'),  # 使っていれば
+        ],
     )
 
     # Lifecycle Manager for map_server and amcl
@@ -202,7 +217,7 @@ def generate_launch_description():
         spawn_whill,
         map_server,
         amcl,
-        coordinated_nav,
         lifecycle_manager,
+        coordinated_nav,
         rviz,
     ])

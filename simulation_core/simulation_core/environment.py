@@ -23,16 +23,18 @@ class SimCoreEnvironment:
         # ===== Load config file =====
         # For ROS2 package
         # TODO: Make it work without sourcing the ROS2 workspace
-        if config_path is None:
-            from ament_index_python.packages import get_package_share_directory
+        # if config_path is None:
+        #     from ament_index_python.packages import get_package_share_directory
 
-            config_path = os.path.join(
-                get_package_share_directory("simulation_core"),
-                "config",
-                "simulator_config.yaml",
-            )
-        with open(config_path, "r", encoding="utf-8") as f:
-            config = yaml.safe_load(f)
+        #     config_path = os.path.join(
+        #         get_package_share_directory("simulation_core"),
+        #         "config",
+        #         "simulator_config.yaml",
+        #     )
+        # with open(config_path, "r", encoding="utf-8") as f:
+        #     config = yaml.safe_load(f)
+        text = config_path.read_text(encoding="utf-8")
+        config = yaml.safe_load(text)
 
         # ===== import parameters from config file =====
         self.WINDOW_NAME = config["window"]["window_title"]
