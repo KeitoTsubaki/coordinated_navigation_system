@@ -147,6 +147,7 @@ class FormationManager(SideBySide4Manager):
         origin = front_robot.position
 
         forward_distance_m = float(getattr(simulator, "formation_center_forward_distance_m", 3.0))
+        forward_distance_m = min(forward_distance_m, 1.0)
         max_distance_pixels = forward_distance_m * pixels_per_meter
         if max_distance_pixels <= 0.0:
             return None
@@ -435,19 +436,37 @@ class FormationManager(SideBySide4Manager):
             raise ValueError("weights must contain five elements")
 
         formation_axis_direction = (math.cos(theta), math.sin(theta))
-        progress_state = self._centroid_progress_vector()
         angle_difference = math.pi / 2.0
-        if progress_state is not None:
-            progress_dx, progress_dy, progress_displacement = progress_state
-            if progress_displacement > 0.0:
-                movement_direction_x = progress_dx / progress_displacement
-                movement_direction_y = progress_dy / progress_displacement
+        goal_position = getattr(simulator.env, "target_position", None)
+        goal_distance = 0.0
+        if goal_position is not None:
+            goal_dx = goal_position[0] - center[0]
+            goal_dy = goal_position[1] - center[1]
+            goal_distance = math.hypot(goal_dx, goal_dy)
+            if goal_distance > 1e-6:
+                inv_distance = 1.0 / goal_distance
+                goal_direction_x = goal_dx * inv_distance
+                goal_direction_y = goal_dy * inv_distance
                 dot_product = (
-                    movement_direction_x * formation_axis_direction[0]
-                    + movement_direction_y * formation_axis_direction[1]
+                    goal_direction_x * formation_axis_direction[0]
+                    + goal_direction_y * formation_axis_direction[1]
                 )
                 clamped_dot_product = max(-1.0, min(1.0, dot_product))
-                angle_difference = math.acos(clamped_dot_product)
+                angle_to_goal = math.acos(clamped_dot_product)
+                angle_difference = abs((math.pi / 2.0) - angle_to_goal)
+        if goal_position is None or goal_distance <= 1e-6:
+            progress_state = self._centroid_progress_vector()
+            if progress_state is not None:
+                progress_dx, progress_dy, progress_displacement = progress_state
+                if progress_displacement > 0.0:
+                    movement_direction_x = progress_dx / progress_displacement
+                    movement_direction_y = progress_dy / progress_displacement
+                    dot_product = (
+                        movement_direction_x * formation_axis_direction[0]
+                        + movement_direction_y * formation_axis_direction[1]
+                    )
+                    clamped_dot_product = max(-1.0, min(1.0, dot_product))
+                    angle_difference = math.acos(clamped_dot_product)
 
         c5 = (np.cos(2 * angle_difference) + 1) / 2.0
 
