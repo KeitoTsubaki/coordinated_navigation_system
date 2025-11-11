@@ -1,4 +1,8 @@
 """Formation planning and visualisation helpers."""
+# Optimize center(x,y), theta and assignments in two steps
+# 1. Center(x,y), theta
+#   - New cost (C5) for side-by-side formation
+# 2. Assignments
 
 from __future__ import annotations
 

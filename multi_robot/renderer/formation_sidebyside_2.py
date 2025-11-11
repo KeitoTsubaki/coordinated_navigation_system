@@ -1,4 +1,8 @@
 """Formation planning and visualisation helpers."""
+# Optimize theta and assignments in two steps
+# 1. theta (center is fixed to current team center)
+#   - New cost (C5) for side-by-side formation
+# 2. Assignments
 
 from __future__ import annotations
 

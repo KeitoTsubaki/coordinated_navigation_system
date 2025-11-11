@@ -1,4 +1,11 @@
 """Formation planning and visualisation helpers."""
+# Optimize center(x,y), theta and assignments in three steps
+# 1. Center(x,y)
+#   - Previous cost (to decrease distance between previous center and current one)
+#   - obstacle avoidance cost (to take a distance from team circle to obstacles)
+# 2. Theta
+#   - New cost (C5) for side-by-side formation
+# 3. Assignments
 
 from __future__ import annotations
 
@@ -77,7 +84,7 @@ class FormationManager:
         self._last_centroid_progress: Optional[Tuple[float, float, float]] = None
         self.previous_center = None
         self._formation_debug_plot_enabled = bool(
-            getattr(simulator, "formation_debug_plot_enabled", True)
+            getattr(simulator, "formation_debug_plot_enabled", False)
         )
         simulator.formation_debug_plot_enabled = self._formation_debug_plot_enabled
 
