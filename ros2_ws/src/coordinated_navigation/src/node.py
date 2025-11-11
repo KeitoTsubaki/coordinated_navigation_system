@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import importlib
 import math
 from dataclasses import dataclass
@@ -21,6 +20,7 @@ from rclpy.qos import (
     qos_profile_sensor_data,
 )
 from rclpy.parameter import ParameterType
+from rclpy.task import Future
 
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Twist
 from nav_msgs.msg import Odometry
@@ -341,10 +341,28 @@ class CoordinatedNavigationNode(Node):
                     return result
 
                 self._publish_navigation_feedback(goal_handle, start_time)
-                await asyncio.sleep(self._action_feedback_period)
+                await self._wait_for(self._action_feedback_period)
         finally:
             if self._active_goal_handle is goal_handle:
                 self._active_goal_handle = None
+
+    async def _wait_for(self, duration: float) -> None:
+        """Suspend execution of an async callback without relying on asyncio."""
+
+        if duration <= 0:
+            return
+
+        completion = Future()
+
+        def timer_callback() -> None:
+            if not completion.done():
+                completion.set_result(True)
+
+        timer = self.create_timer(duration, timer_callback)
+        try:
+            await completion
+        finally:
+            timer.cancel()
 
     def _amcl_pose_callback(self, msg: PoseWithCovarianceStamped) -> None:
         self.get_logger().debug("AMCL pose update received")
