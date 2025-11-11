@@ -234,7 +234,7 @@ class FormationManager(SideBySide4Manager):
 
         evaluate(distance_to_candidate(0.0))
         evaluate(distance_to_candidate(max_distance_pixels))
-
+        print(f"best candidate: {best_candidate}") # always returns None
         return best_candidate
 
     def _estimate_forward_direction(
