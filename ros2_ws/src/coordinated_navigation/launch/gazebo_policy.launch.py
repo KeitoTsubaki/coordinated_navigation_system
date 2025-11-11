@@ -143,7 +143,6 @@ def generate_launch_description():
         executable='coordinated_navigation_node',
         name='coordinated_navigation',
         output='screen',
-        namespace=namespace,
         parameters=[
             {
                 'use_sim_time': use_sim_time,
@@ -177,16 +176,16 @@ def generate_launch_description():
         parameters=[{
             'use_sim_time': use_sim_time,
         }],
-        remappings=[
-            ('/navigate_to_pose', rviz_navigate_to_pose_action),
-        ],
+        # remappings=[
+        #     ('/navigate_to_pose', rviz_navigate_to_pose_action),
+        # ],
         output='screen'
     )
 
     return LaunchDescription([
         DeclareLaunchArgument(
             'namespace',
-            default_value='',
+            default_value='',   # TODO: bug occurs when namespace is exist
             description='Top-level namespace'
         ),
         DeclareLaunchArgument(
@@ -213,11 +212,11 @@ def generate_launch_description():
             ),
             description='Absolute path to the trained policy model zip file.'
         ),
-        DeclareLaunchArgument(
-            'rviz_navigate_to_pose_action',
-            default_value='/robot_1/navigate_to_pose',
-            description='Action server name used by RViz for NavigateToPose goals.'
-        ),
+        # DeclareLaunchArgument(
+        #     'rviz_navigate_to_pose_action',
+        #     default_value='/robot_1/navigate_to_pose',
+        #     description='Action server name used by RViz for NavigateToPose goals.'
+        # ),
         rsp,
         gazebo,
         spawn_room,

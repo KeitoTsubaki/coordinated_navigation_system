@@ -69,7 +69,7 @@ class CoordinatedNavigationNode(Node):
 
         default_policy_model = self._default_policy_model_path()
 
-        self.declare_parameter("robot_namespace", "")
+        self.declare_parameter("robot_namespace", "robot")
         self.declare_parameter("robot_id", "1")
         self.declare_parameter("formation_msg_module", "coordinated_navigation_interfaces.msg")
         self.declare_parameter("formation_msg_name", "Formation")
@@ -80,7 +80,8 @@ class CoordinatedNavigationNode(Node):
         self.declare_parameter("navigation.yaw_tolerance", 0.5)
         self.declare_parameter("navigation.feedback_period", 0.5)
 
-        self._robot_namespace = self._normalise_robot_namespace(robot_namespace, robot_id)
+        # self._robot_namespace = self._normalise_robot_namespace(robot_namespace, robot_id)
+        self._robot_namespace = robot_namespace
         self._formation_msg_type = self._resolve_formation_msg_type(formation_msg_type)
 
         policy_model_path = self._parameter_string("policy.model_path")
@@ -122,6 +123,7 @@ class CoordinatedNavigationNode(Node):
             self,
             NavigateToPose,
             self._topic("navigate_to_pose"),
+            # '/navigate_to_pose',
             execute_callback=self._execute_navigation,
             goal_callback=self._navigate_goal_callback,
             cancel_callback=self._navigate_cancel_callback,
