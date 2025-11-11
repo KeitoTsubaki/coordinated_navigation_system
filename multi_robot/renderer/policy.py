@@ -660,8 +660,13 @@ class PolicyController:
     def _compute_goal_info(
         self, robot_index: int, robot: RobotState
     ) -> Tuple[float, float]:
+        prefer_formation = bool(
+            getattr(self.simulator, "policy_prefer_formation_targets", False)
+        )
         target = self.simulator.formation.get_navigation_target(
-            robot_index, fallback=robot.target, prefer_formation=False
+            robot_index,
+            fallback=robot.target,
+            prefer_formation=prefer_formation,
         )
         if target is None:
             return 0.0, 0.0
@@ -669,8 +674,13 @@ class PolicyController:
         return self._compute_goal_info_for_target(robot, target)
 
     def _has_reached_target(self, robot_index: int, robot: RobotState) -> bool:
+        prefer_formation = bool(
+            getattr(self.simulator, "policy_prefer_formation_targets", False)
+        )
         target = self.simulator.formation.get_navigation_target(
-            robot_index, fallback=robot.target, prefer_formation=False
+            robot_index,
+            fallback=robot.target,
+            prefer_formation=prefer_formation,
         )
         if target is None:
             return False
