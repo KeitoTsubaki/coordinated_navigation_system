@@ -127,7 +127,9 @@ class FormationManager(SideBySide4Manager):
 
         max_offset_radius = max(math.hypot(x, y) for x, y in offsets) if offsets else 0.0
         frame_radius = float(getattr(simulator, "robot_frame_radius", 0.0))
-        team_radius = max_offset_radius + frame_radius
+        pixels_per_meter = float(getattr(simulator.env, "PIXELS_PER_METER", 1.0) or 1.0)
+        team_radius_pixels = max_offset_radius + frame_radius
+        team_radius = team_radius_pixels / max(pixels_per_meter, 1e-6)
         if team_radius <= 0.0:
             return None
 
@@ -144,7 +146,6 @@ class FormationManager(SideBySide4Manager):
         )
         origin = front_robot.position
 
-        pixels_per_meter = float(getattr(simulator.env, "PIXELS_PER_METER", 1.0) or 1.0)
         forward_distance_m = float(getattr(simulator, "formation_center_forward_distance_m", 3.0))
         max_distance_pixels = forward_distance_m * pixels_per_meter
         if max_distance_pixels <= 0.0:
