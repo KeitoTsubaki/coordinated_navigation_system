@@ -144,7 +144,9 @@ class FormationManager(SideBySide4Manager):
         )
         origin = front_robot.position
 
-        max_distance_pixels = float(simulator.env.PIXELS_PER_METER)
+        pixels_per_meter = float(getattr(simulator.env, "PIXELS_PER_METER", 1.0) or 1.0)
+        forward_distance_m = float(getattr(simulator, "formation_center_forward_distance_m", 3.0))
+        max_distance_pixels = forward_distance_m * pixels_per_meter
         if max_distance_pixels <= 0.0:
             return None
 
@@ -159,16 +161,22 @@ class FormationManager(SideBySide4Manager):
         best_candidate: Optional[Position] = None
         best_cost = float("inf")
 
-        def evaluate(candidate: Position) -> None:
+        def evaluate(
+            candidate: Position,
+            result: Optional[Tuple[float, bool]] = None,
+        ) -> None:
             nonlocal best_candidate, best_cost
-            cost, feasible = self._evaluate_centroid_candidate(
-                candidate,
-                origin=origin,
-                team_radius=team_radius,
-                current_center=current_center,
-                goal_position=goal_position,
-                current_goal_distance=current_goal_distance,
-            )
+            if result is None:
+                cost, feasible = self._evaluate_centroid_candidate(
+                    candidate,
+                    origin=origin,
+                    team_radius=team_radius,
+                    current_center=current_center,
+                    goal_position=goal_position,
+                    current_goal_distance=current_goal_distance,
+                )
+            else:
+                cost, feasible = result
             if feasible and cost < best_cost:
                 best_candidate = (float(candidate[0]), float(candidate[1]))
                 best_cost = cost
@@ -176,25 +184,56 @@ class FormationManager(SideBySide4Manager):
         # Always consider the current center as a fallback option.
         evaluate(current_center)
 
-        wedge_min = math.radians(-75.0)
-        wedge_max = math.radians(75.0)
-        forward_angle = math.atan2(forward_direction[1], forward_direction[0])
+        large_penalty = 1e6
 
-        radial_steps = max(4, int(getattr(simulator, "formation_center_radial_steps", 6)))
-        angular_steps = max(5, int(getattr(simulator, "formation_center_angular_steps", 9)))
+        def distance_to_candidate(distance: float) -> Position:
+            return (
+                origin[0] + distance * forward_direction[0],
+                origin[1] + distance * forward_direction[1],
+            )
 
-        for radial_index in range(1, radial_steps + 1):
-            distance = max_distance_pixels * (radial_index / radial_steps)
-            for angular_index in range(angular_steps):
-                angle_offset = wedge_min + (wedge_max - wedge_min) * (
-                    angular_index / max(angular_steps - 1, 1)
-                )
-                angle = forward_angle + angle_offset
-                candidate = (
-                    origin[0] + distance * math.cos(angle),
-                    origin[1] + distance * math.sin(angle),
-                )
-                evaluate(candidate)
+        def objective(distance: float) -> float:
+            candidate = distance_to_candidate(distance)
+            result = self._evaluate_centroid_candidate(
+                candidate,
+                origin=origin,
+                team_radius=team_radius,
+                current_center=current_center,
+                goal_position=goal_position,
+                current_goal_distance=current_goal_distance,
+            )
+            cost, feasible = result
+            if feasible:
+                evaluate(candidate, result)
+            return cost if feasible else large_penalty
+
+        try:
+            result = minimize_scalar(
+                objective,
+                bounds=(0.0, max_distance_pixels),
+                method="bounded",
+                options={"xatol": max_distance_pixels * 1e-3},
+            )
+        except Exception:
+            result = None
+
+        if result is not None and getattr(result, "success", False):
+            distance = float(result.x)
+            candidate = distance_to_candidate(distance)
+            evaluate(
+                candidate,
+                self._evaluate_centroid_candidate(
+                    candidate,
+                    origin=origin,
+                    team_radius=team_radius,
+                    current_center=current_center,
+                    goal_position=goal_position,
+                    current_goal_distance=current_goal_distance,
+                ),
+            )
+
+        evaluate(distance_to_candidate(0.0))
+        evaluate(distance_to_candidate(max_distance_pixels))
 
         return best_candidate
 
