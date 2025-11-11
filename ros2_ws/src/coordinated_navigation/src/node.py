@@ -78,7 +78,7 @@ class CoordinatedNavigationNode(Node):
         self.declare_parameter("policy.device", "cpu")
         self.declare_parameter("navigation.distance_tolerance", 0.3)
         self.declare_parameter("navigation.yaw_tolerance", 0.5)
-        self.declare_parameter("navigation.feedback_period", 0.5)
+        self.declare_parameter("navigation.feedback_period", 0.1)
 
         # self._robot_namespace = self._normalise_robot_namespace(robot_namespace, robot_id)
         self._robot_namespace = robot_namespace
