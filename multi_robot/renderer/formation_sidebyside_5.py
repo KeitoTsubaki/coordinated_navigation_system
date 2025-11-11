@@ -7,10 +7,12 @@ from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
+import pygame
 from scipy.optimize import linear_sum_assignment, minimize_scalar
 
 from .formation_sidebyside_4 import FormationManager as SideBySide4Manager
 from .types import FormationPlan, Position
+from .utils import brighten_color, with_alpha
 
 if False:  # pragma: no cover - type checking helper
     from .simulator import MultiRobotSimulator
@@ -55,6 +57,58 @@ class FormationManager(SideBySide4Manager):
         super()._reset_plan_state()
         self._plan_priorities.clear()
         self._ranked_targets.clear()
+
+    def draw(self) -> None:  # type: ignore[override]
+        super().draw()
+
+        if not self.follow_formation_targets:
+            return
+
+        if not self._ranked_targets:
+            return
+
+        simulator = self.simulator
+        if not simulator.robot_states:
+            return
+
+        layer = simulator.env.robot_and_lidar_layer
+        font = pygame.font.SysFont("consolas", 12)
+        primary_width = max(1, int(round(simulator.robot_radius_pixels * 0.2)))
+        secondary_width = max(1, int(round(simulator.robot_radius_pixels * 0.1)))
+
+        for robot_index, robot in enumerate(simulator.robot_states):
+            ranked_candidates = self._ranked_targets.get(robot_index)
+            if not ranked_candidates:
+                continue
+
+            base_color = robot.color
+            robot_position = (int(robot.position[0]), int(robot.position[1]))
+
+            for rank, (target, priority) in enumerate(ranked_candidates):
+                if target is None:
+                    continue
+
+                target_position = (int(target[0]), int(target[1]))
+
+                if rank == 0:
+                    color = brighten_color(base_color)
+                    radius = max(4, int(round(simulator.robot_radius_pixels * 0.45)))
+                    line_width = primary_width
+                    circle_width = 0
+                else:
+                    color = with_alpha(base_color, 0.65)
+                    radius = max(3, int(round(simulator.robot_radius_pixels * 0.35)))
+                    line_width = secondary_width
+                    circle_width = 1
+
+                pygame.draw.line(layer, color, robot_position, target_position, line_width)
+                pygame.draw.circle(layer, color, target_position, radius, circle_width)
+
+                if priority > 0.0:
+                    label = font.render(f"{priority:.2f}", True, (30, 30, 30))
+                    label_rect = label.get_rect()
+                    label_rect.midleft = (target_position[0] + radius + 4, target_position[1])
+                    layer.blit(label, label_rect)
 
     # ------------------------------------------------------------------
     # Step 1 – centroid search
