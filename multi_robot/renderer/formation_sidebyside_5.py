@@ -436,7 +436,8 @@ class FormationManager(SideBySide4Manager):
             raise ValueError("weights must contain five elements")
 
         formation_axis_direction = (math.cos(theta), math.sin(theta))
-        angle_difference = math.pi / 2.0
+        alignment_angle = math.pi / 2.0
+        has_alignment_direction = False
         goal_position = getattr(simulator.env, "target_position", None)
         goal_distance = 0.0
         if goal_position is not None:
@@ -452,9 +453,9 @@ class FormationManager(SideBySide4Manager):
                     + goal_direction_y * formation_axis_direction[1]
                 )
                 clamped_dot_product = max(-1.0, min(1.0, dot_product))
-                angle_to_goal = math.acos(clamped_dot_product)
-                angle_difference = abs((math.pi / 2.0) - angle_to_goal)
-        if goal_position is None or goal_distance <= 1e-6:
+                alignment_angle = math.acos(clamped_dot_product)
+                has_alignment_direction = True
+        if (goal_position is None or goal_distance <= 1e-6) and not has_alignment_direction:
             progress_state = self._centroid_progress_vector()
             if progress_state is not None:
                 progress_dx, progress_dy, progress_displacement = progress_state
@@ -466,9 +467,10 @@ class FormationManager(SideBySide4Manager):
                         + movement_direction_y * formation_axis_direction[1]
                     )
                     clamped_dot_product = max(-1.0, min(1.0, dot_product))
-                    angle_difference = math.acos(clamped_dot_product)
+                    alignment_angle = math.acos(clamped_dot_product)
+                    has_alignment_direction = True
 
-        c5 = (np.cos(2 * angle_difference) + 1) / 2.0
+        c5 = alignment_angle / math.pi
 
         cost_matrix = np.full((robot_count, robot_count), penalty, dtype=float)
         per_robot_costs: Dict[int, float] = {}
