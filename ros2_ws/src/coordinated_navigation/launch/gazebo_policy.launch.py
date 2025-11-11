@@ -25,6 +25,7 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time', default='true')
     namespace = LaunchConfiguration('namespace')
     policy_model_path = LaunchConfiguration('policy_model_path')
+    rviz_navigate_to_pose_action = LaunchConfiguration('rviz_navigate_to_pose_action')
 
     map_dir = LaunchConfiguration(
         'map',
@@ -176,6 +177,9 @@ def generate_launch_description():
         parameters=[{
             'use_sim_time': use_sim_time,
         }],
+        remappings=[
+            ('/navigate_to_pose', rviz_navigate_to_pose_action),
+        ],
         output='screen'
     )
 
@@ -208,6 +212,11 @@ def generate_launch_description():
                 'model_ep3700.zip'
             ),
             description='Absolute path to the trained policy model zip file.'
+        ),
+        DeclareLaunchArgument(
+            'rviz_navigate_to_pose_action',
+            default_value='/robot_1/navigate_to_pose',
+            description='Action server name used by RViz for NavigateToPose goals.'
         ),
         rsp,
         gazebo,
