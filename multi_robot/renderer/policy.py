@@ -674,16 +674,23 @@ class PolicyController:
         return self._compute_goal_info_for_target(robot, target)
 
     def _has_reached_target(self, robot_index: int, robot: RobotState) -> bool:
+        formation_manager = self.simulator.formation
         prefer_formation = bool(
             getattr(self.simulator, "policy_prefer_formation_targets", False)
         )
-        target = self.simulator.formation.get_navigation_target(
+        target = formation_manager.get_navigation_target(
             robot_index,
             fallback=robot.target,
-            prefer_formation=prefer_formation,
+            prefer_formation=False,
         )
         if target is None:
-            return False
+            target = formation_manager.get_navigation_target(
+                robot_index,
+                fallback=robot.target,
+                prefer_formation=prefer_formation,
+            )
+            if target is None:
+                return False
 
         dx_pixels = target[0] - robot.position[0]
         dy_pixels = target[1] - robot.position[1]
