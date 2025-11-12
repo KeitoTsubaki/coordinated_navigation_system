@@ -152,7 +152,7 @@ class FormationManager(SideBySide4Manager):
         if max_distance_pixels <= 0.0:
             return None
 
-        goal_position = getattr(simulator.env, "target_position", None)
+        goal_position = self._determine_navigation_goal()
         current_goal_distance = None
         if goal_position is not None:
             current_goal_distance = math.hypot(
@@ -249,7 +249,7 @@ class FormationManager(SideBySide4Manager):
                 scale = 1.0 / displacement
                 return (float(progress_dx * scale), float(progress_dy * scale))
 
-        goal_position = getattr(self.simulator.env, "target_position", None)
+        goal_position = self._determine_navigation_goal()
         if goal_position is not None:
             dx = goal_position[0] - current_center[0]
             dy = goal_position[1] - current_center[1]
@@ -260,6 +260,30 @@ class FormationManager(SideBySide4Manager):
 
         # Default forward direction: upward on the simulator screen.
         return (0.0, -1.0)
+
+    def _determine_navigation_goal(self) -> Optional[Position]:
+        """Return the final navigation target shared by the team when known."""
+
+        # Prefer explicitly assigned direct navigation goals when the operators
+        # have provided them. These correspond to the final navigation targets
+        # that the formation is ultimately expected to reach.
+        self._prune_direct_target_cache()
+        for target in self._direct_targets.values():
+            if target is not None:
+                return (float(target[0]), float(target[1]))
+
+        # Fall back to any per-robot goal available via the simulator state.
+        for robot in self.simulator.robot_states:
+            if robot.target is not None:
+                return (float(robot.target[0]), float(robot.target[1]))
+
+        # As a last resort rely on the environment level target.  This matches
+        # the global navigation goal configured for the map.
+        env_goal = getattr(self.simulator.env, "target_position", None)
+        if env_goal is not None:
+            return (float(env_goal[0]), float(env_goal[1]))
+
+        return None
 
     def _evaluate_centroid_candidate(
         self,
@@ -438,7 +462,7 @@ class FormationManager(SideBySide4Manager):
         formation_axis_direction = (math.cos(theta), math.sin(theta))
         alignment_angle = math.pi / 2.0
         has_alignment_direction = False
-        goal_position = getattr(simulator.env, "target_position", None)
+        goal_position = self._determine_navigation_goal()
         goal_distance = 0.0
         if goal_position is not None:
             goal_dx = goal_position[0] - center[0]
