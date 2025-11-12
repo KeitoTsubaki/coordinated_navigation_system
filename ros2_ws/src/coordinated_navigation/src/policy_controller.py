@@ -82,6 +82,8 @@ def pointcloud2_to_polar(msg: Optional[PointCloud2]) -> List[Tuple[float, float]
     ):
         xy_distance = math.hypot(x, y)
         angle = math.atan2(y, x)
+        # convert angle to 2D sim frame
+        angle = wrap_to_pi(angle - math.pi / 2.0)
         samples.append((float(xy_distance), float(angle)))
 
     return samples
@@ -401,10 +403,14 @@ class PolicyVelocityController:
             return None
 
         pose_source: Optional[Pose]
-        if odometry is not None:
-            pose_source = odometry.pose.pose
-        elif robot_pose is not None:
+        # if odometry is not None:
+        #     pose_source = odometry.pose.pose
+        # elif robot_pose is not None:
+        #     pose_source = robot_pose.pose
+        if robot_pose is not None:
             pose_source = robot_pose.pose
+        elif odometry is not None:
+            pose_source = odometry.pose.pose
         else:
             return None
 
@@ -416,8 +422,10 @@ class PolicyVelocityController:
         dx = float(target_position.x - robot_position.x)
         dy = float(target_position.y - robot_position.y)
         distance_to_target = math.hypot(dx, dy)
+        # print("distance to target: ", distance_to_target)
 
         robot_heading = quaternion_to_yaw(robot_orientation)
+        # print("robot heading: ", robot_heading)
         target_heading = math.atan2(dy, dx)
         angle_to_target = wrap_to_pi(target_heading - robot_heading)
         goal_angle_n = float(np.clip(angle_to_target / math.pi, -1.0, 1.0))

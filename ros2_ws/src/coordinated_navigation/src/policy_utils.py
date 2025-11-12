@@ -57,17 +57,17 @@ def process_lidar_for_observation(
         if distance < max_range:
             processed.append(distance / max_range)
         else:
-            processed.append(1.0)
+            processed.append(100.0) # I fogot why it is converted to 100
 
-    if len(processed) < n_l:
-        fill_value = processed[-1] if processed else 1.0
-        processed.extend([fill_value] * (n_l - len(processed)))
+    # if len(processed) < n_l:
+    #     fill_value = processed[-1] if processed else 1.0
+    #     processed.extend([fill_value] * (n_l - len(processed)))
 
     extended = processed[:n_l]
     if n_e > 0:
         extended += processed[:n_e]
-        if len(extended) < n_l + n_e:
-            fill_value = extended[-1] if extended else 1.0
-            extended.extend([fill_value] * (n_l + n_e - len(extended)))
+        # if len(extended) < n_l + n_e:
+        #     fill_value = extended[-1] if extended else 1.0
+        #     extended.extend([fill_value] * (n_l + n_e - len(extended)))
 
     return np.asarray(extended, dtype=np.float32)
