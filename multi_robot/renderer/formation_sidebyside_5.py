@@ -8,7 +8,7 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pygame
-from scipy.optimize import linear_sum_assignment, minimize_scalar
+from scipy.optimize import linear_sum_assignment, minimize, minimize_scalar
 
 from .formation_sidebyside_4 import FormationManager as SideBySide4Manager
 from .types import FormationPlan, Position
@@ -135,21 +135,19 @@ class FormationManager(SideBySide4Manager):
 
         forward_direction = self._estimate_forward_direction(current_center)
         if forward_direction is None:
-            return None
-
+            forward_direction = (0.0, -1.0)
         front_robot = max(
             robot_states,
             key=lambda robot: (
                 (robot.position[0] - current_center[0]) * forward_direction[0]
                 + (robot.position[1] - current_center[1]) * forward_direction[1]
-            ),
+            )
         )
         origin = front_robot.position
 
-        forward_distance_m = float(getattr(simulator, "formation_center_forward_distance_m", 3.0))
-        forward_distance_m = min(forward_distance_m, 1.0)
-        max_distance_pixels = forward_distance_m * pixels_per_meter
-        if max_distance_pixels <= 0.0:
+        circle_center = (float(current_center[0]), float(current_center[1]))
+        circle_radius = team_radius_pixels
+        if circle_radius <= 0.0:
             return None
 
         goal_position = self._determine_navigation_goal()
@@ -168,6 +166,10 @@ class FormationManager(SideBySide4Manager):
             result: Optional[Tuple[float, bool]] = None,
         ) -> None:
             nonlocal best_candidate, best_cost
+            dx_circle = candidate[0] - circle_center[0]
+            dy_circle = candidate[1] - circle_center[1]
+            if dx_circle * dx_circle + dy_circle * dy_circle > circle_radius * circle_radius:
+                return
             if result is None:
                 cost, feasible = self._evaluate_centroid_candidate(
                     candidate,
@@ -188,14 +190,18 @@ class FormationManager(SideBySide4Manager):
 
         large_penalty = 1e6
 
-        def distance_to_candidate(distance: float) -> Position:
-            return (
-                origin[0] + distance * forward_direction[0],
-                origin[1] + distance * forward_direction[1],
-            )
+        circle_bounds = (
+            (circle_center[0] - circle_radius, circle_center[0] + circle_radius),
+            (circle_center[1] - circle_radius, circle_center[1] + circle_radius),
+        )
 
-        def objective(distance: float) -> float:
-            candidate = distance_to_candidate(distance)
+        def penalised_objective(point: Sequence[float]) -> float:
+            candidate = (float(point[0]), float(point[1]))
+            dx_circle = candidate[0] - circle_center[0]
+            dy_circle = candidate[1] - circle_center[1]
+            if dx_circle * dx_circle + dy_circle * dy_circle > circle_radius * circle_radius:
+                return large_penalty
+
             result = self._evaluate_centroid_candidate(
                 candidate,
                 origin=origin,
@@ -207,35 +213,65 @@ class FormationManager(SideBySide4Manager):
             cost, feasible = result
             if feasible:
                 evaluate(candidate, result)
-            return cost if feasible else large_penalty
+                return cost
+            return large_penalty
 
-        try:
-            result = minimize_scalar(
-                objective,
-                bounds=(0.0, max_distance_pixels),
-                method="bounded",
-                options={"xatol": max_distance_pixels * 1e-3},
+        bounds = (
+            circle_bounds[0],
+            circle_bounds[1],
+        )
+
+        initial_guesses: List[Tuple[float, float]] = [
+            circle_center,
+        ]
+
+        if forward_direction is not None:
+            forward_guess = (
+                circle_center[0] + forward_direction[0] * circle_radius * 0.8,
+                circle_center[1] + forward_direction[1] * circle_radius * 0.8,
             )
-        except Exception:
-            result = None
+            initial_guesses.append(forward_guess)
 
-        if result is not None and getattr(result, "success", False):
-            distance = float(result.x)
-            candidate = distance_to_candidate(distance)
-            evaluate(
-                candidate,
-                self._evaluate_centroid_candidate(
+        initial_guesses.extend(
+            (
+                circle_center[0] + circle_radius * 0.6 * math.cos(angle),
+                circle_center[1] + circle_radius * 0.6 * math.sin(angle),
+            )
+            for angle in np.linspace(0.0, 2.0 * math.pi, num=6, endpoint=False)
+        )
+
+        for guess in initial_guesses:
+            evaluate(guess)
+            try:
+                result = minimize(
+                    penalised_objective,
+                    guess,
+                    method="L-BFGS-B",
+                    bounds=bounds,
+                )
+            except Exception:
+                continue
+
+            if result is not None and getattr(result, "success", False):
+                candidate = (float(result.x[0]), float(result.x[1]))
+                evaluate(
                     candidate,
-                    origin=origin,
-                    team_radius=team_radius,
-                    current_center=current_center,
-                    goal_position=goal_position,
-                    current_goal_distance=current_goal_distance,
-                ),
-            )
+                    self._evaluate_centroid_candidate(
+                        candidate,
+                        origin=origin,
+                        team_radius=team_radius,
+                        current_center=current_center,
+                        goal_position=goal_position,
+                        current_goal_distance=current_goal_distance,
+                    ),
+                )
 
-        evaluate(distance_to_candidate(0.0))
-        evaluate(distance_to_candidate(max_distance_pixels))
+        for angle in np.linspace(0.0, 2.0 * math.pi, num=8, endpoint=False):
+            candidate = (
+                circle_center[0] + circle_radius * math.cos(angle),
+                circle_center[1] + circle_radius * math.sin(angle),
+            )
+            evaluate(candidate)
 
         return best_candidate
 
