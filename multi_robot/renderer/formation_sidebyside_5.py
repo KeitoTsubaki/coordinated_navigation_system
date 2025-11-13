@@ -342,34 +342,42 @@ class FormationManager(SideBySide4Manager):
 
         clearance_cost = 1.0 / max(clearance, 1e-6)
 
+        pixels_per_meter = max(simulator.env.PIXELS_PER_METER, 1e-6)
+
         if self.previous_center is not None:
             previous_dx = candidate[0] - self.previous_center[0]
             previous_dy = candidate[1] - self.previous_center[1]
-            previous_distance_m = math.hypot(previous_dx, previous_dy) / max(
-                simulator.env.PIXELS_PER_METER, 1e-6
-            )
+            previous_distance_m = math.hypot(previous_dx, previous_dy) / pixels_per_meter
         else:
             previous_distance_m = 0.0
 
-        if goal_position is not None:
-            goal_distance = math.hypot(candidate[0] - goal_position[0], candidate[1] - goal_position[1])
-            if current_goal_distance is not None and current_goal_distance > 1e-6:
-                goal_ratio = goal_distance / current_goal_distance
-            # else:
-                # goal_ratio = goal_distance / max(simulator.env.PIXELS_PER_METER, 1e-6)
-        # else:
-        #     goal_ratio = 0.0
+        if (
+            goal_position is not None
+            and current_goal_distance is not None
+            and team_radius > 1e-6
+        ):
+            current_goal_distance_m = current_goal_distance / pixels_per_meter
+            candidate_goal_distance_m = math.hypot(
+                candidate[0] - goal_position[0],
+                candidate[1] - goal_position[1],
+            ) / pixels_per_meter
+            raw_progress = (current_goal_distance_m - candidate_goal_distance_m) / team_radius
+            normalised_progress = min(1.0, max(0.0, raw_progress))
+            goal_progress_ratio = 1.0 - normalised_progress
+        else:
+            goal_progress_ratio = 0.0
 
         # displacement_from_origin = math.hypot(candidate[0] - origin[0], candidate[1] - origin[1])
         # displacement_cost = displacement_from_origin / max(
         #     simulator.env.PIXELS_PER_METER, 1e-6
         # )
-        print(f"goal ratio: {goal_ratio}")
+
+        goal_progress_weight = 0.5
 
         total_cost = (
             1.0 * clearance_cost
             + 0.3 * previous_distance_m
-            + 1.0 * goal_ratio
+            + goal_progress_weight * goal_progress_ratio
             # + 0.2 * displacement_cost
         )
 
