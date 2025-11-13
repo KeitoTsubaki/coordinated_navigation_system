@@ -54,10 +54,13 @@ def process_lidar_for_observation(
 
     processed: list[float] = []
     for distance, _angle in sensor_data:
+        processed.append(distance / max_range)
+        print(f"(angle: {_angle}) {distance}m ")
         if distance < max_range:
             processed.append(distance / max_range)
         else:
-            processed.append(100.0) # I fogot why it is converted to 100
+            # processed.append(100.0) # I fogot why it is converted to 100
+            processed.append(1.0)
 
     # if len(processed) < n_l:
     #     fill_value = processed[-1] if processed else 1.0

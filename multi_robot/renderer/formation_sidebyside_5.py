@@ -372,12 +372,11 @@ class FormationManager(SideBySide4Manager):
         #     simulator.env.PIXELS_PER_METER, 1e-6
         # )
 
-        goal_progress_weight = 0.5
 
         total_cost = (
-            1.0 * clearance_cost
+            0.5 * clearance_cost
             + 0.3 * previous_distance_m
-            + goal_progress_weight * goal_progress_ratio
+            + 1.0 * goal_progress_ratio
             # + 0.2 * displacement_cost
         )
 
