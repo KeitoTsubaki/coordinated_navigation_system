@@ -34,6 +34,7 @@ class PolicyRobotControlState:
     previous_omega: float = 0.0
     current_v: float = 0.0
     current_omega: float = 0.0
+    policy_omega_n: float = 0.0
 
 
 def _determine_target_is_inner(
@@ -171,6 +172,7 @@ class PolicyController:
                     robot.output_angular_velocity = 0.0
                     control_state.current_v = 0.0
                     control_state.current_omega = 0.0
+                    control_state.policy_omega_n = 0.0
                     continue
                 self._completed_robots.discard(robot_index)
 
@@ -185,6 +187,7 @@ class PolicyController:
                 control_state.current_omega = 0.0
                 control_state.previous_v = 0.0
                 control_state.previous_omega = 0.0
+                control_state.policy_omega_n = 0.0
                 continue
 
             if not lidar_preupdated:
@@ -204,6 +207,12 @@ class PolicyController:
             env = self.simulator.env
             v_n = float((action[0] + 1.0) / 2.0 * env.V_MAX)
             omega_n = float(action[1] * env.OMEGA_MAX)
+            if env.OMEGA_MAX > 1e-6:
+                control_state.policy_omega_n = float(
+                    max(-1.0, min(1.0, omega_n / env.OMEGA_MAX))
+                )
+            else:
+                control_state.policy_omega_n = 0.0
 
             v_e, omega_e = self._action_to_executable_action(
                 v_n, omega_n, control_state
@@ -312,6 +321,20 @@ class PolicyController:
             robot.executable_angular_velocity = 0.0
             robot.output_velocity = 0.0
             robot.output_angular_velocity = 0.0
+
+    def get_last_policy_angular_velocities(self, normalized: bool = True) -> Dict[int, float]:
+        """Return the most recent policy angular commands per robot."""
+
+        if not self._control_state:
+            return {}
+
+        env = self.simulator.env
+        scale = env.OMEGA_MAX if not normalized else 1.0
+        result: Dict[int, float] = {}
+        for index, state in self._control_state.items():
+            value = float(state.policy_omega_n)
+            result[index] = value * scale
+        return result
 
     def _load_policy_config(self) -> None:
         config: Optional[Dict[str, object]] = None
