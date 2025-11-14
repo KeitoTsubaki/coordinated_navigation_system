@@ -203,9 +203,10 @@ class PolicyVelocityController:
 
         v_n = float((action[0] + 1.0) / 2.0 * self._v_max)
         omega_n = float(action[1] * self._omega_max)
+        print(f"v_n: {v_n}, omnga_n: {omega_n}")
 
         v_e, omega_e = self._action_to_executable_action(v_n, omega_n)
-        print(f"v_e: {v_e}, omega_e: {omega_e}")
+        # print(f"v_e: {v_e}, omega_e: {omega_e}")
 
         twist = Twist()
         twist.linear.x = v_e
@@ -456,9 +457,9 @@ class PolicyVelocityController:
         history = history[-self._lidar_history_len :]
         obs_lidar = np.array(history, dtype=np.float32)
 
-        if odometry is not None:
-            self._state.current_v = float(odometry.twist.twist.linear.x)
-            self._state.current_omega = float(odometry.twist.twist.angular.z)
+        # if odometry is not None:
+        #     self._state.current_v = float(odometry.twist.twist.linear.x)
+        #     self._state.current_omega = float(odometry.twist.twist.angular.z)
 
         v_n = float(np.clip((self._state.current_v or 0.0) / self._v_max, 0.0, 1.0))
         omega_n = float(
@@ -479,6 +480,10 @@ class PolicyVelocityController:
         obs_closest = np.array([co_dist_n, co_angle_n], dtype=np.float32)
 
         obs_goal = np.array([distance_to_target, goal_angle_n], dtype=np.float32)
+        print(f"obs_goal: {obs_goal}")
+        print(f"velocity: {obs_velocity}")
+        print(f"closest obstacle: {obs_closest}")
+        print()
 
         return {
             "lidar": obs_lidar,
