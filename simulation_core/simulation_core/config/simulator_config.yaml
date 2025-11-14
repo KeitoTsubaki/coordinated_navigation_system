@@ -62,7 +62,7 @@ window:
   background_color: "#FFFFFF"
 
 obstacles:
-  default_map_type: "random"  # "trap_shaped", "zigzag", "random", "empty", "image"
+  default_map_type: "image"  # "trap_shaped", "zigzag", "random", "empty", "image"
   count: 6            # ランダム障害物の数
   min_size_m: 20
   max_size_m: 80
@@ -70,6 +70,6 @@ obstacles:
   color: "#C2C4D0"  # 障害物の色（黒）
   l_passage: 0 # length of the passage in the zigzag-shaped map (meters)
   image_map:
-    path: ""  # Set to the bitmap you want to use, e.g., ../ros2_ws/src/maps/map1/map1.png
+    path: "maps/room1_map.png"  # Set to the bitmap you want to use, e.g., ../ros2_ws/src/maps/map1/map1.png
     start_spawn_area: [0.05, 0.25, 0.65, 0.9]
     target_spawn_area: [0.7, 0.95, 0.1, 0.35]
