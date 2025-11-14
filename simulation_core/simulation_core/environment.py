@@ -4,6 +4,7 @@
 import math
 import random
 import os
+from pathlib import Path
 
 import yaml
 import pygame
@@ -35,6 +36,7 @@ class SimCoreEnvironment:
         #     config = yaml.safe_load(f)
         text = config_path.read_text(encoding="utf-8")
         config = yaml.safe_load(text)
+        self._config_dir = Path(str(config_path)).parent
 
         # ===== import parameters from config file =====
         self.WINDOW_NAME = config["window"]["window_title"]
@@ -57,6 +59,7 @@ class SimCoreEnvironment:
         self.T_DT_M_ZIGZAG = robot_cfg["T_dt_m_zigzag"]
         self.T_DT_M_RANDOM = robot_cfg["T_dt_m_random"]
         self.T_DT_M_EMPTY = robot_cfg["T_dt_m_empty"]
+        self.T_DT_M_IMAGE = robot_cfg.get("T_dt_m_image", self.T_DT_M_EMPTY)
         self.V_MAX = robot_cfg["v_max"]
         self.OMEGA_MAX = robot_cfg["omega_max"]
         self.A_MAX = robot_cfg["a_max"]
@@ -90,14 +93,24 @@ class SimCoreEnvironment:
         self.LIDAR_POINTS_COLOR = config["lidar"]["points_color"]
         self.LIDAR_RESOLUTION = config["lidar"]["resolution"]
 
-        self.OBSTACLE_COLOR = config["obstacles"]["color"]
+        obstacles_cfg = config["obstacles"]
+        self.OBSTACLE_COLOR = obstacles_cfg["color"]
         self._obstacle_color_rgb = utils.hex_to_rgb(self.OBSTACLE_COLOR)
-        self.T_DO_M = config["obstacles"]["T_do_m"]
-        self.map_type = config["obstacles"]["default_map_type"]
-        self.n_obstacles = config["obstacles"]["count"]
-        self.min_obstacle_size_m = config["obstacles"]["min_size_m"]
-        self.max_obstacle_size_m = config["obstacles"]["max_size_m"]
-        self.l_passage = config["obstacles"]["l_passage"]
+        self.T_DO_M = obstacles_cfg["T_do_m"]
+        self.map_type = obstacles_cfg["default_map_type"]
+        self.n_obstacles = obstacles_cfg["count"]
+        self.min_obstacle_size_m = obstacles_cfg["min_size_m"]
+        self.max_obstacle_size_m = obstacles_cfg["max_size_m"]
+        self.l_passage = obstacles_cfg["l_passage"]
+        self.image_map_config = obstacles_cfg.get("image_map", {})
+
+        image_map_path = self.image_map_config.get("path")
+        self.image_map_path = None
+        if image_map_path:
+            candidate_path = Path(image_map_path)
+            if not candidate_path.is_absolute():
+                candidate_path = (self._config_dir / candidate_path).resolve()
+            self.image_map_path = candidate_path
 
         self.K8 = config["simulation"]["k8"]
         self.K9 = config["simulation"]["k9"]
@@ -203,6 +216,7 @@ class SimCoreEnvironment:
             T_do_m=self.T_DO_M,
             l_passage=self.l_passage,
             robot_radius_pixels=self.ROBOT_RADIUS_PIXELS,
+            image_map_config=self.image_map_config,
         )
 
         # ===== Other variables =====
@@ -436,8 +450,16 @@ class SimCoreEnvironment:
     def render_obstacle_and_robots(self, map_type="empty"):
         screen_center_xy = (self.SCREEN_CENTER_X, self.SCREEN_CENTER_Y)
         screen_size_wh = (self.SCREEN_W, self.SCREEN_H)
+        if map_type == "image" and self.image_map_path is None:
+            raise FileNotFoundError(
+                "Image map type selected but no image path was configured."
+            )
         self.map_creator.create_map(
-            map_type, self.obstacle_layer, pt=self.pt, pz=self.pz
+            map_type,
+            self.obstacle_layer,
+            pt=self.pt,
+            pz=self.pz,
+            image_path=self.image_map_path,
         )
         start_spawn_area, target_spawn_area = (
             self.map_creator.initialize_map_parameters(
@@ -584,6 +606,8 @@ class SimCoreEnvironment:
             T_dt_m = self.T_DT_M_RANDOM
         elif map_type == "empty":
             T_dt_m = self.T_DT_M_EMPTY
+        elif map_type == "image":
+            T_dt_m = self.T_DT_M_IMAGE
         while True:
             self.robot_position = self.randomize_position(start_spawn_area)
             self.target_position = self.randomize_position(
