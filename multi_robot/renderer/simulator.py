@@ -28,6 +28,7 @@ from .env import LiDARSensor, SimCoreEnvironment, utils_module
 # from .formation_sidebyside_4 import FormationManager
 # from .formation_sidebyside_5 import FormationManager
 from .formation_sidebyside_6 import FormationManager
+# from .formation_sidebyside_7 import FormationManager
 
 from .info_panel import InfoPanelRenderer
 from .policy import PolicyController

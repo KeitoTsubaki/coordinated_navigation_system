@@ -456,6 +456,7 @@ class PolicyVelocityController:
             history = padding + history
         history = history[-self._lidar_history_len :]
         obs_lidar = np.array(history, dtype=np.float32)
+        print(f"history shape: {obs_lidar.shape}")
 
         # if odometry is not None:
         #     self._state.current_v = float(odometry.twist.twist.linear.x)
@@ -470,6 +471,7 @@ class PolicyVelocityController:
         if polar_samples:
             closest_distance, closest_angle = min(polar_samples, key=lambda sample: sample[0])
         else:
+            print("CLOSEST OBSTACLE DISTANCE IS SET AS INF")
             closest_distance, closest_angle = float("inf"), 0.0
 
         if not math.isfinite(closest_distance):
