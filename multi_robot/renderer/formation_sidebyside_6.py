@@ -161,11 +161,16 @@ class FormationManager(SideBySide4Manager):
             if forward_direction is not None:
                 dx_forward = candidate[0] - current_center[0]
                 dy_forward = candidate[1] - current_center[1]
-                if (
-                    dx_forward * forward_direction[0]
-                    + dy_forward * forward_direction[1]
-                    < -1e-6
-                ):
+                distance = math.hypot(dx_forward, dy_forward) + 1e-6
+
+                print(f"forward direction: {forward_direction}")
+                print(f"candidate direction: {dx_forward/distance}, {dy_forward/distance}")
+                inner_product = dx_forward/distance * forward_direction[0] + dy_forward/distance * forward_direction[1]
+                print(f"inner_product: {inner_product}")
+                distance_m = distance / pixels_per_meter
+                print(f"distance_m: {distance_m}")
+                print()
+                if inner_product < 0.7 or distance_m < 0.5:
                     return
             dx_circle = candidate[0] - circle_center[0]
             dy_circle = candidate[1] - circle_center[1]

@@ -42,7 +42,7 @@ formation:
   default_type: "line"  # 既定の隊形タイプ
   spacing_m: 1.5          # ロボット間隔（m）
   centroid_sampling_interval: 0.5  # C3: サンプリング周期（秒）
-  look_back_steps: 2                # C3: 参照する過去サンプル数
+  look_back_steps: 10                # C3: 参照する過去サンプル数
   angular_tolerance: 5.0          # C3: 直交角度の許容誤差（度）
   min_displacement: 0.1            # C3: 判定に必要な最小移動量（m）
 
