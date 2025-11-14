@@ -85,6 +85,7 @@ def pointcloud2_to_polar(msg: Optional[PointCloud2]) -> List[Tuple[float, float]
         # convert angle to 2D sim frame
         angle = wrap_to_pi(angle - math.pi / 2.0)
         samples.append((float(xy_distance), float(angle)))
+    # processed_samples = samples[157:] + samples[:157]
 
     return samples
 
@@ -98,8 +99,10 @@ def laser_scan_to_polar(msg: Optional[LaserScan]) -> List[Tuple[float, float]]:
     samples: List[Tuple[float, float]] = []
     angle = float(msg.angle_min)
     for distance in msg.ranges:
+        # print(f"distance: {distance}")
         if not math.isfinite(distance):
-            samples.append((float("inf"), angle))
+            # samples.append((float("inf"), angle))
+            samples.append((float(msg.range_max), angle))
         elif distance < msg.range_min:
             samples.append((float(msg.range_min), angle))
         else:
@@ -202,6 +205,7 @@ class PolicyVelocityController:
         omega_n = float(action[1] * self._omega_max)
 
         v_e, omega_e = self._action_to_executable_action(v_n, omega_n)
+        print(f"v_e: {v_e}, omega_e: {omega_e}")
 
         twist = Twist()
         twist.linear.x = v_e
