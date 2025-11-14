@@ -1,9 +1,23 @@
-import pygame
 import math
+from typing import Iterable, Optional
+
+import pygame
 
 class MapCreator:
 
-    def __init__(self, map, map_size, obstacle_color, n_obstacles, pixels_per_meter, np_random, T_do_m, l_passage, robot_radius_pixels):
+    def __init__(
+        self,
+        map,
+        map_size,
+        obstacle_color,
+        n_obstacles,
+        pixels_per_meter,
+        np_random,
+        T_do_m,
+        l_passage,
+        robot_radius_pixels,
+        image_map_config: Optional[dict] = None,
+    ):
         self.map = map
         self.MAP_SIZE = map_size
         self.OBSTACLE_COLOR = obstacle_color
@@ -11,10 +25,11 @@ class MapCreator:
         self.PIXELS_PER_METER = pixels_per_meter
         self.np_random = np_random
         self.ROBOT_RADIUS_PIXELS = robot_radius_pixels
-        
+
         self.T_DO_M = T_do_m
         self.l_passage = l_passage
-        
+        self.image_map_config = image_map_config or {}
+
         self.MAP_W, self.MAP_H = self.MAP_SIZE
         self.map_center_x = self.MAP_W // 2
         self.map_center_y = self.MAP_H // 2
@@ -33,7 +48,7 @@ class MapCreator:
             ),
             width=0,
         )
-    def create_map(self, map_type, obstacle_layer=None, pt=0, pz=0):
+    def create_map(self, map_type, obstacle_layer=None, pt=0, pz=0, image_path=None):
         self.obstacle_layer = obstacle_layer
         """Creates the environment and initializes the map."""
         # map_size: (map_w, map_h)
@@ -45,6 +60,39 @@ class MapCreator:
             self._create_random_map()
         elif map_type == "empty":
             self._create_empty_map()
+        elif map_type == "image":
+            self._create_image_map(image_path)
+
+
+    def _create_image_map(self, image_path):
+        if image_path is None:
+            raise ValueError("image_path must be provided for image-based maps")
+        if self.obstacle_layer is None:
+            raise ValueError("obstacle_layer must be set before creating the map")
+
+        self.obstacle_layer.fill((0, 0, 0, 0))
+
+        loaded_surface = pygame.image.load(str(image_path))
+        scaled_surface = pygame.transform.smoothscale(
+            loaded_surface, (self.MAP_W, self.MAP_H)
+        ).convert_alpha()
+
+        obstacle_color = pygame.Color(self.OBSTACLE_COLOR)
+        obstacle_rgb = (obstacle_color.r, obstacle_color.g, obstacle_color.b)
+        obstacle_alpha = obstacle_color.a if obstacle_color.a > 0 else 255
+
+        rgb_array = pygame.surfarray.pixels3d(scaled_surface)
+        alpha_array = pygame.surfarray.pixels_alpha(scaled_surface)
+
+        obstacle_mask = alpha_array > 0
+        rgb_array[obstacle_mask] = obstacle_rgb
+        alpha_array[obstacle_mask] = obstacle_alpha
+        alpha_array[~obstacle_mask] = 0
+
+        del rgb_array
+        del alpha_array
+
+        self.obstacle_layer.blit(scaled_surface, (0, 0))
 
 
     def _create_base_map(self):
@@ -342,6 +390,51 @@ class MapCreator:
         ]
         return start_spawn_area, target_spawn_area
     
+    def _default_spawn_area(self, screen_size_wh, robot_radius_pixels):
+        screen_w, screen_h = screen_size_wh
+        return [
+            robot_radius_pixels,
+            screen_w - robot_radius_pixels,
+            robot_radius_pixels,
+            screen_h - robot_radius_pixels,
+        ]
+
+    def _spawn_area_from_config(
+        self,
+        spawn_config: Optional[Iterable[float]],
+        screen_size_wh,
+        robot_radius_pixels,
+    ):
+        if spawn_config is None:
+            return None
+
+        spawn_values = list(spawn_config)
+        if len(spawn_values) != 4:
+            return None
+
+        screen_w, screen_h = screen_size_wh
+        default_area = self._default_spawn_area(screen_size_wh, robot_radius_pixels)
+
+        is_ratio = all(0.0 <= value <= 1.0 for value in spawn_values)
+
+        if is_ratio:
+            x_min = int(spawn_values[0] * screen_w)
+            x_max = int(spawn_values[1] * screen_w)
+            y_min = int(spawn_values[2] * screen_h)
+            y_max = int(spawn_values[3] * screen_h)
+        else:
+            x_min, x_max, y_min, y_max = (int(value) for value in spawn_values)
+
+        x_min = max(default_area[0], x_min + robot_radius_pixels)
+        y_min = max(default_area[2], y_min + robot_radius_pixels)
+        x_max = min(default_area[1], x_max - robot_radius_pixels)
+        y_max = min(default_area[3], y_max - robot_radius_pixels)
+
+        if x_max <= x_min or y_max <= y_min:
+            return default_area
+
+        return [x_min, x_max, y_min, y_max]
+
     def initialize_map_parameters(self, map_type, screen_center_xy, screen_size_wh, robot_radius_pixels):
         start_spawn_area = None  # [xmin, xmax, ymin, ymax]
         target_spawn_area = None  # [xmin, xmax, ymin, ymax]
@@ -379,4 +472,20 @@ class MapCreator:
                 screen_center_y + screen_h // 2 - robot_radius_pixels,
             ]
             target_spawn_area = start_spawn_area
+        elif map_type == "image":
+            default_area = self._default_spawn_area(screen_size_wh, robot_radius_pixels)
+            start_spawn_area = self._spawn_area_from_config(
+                self.image_map_config.get("start_spawn_area"),
+                screen_size_wh,
+                robot_radius_pixels,
+            )
+            target_spawn_area = self._spawn_area_from_config(
+                self.image_map_config.get("target_spawn_area"),
+                screen_size_wh,
+                robot_radius_pixels,
+            )
+            if start_spawn_area is None:
+                start_spawn_area = default_area
+            if target_spawn_area is None:
+                target_spawn_area = default_area
         return start_spawn_area, target_spawn_area

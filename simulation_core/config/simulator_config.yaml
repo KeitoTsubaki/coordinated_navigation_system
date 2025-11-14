@@ -29,6 +29,7 @@ robot:
   T_dt_m_zigzag: 15 # The threshold distance between the start and end position (meters)
   T_dt_m_random: 10 # The threshold distance between the start and end position (
   T_dt_m_empty: 20
+  T_dt_m_image: 15
   v_max: 1.2            # 最大線速度（m/s）
   omega_max: 4.71        # 最大角速度（rad/s） 1.5 * pi
   a_max: 2            # 最大線加速度（m/ss）
@@ -61,10 +62,14 @@ window:
   background_color: "#FFFFFF"
 
 obstacles:
-  default_map_type: "random"  # "trap_shaped", "zigzag", "random", "empty"
+  default_map_type: "random"  # "trap_shaped", "zigzag", "random", "empty", "image"
   count: 6            # ランダム障害物の数
   min_size_m: 20
   max_size_m: 80
   T_do_m: 7.5 # The threshold distance between each objects (meters)
   color: "#C2C4D0"  # 障害物の色（黒）
   l_passage: 0 # length of the passage in the zigzag-shaped map (meters)
+  image_map:
+    path: ""  # Set to the bitmap you want to use, e.g., ../ros2_ws/src/maps/map1/map1.png
+    start_spawn_area: [0.05, 0.25, 0.65, 0.9]
+    target_spawn_area: [0.7, 0.95, 0.1, 0.35]
