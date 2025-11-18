@@ -21,6 +21,7 @@ from rclpy.qos import (
 )
 from rclpy.parameter import ParameterType
 from rclpy.task import Future
+from rclpy.time import Time
 
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Twist
 from nav_msgs.msg import Odometry
@@ -114,6 +115,8 @@ class CoordinatedNavigationNode(Node):
 
         self.latest_target_pose: Optional[PoseStamped] = None
         self.latest_robot_pose: Optional[PoseStamped] = None
+        self._pose_velocity_odometry: Optional[Odometry] = None
+        self._last_pose_stamp: Optional[Time] = None
         self.latest_formation: Optional[FormationState] = None
         self.latest_odometry: Optional[Odometry] = None
         self.latest_scan: Optional[LaserScan] = None
@@ -368,10 +371,33 @@ class CoordinatedNavigationNode(Node):
 
     def _amcl_pose_callback(self, msg: PoseWithCovarianceStamped) -> None:
         self.get_logger().debug("AMCL pose update received")
+        previous_pose = self.latest_robot_pose
+        previous_stamp = self._last_pose_stamp
+        current_stamp = Time.from_msg(msg.header.stamp)
+
         pose = PoseStamped()
         pose.header = msg.header
         pose.pose = msg.pose.pose
         self.latest_robot_pose = pose
+
+        if previous_pose is not None and previous_stamp is not None:
+            dt = (current_stamp - previous_stamp).nanoseconds / 1e9
+            if dt > 0.0:
+                dx = float(pose.pose.position.x - previous_pose.pose.position.x)
+                dy = float(pose.pose.position.y - previous_pose.pose.position.y)
+                linear_speed = math.hypot(dx, dy) / dt
+
+                yaw_now = quaternion_to_yaw(pose.pose.orientation)
+                yaw_prev = quaternion_to_yaw(previous_pose.pose.orientation)
+                angular_speed = wrap_to_pi(yaw_now - yaw_prev) / dt
+
+                odom = Odometry()
+                odom.header = msg.header
+                odom.twist.twist.linear.x = float(linear_speed)
+                odom.twist.twist.angular.z = float(angular_speed)
+                self._pose_velocity_odometry = odom
+
+        self._last_pose_stamp = current_stamp
 
     def _robot_formation_callback(self, msg: object) -> None:
         self.get_logger().debug("Formation update received")
@@ -423,7 +449,7 @@ class CoordinatedNavigationNode(Node):
         twist = self._policy_controller.compute_velocity_command(
             target_pose=self.latest_target_pose,
             robot_pose=self.latest_robot_pose,
-            odometry=self.latest_odometry,
+            odometry=self._pose_velocity_odometry,
             pointcloud=None,
             laser_scan=self.latest_scan,
         )
