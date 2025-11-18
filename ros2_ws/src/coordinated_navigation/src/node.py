@@ -23,7 +23,7 @@ from rclpy.parameter import ParameterType
 from rclpy.task import Future
 from rclpy.time import Time
 
-from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Quaternion, Twist
+from geometry_msgs.msg import Point, PoseStamped, PoseWithCovarianceStamped, Quaternion, Twist
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan
 from visualization_msgs.msg import Marker, MarkerArray
@@ -184,6 +184,8 @@ class CoordinatedNavigationNode(Node):
         self._marker_publisher = self.create_publisher(
             MarkerArray, self._topic("navigation_markers"), 10
         )
+
+        self.latest_cmd_vel: Optional[Twist] = None
 
         self._coordination_timer = self.create_timer(
             max(policy_step_period, 1e-3), self._coordination_timer_callback
@@ -486,6 +488,7 @@ class CoordinatedNavigationNode(Node):
             )
         )
         self._cmd_vel_publisher.publish(twist)
+        self.latest_cmd_vel = twist
 
     def _publish_navigation_feedback(self, goal_handle, start_time) -> None:
         if self.latest_robot_pose is None:
@@ -529,6 +532,7 @@ class CoordinatedNavigationNode(Node):
     def _stop_robot(self) -> None:
         twist = Twist()
         self._cmd_vel_publisher.publish(twist)
+        self.latest_cmd_vel = twist
 
     def _has_reached_goal(self, goal_pose: PoseStamped) -> bool:
         if self.latest_robot_pose is None:
@@ -578,6 +582,17 @@ class CoordinatedNavigationNode(Node):
         )
         if obstacle_marker is not None:
             markers.append(obstacle_marker)
+
+        if self.latest_cmd_vel is not None:
+            markers.append(
+                self._build_cmd_vel_text_marker(
+                    marker_id=2,
+                    frame_id=frame_id,
+                    stamp=stamp,
+                    robot_position=robot_position,
+                    twist=self.latest_cmd_vel,
+                )
+            )
 
         if not markers:
             return
@@ -640,6 +655,40 @@ class CoordinatedNavigationNode(Node):
             length=min_distance,
             color=(1.0, 0.0, 0.0, 0.8),
         )
+
+    @staticmethod
+    def _build_cmd_vel_text_marker(
+        *,
+        marker_id: int,
+        frame_id: str,
+        stamp,
+        robot_position,
+        twist: Twist,
+    ) -> Marker:
+        marker = Marker()
+        marker.header.frame_id = frame_id
+        marker.header.stamp = stamp
+        marker.ns = "navigation_cmd_vel"
+        marker.id = marker_id
+        marker.type = Marker.TEXT_VIEW_FACING
+        marker.action = Marker.ADD
+        marker.pose.position = Point(
+            x=robot_position.x,
+            y=robot_position.y,
+            z=robot_position.z + 0.5,
+        )
+        marker.pose.orientation.w = 1.0
+        marker.scale.z = 0.3
+        marker.color.r = 1.0
+        marker.color.g = 1.0
+        marker.color.b = 1.0
+        marker.color.a = 0.9
+        marker.text = (
+            f"cmd_vel\n"
+            f"lin.x: {twist.linear.x:.2f} m/s\n"
+            f"ang.z: {twist.angular.z:.2f} rad/s"
+        )
+        return marker
 
     @staticmethod
     def _build_arrow_marker(
