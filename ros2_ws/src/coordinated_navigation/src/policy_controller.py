@@ -101,13 +101,14 @@ def laser_scan_to_polar(msg: Optional[LaserScan]) -> List[Tuple[float, float]]:
     angle = float(msg.angle_min)
     for distance in msg.ranges:
         # print(f"distance: {distance}")
+        proccessed_angle = wrap_to_pi(angle + math.pi / 2.0)
         if not math.isfinite(distance):
             # samples.append((float("inf"), angle))
-            samples.append((float(msg.range_max), angle))
+            samples.append((float(msg.range_max), proccessed_angle))
         elif distance < msg.range_min:
-            samples.append((float(msg.range_min), angle))
+            samples.append((float(msg.range_min), proccessed_angle))
         else:
-            samples.append((float(distance), angle))
+            samples.append((float(distance), proccessed_angle))
         angle += float(msg.angle_increment)
     return samples
 

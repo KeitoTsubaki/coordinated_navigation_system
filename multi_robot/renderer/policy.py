@@ -475,7 +475,7 @@ class PolicyController:
         omega_n = float(
             np.clip((control_state.current_omega or 0.0) / env.OMEGA_MAX, -1.0, 1.0)
         )
-        obs_velocity = np.array([v_n, omega_n], dtype=np.float32)
+        obs_velocity = np.array([v_n, -omega_n], dtype=np.float32)
 
         co_distance, co_angle = robot.closest_obstacle
         if co_distance == float("inf"):
@@ -483,7 +483,10 @@ class PolicyController:
         co_dist_n = float(np.clip(co_distance / env.LIDAR_RANGE_M, 0.0, 1.0))
         co_angle_n = float(np.clip(co_angle / math.pi, -1.0, 1.0))
         obs_closest = np.array([co_dist_n, co_angle_n], dtype=np.float32)
-
+        print(f"obs_goal: {obs_goal}")
+        print(f"velocity: {obs_velocity}")
+        print(f"closest obstacle: {obs_closest}")
+        print()
         return {
             "lidar": obs_lidar,
             "goal": obs_goal,

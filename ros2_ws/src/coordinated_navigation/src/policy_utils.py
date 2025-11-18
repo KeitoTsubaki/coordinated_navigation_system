@@ -53,8 +53,11 @@ def process_lidar_for_observation(
         return np.full(n_l + n_e, 1.0, dtype=np.float32)
 
     processed: list[float] = []
+    # i = 0
     for distance, _angle in sensor_data:
-        processed.append(distance / max_range)
+        # if i % 10 == 0: print(f"angle: {_angle}, {distance}m")
+        # i += 1
+        # processed.append(distance / max_range)
         # print(f"(angle: {_angle}) {distance}m ")
         if distance < max_range:
             processed.append(distance / max_range)
@@ -69,8 +72,8 @@ def process_lidar_for_observation(
     extended = processed[:n_l]
     if n_e > 0:
         extended += processed[:n_e]
-        # if len(extended) < n_l + n_e:
-        #     fill_value = extended[-1] if extended else 1.0
-        #     extended.extend([fill_value] * (n_l + n_e - len(extended)))
+        if len(extended) < n_l + n_e:
+            fill_value = extended[-1] if extended else 1.0
+            extended.extend([fill_value] * (n_l + n_e - len(extended)))
 
     return np.asarray(extended, dtype=np.float32)

@@ -674,14 +674,14 @@ class CoordinatedNavigationNode(Node):
         marker.action = Marker.ADD
         marker.pose.position = Point(
             x=robot_position.x,
-            y=robot_position.y,
+            y=robot_position.y - 2.0,
             z=robot_position.z + 0.5,
         )
         marker.pose.orientation.w = 1.0
         marker.scale.z = 0.3
-        marker.color.r = 1.0
-        marker.color.g = 1.0
-        marker.color.b = 1.0
+        marker.color.r = 0.0
+        marker.color.g = 0.0
+        marker.color.b = 0.0
         marker.color.a = 0.9
         marker.text = (
             f"cmd_vel\n"

@@ -101,15 +101,18 @@ def laser_scan_to_polar(msg: Optional[LaserScan]) -> List[Tuple[float, float]]:
     angle = float(msg.angle_min)
     for distance in msg.ranges:
         # print(f"distance: {distance}")
+        proccessed_angle = wrap_to_pi(angle + math.pi / 2.0)
         if not math.isfinite(distance):
             # samples.append((float("inf"), angle))
-            samples.append((float(msg.range_max), angle))
+            samples.append((float(msg.range_max), proccessed_angle))
         elif distance < msg.range_min:
-            samples.append((float(msg.range_min), angle))
+            samples.append((float(msg.range_min), proccessed_angle))
         else:
-            samples.append((float(distance), angle))
+            samples.append((float(distance), proccessed_angle))
         angle += float(msg.angle_increment)
-    return samples
+    processed_samples = samples[157:] + samples[:157]
+    return processed_samples
+    # return samples
 
 
 if TYPE_CHECKING:
@@ -469,8 +472,10 @@ class PolicyVelocityController:
 
         polar_samples: List[Tuple[float, float]]
         if pointcloud is not None:
+            print("PointCloud2")
             polar_samples = pointcloud2_to_polar(pointcloud)
         else:
+            print("LaserScan")
             polar_samples = laser_scan_to_polar(laser_scan)
         lidar_measurement = process_lidar_for_observation(
             polar_samples,
@@ -505,6 +510,7 @@ class PolicyVelocityController:
         else:
             print("CLOSEST OBSTACLE DISTANCE IS SET AS INF")
             closest_distance, closest_angle = float("inf"), 0.0
+        closest_angle = -wrap_to_pi(closest_angle - math.pi/2)
 
         if not math.isfinite(closest_distance):
             closest_distance = self._lidar_range_m

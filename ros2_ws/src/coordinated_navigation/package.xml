@@ -13,8 +13,8 @@
   <depend>rclcpp</depend>
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
-  <depend>coordinated_navigation_interfaces</depend>
-  <depend>visualization_msgs</depend>
+  <!-- <depend>coordinated_navigation_interfaces</depend> -->
+  <!-- <depend>visualization_msgs</depend> -->
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
@@ -26,7 +26,7 @@
   <exec_depend>rclpy</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>nav2_msgs</exec_depend>
-  <!-- <exec_depend>coordinated_navigation_interfaces</exec_depend> -->
+  <exec_depend>coordinated_navigation_interfaces</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
   <exec_depend>python3-stable-baselines3</exec_depend>

@@ -414,6 +414,19 @@ Visualization Manager:
             Value: /marker
           Value: false
         - Alpha: 1
+        - Class: rviz_default_plugins/MarkerArray
+          Enabled: true
+          Name: Trajectories
+          Namespaces:
+            {}
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /navigation_markers
+          Value: false
+        - Alpha: 1
           Class: rviz_default_plugins/Polygon
           Color: 25; 255; 0
           Enabled: true
