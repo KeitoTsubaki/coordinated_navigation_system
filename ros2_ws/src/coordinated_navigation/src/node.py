@@ -23,9 +23,10 @@ from rclpy.parameter import ParameterType
 from rclpy.task import Future
 from rclpy.time import Time
 
-from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Twist
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Quaternion, Twist
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan
+from visualization_msgs.msg import Marker, MarkerArray
 
 from nav2_msgs.action import NavigateToPose
 
@@ -179,6 +180,9 @@ class CoordinatedNavigationNode(Node):
             Twist,
             self._topic("cmd_vel"),
             cmd_vel_qos,
+        )
+        self._marker_publisher = self.create_publisher(
+            MarkerArray, self._topic("navigation_markers"), 10
         )
 
         self._coordination_timer = self.create_timer(
@@ -456,6 +460,8 @@ class CoordinatedNavigationNode(Node):
             )
             return
 
+        self._publish_visualization_markers()
+
         twist = self._policy_controller.compute_velocity_command(
             target_pose=self.latest_target_pose,
             robot_pose=self.latest_robot_pose,
@@ -540,6 +546,134 @@ class CoordinatedNavigationNode(Node):
         goal_yaw = quaternion_to_yaw(goal_pose.pose.orientation)
         yaw_error = wrap_to_pi(goal_yaw - robot_yaw)
         return abs(yaw_error) <= self._goal_yaw_tolerance
+
+    def _publish_visualization_markers(self) -> None:
+        if self.latest_robot_pose is None or self.latest_scan is None:
+            return
+
+        frame_id = self.latest_robot_pose.header.frame_id or "map"
+        stamp = self.get_clock().now().to_msg()
+        robot_position = self.latest_robot_pose.pose.position
+        robot_yaw = quaternion_to_yaw(self.latest_robot_pose.pose.orientation)
+
+        markers: list[Marker] = []
+        if self.latest_target_pose is not None:
+            markers.append(
+                self._build_arrow_marker(
+                    marker_id=0,
+                    frame_id=frame_id,
+                    stamp=stamp,
+                    start_position=robot_position,
+                    yaw=self._goal_heading(),
+                    length=self._goal_distance(),
+                    color=(0.0, 1.0, 0.0, 0.8),
+                )
+            )
+
+        obstacle_marker = self._closest_obstacle_marker(
+            robot_position=robot_position,
+            robot_yaw=robot_yaw,
+            frame_id=frame_id,
+            stamp=stamp,
+        )
+        if obstacle_marker is not None:
+            markers.append(obstacle_marker)
+
+        if not markers:
+            return
+
+        marker_array = MarkerArray(markers=markers)
+        self._marker_publisher.publish(marker_array)
+
+    def _goal_distance(self) -> float:
+        if self.latest_target_pose is None or self.latest_robot_pose is None:
+            return 0.0
+
+        goal_position = self.latest_target_pose.pose.position
+        robot_position = self.latest_robot_pose.pose.position
+        dx = float(goal_position.x - robot_position.x)
+        dy = float(goal_position.y - robot_position.y)
+        return math.hypot(dx, dy)
+
+    def _goal_heading(self) -> float:
+        if self.latest_target_pose is None or self.latest_robot_pose is None:
+            return 0.0
+
+        goal_position = self.latest_target_pose.pose.position
+        robot_position = self.latest_robot_pose.pose.position
+        dx = float(goal_position.x - robot_position.x)
+        dy = float(goal_position.y - robot_position.y)
+        return math.atan2(dy, dx)
+
+    def _closest_obstacle_marker(
+        self,
+        *,
+        robot_position,
+        robot_yaw: float,
+        frame_id: str,
+        stamp,
+    ) -> Optional[Marker]:
+        if self.latest_scan is None:
+            return None
+
+        scan = self.latest_scan
+        min_distance = None
+        min_angle = None
+        for index, distance in enumerate(scan.ranges):
+            if not math.isfinite(distance):
+                continue
+            if min_distance is None or distance < min_distance:
+                min_distance = distance
+                min_angle = scan.angle_min + index * scan.angle_increment
+
+        if min_distance is None or min_angle is None:
+            return None
+
+        obstacle_heading = robot_yaw + min_angle
+
+        return self._build_arrow_marker(
+            marker_id=1,
+            frame_id=frame_id,
+            stamp=stamp,
+            start_position=robot_position,
+            yaw=obstacle_heading,
+            length=min_distance,
+            color=(1.0, 0.0, 0.0, 0.8),
+        )
+
+    @staticmethod
+    def _build_arrow_marker(
+        *,
+        marker_id: int,
+        frame_id: str,
+        stamp,
+        start_position,
+        yaw: float,
+        length: float,
+        color: tuple[float, float, float, float],
+    ) -> Marker:
+        marker = Marker()
+        marker.header.frame_id = frame_id
+        marker.header.stamp = stamp
+        marker.ns = "navigation_vectors"
+        marker.id = marker_id
+        marker.type = Marker.ARROW
+        marker.action = Marker.ADD
+        marker.pose.position = start_position
+        marker.pose.orientation = CoordinatedNavigationNode._yaw_to_quaternion(yaw)
+        marker.scale.x = max(length, 0.01)
+        marker.scale.y = 0.05
+        marker.scale.z = 0.05
+        marker.color.r, marker.color.g, marker.color.b, marker.color.a = color
+        return marker
+
+    @staticmethod
+    def _yaw_to_quaternion(yaw: float) -> Quaternion:
+        half_yaw = yaw * 0.5
+        qz = math.sin(half_yaw)
+        qw = math.cos(half_yaw)
+
+        return Quaternion(x=0.0, y=0.0, z=qz, w=qw)
 
     def destroy_node(self) -> bool:
         if hasattr(self, "_navigate_action_server") and self._navigate_action_server is not None:
