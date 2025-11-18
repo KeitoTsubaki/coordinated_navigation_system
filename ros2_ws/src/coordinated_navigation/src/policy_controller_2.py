@@ -510,12 +510,12 @@ class PolicyVelocityController:
         else:
             print("CLOSEST OBSTACLE DISTANCE IS SET AS INF")
             closest_distance, closest_angle = float("inf"), 0.0
-        closest_angle = -wrap_to_pi(closest_angle - math.pi/2)
+        closest_angle = wrap_to_pi(closest_angle - math.pi/2)
 
         if not math.isfinite(closest_distance):
             closest_distance = self._lidar_range_m
 
-        co_dist_n = float(np.clip(closest_distance / self._lidar_range_m, 0.0, 1.0))
+        co_dist_n = float(np.clip((closest_distance - 0.5) / self._lidar_range_m, 0.0, 1.0))
         co_angle_n = float(np.clip(closest_angle / math.pi, -1.0, 1.0))
         obs_closest = np.array([co_dist_n, co_angle_n], dtype=np.float32)
 

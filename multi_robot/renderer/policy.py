@@ -475,7 +475,7 @@ class PolicyController:
         omega_n = float(
             np.clip((control_state.current_omega or 0.0) / env.OMEGA_MAX, -1.0, 1.0)
         )
-        obs_velocity = np.array([v_n, -omega_n], dtype=np.float32)
+        obs_velocity = np.array([v_n, omega_n], dtype=np.float32)
 
         co_distance, co_angle = robot.closest_obstacle
         if co_distance == float("inf"):

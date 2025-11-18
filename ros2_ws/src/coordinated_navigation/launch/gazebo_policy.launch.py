@@ -19,7 +19,8 @@ def generate_launch_description():
     urdf = xacro.process_file(xacro_file)
 
     # World
-    world_file_path = os.path.join(pkg_coordination, 'worlds', 'test.world')
+    # world_file_path = os.path.join(pkg_coordination, 'worlds', 'test.world')
+    world_file_path = os.path.join(pkg_coordination, 'worlds', 'empty_with_obstacles.world')
 
     # Launch Arguments
     use_sim_time = LaunchConfiguration('use_sim_time', default='true')

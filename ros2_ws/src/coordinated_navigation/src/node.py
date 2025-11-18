@@ -88,7 +88,7 @@ class CoordinatedNavigationNode(Node):
         self.declare_parameter("policy.model_path", default_policy_model)
         self.declare_parameter("policy.step_period", timer_period)
         self.declare_parameter("policy.device", "cpu")
-        self.declare_parameter("navigation.distance_tolerance", 0.6)
+        self.declare_parameter("navigation.distance_tolerance", 1)
         self.declare_parameter("navigation.yaw_tolerance", 1.5)
         self.declare_parameter("navigation.feedback_period", 0.1)
 
@@ -143,7 +143,7 @@ class CoordinatedNavigationNode(Node):
             cancel_callback=self._navigate_cancel_callback,
         )
 
-        pose_qos = QoSProfile(depth=10, reliability=QoSReliabilityPolicy.RELIABLE)
+        pose_qos = QoSProfile(depth=1, reliability=QoSReliabilityPolicy.RELIABLE)
         formation_qos = QoSProfile(depth=5, reliability=QoSReliabilityPolicy.RELIABLE)
         odometry_qos = QoSProfile(depth=20, reliability=QoSReliabilityPolicy.RELIABLE)
         cmd_vel_qos = QoSProfile(
@@ -467,6 +467,7 @@ class CoordinatedNavigationNode(Node):
         twist = self._policy_controller.compute_velocity_command(
             target_pose=self.latest_target_pose,
             robot_pose=self.latest_robot_pose,
+            # odometry=self.latest_odometry,
             odometry=self._pose_velocity_odometry,
             pointcloud=None,
             laser_scan=self.latest_scan,

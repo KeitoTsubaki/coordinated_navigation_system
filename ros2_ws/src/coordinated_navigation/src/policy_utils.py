@@ -60,7 +60,7 @@ def process_lidar_for_observation(
         # processed.append(distance / max_range)
         # print(f"(angle: {_angle}) {distance}m ")
         if distance < max_range:
-            processed.append(distance / max_range)
+            processed.append((distance - 0.5) / max_range)
         else:
             # processed.append(100.0) # I fogot why it is converted to 100
             processed.append(1.0)
