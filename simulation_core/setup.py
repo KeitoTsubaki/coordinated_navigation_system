@@ -10,7 +10,7 @@ setup(
         ("share/ament_index/resource_index/packages", ["resource/" + package_name]),
         ("share/" + package_name, ["package.xml"]),
         ("share/" + package_name + "/config", ["config/simulator_config.yaml"]),
-        ("share/" + package_name + "/maps", ["maps/*"])
+        # ("share/" + package_name + "/maps", ["maps/*"])
     ],
     include_package_data=True,
     package_data={"simulation_core": ["config/*.yaml", "maps/*"]},
