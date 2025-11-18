@@ -83,8 +83,8 @@
 
     <gazebo reference="left_wheel">
         <material>Gazebo/DarkGrey</material>
-        <!-- <mu1 value="0.3"/>
-        <mu2 value="1.0"/> -->
+        <mu1 value="0.8"/>
+        <mu2 value="0.8"/>
     </gazebo>
 
     <!-- RIGHT WHEEL LINK -->
@@ -116,8 +116,8 @@
 
     <gazebo reference="right_wheel">
         <material>Gazebo/DarkGrey</material>
-        <!-- <mu1 value="0.3"/>
-        <mu2 value="1.0"/> -->
+        <mu1 value="0.8"/>
+        <mu2 value="0.8"/>
     </gazebo>
 
     
@@ -176,6 +176,29 @@
             <origin xyz="0 0 0" rpy="0 0 0"/>
         </xacro:inertial_cylinder>
     </link>
+
+    <!-- <joint name="caster_joint" type="continuous">
+        <parent link="base_link" />
+        <child link="caster_link" />
+        <origin xyz="0.330 0 0" rpy="0 0 0" />
+    </joint>
+
+    <link name="caster_link">
+        <visual>
+            <geometry>
+                <sphere radius="0.1325"/>
+            </geometry>
+            <material name="tire"/>
+        </visual>
+        <collision>
+            <geometry>
+                <sphere radius="0.1325"/>
+            </geometry>
+        </collision>
+        <xacro:inertial_sphere mass="0.5" radius="0.1325">
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+        </xacro:inertial_sphere>
+    </link> -->
 
     <gazebo reference="right_front_wheel">
         <material>Gazebo/DarkGrey</material>
