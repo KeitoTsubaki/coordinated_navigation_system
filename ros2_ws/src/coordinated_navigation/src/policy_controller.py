@@ -110,7 +110,9 @@ def laser_scan_to_polar(msg: Optional[LaserScan]) -> List[Tuple[float, float]]:
         else:
             samples.append((float(distance), proccessed_angle))
         angle += float(msg.angle_increment)
-    return samples
+    processed_samples = samples[157:] + samples[:157]
+    return processed_samples
+    # return samples
 
 
 if TYPE_CHECKING:
@@ -507,7 +509,7 @@ class PolicyVelocityController:
         if not math.isfinite(closest_distance):
             closest_distance = self._lidar_range_m
 
-        co_dist_n = float(np.clip(closest_distance / self._lidar_range_m, 0.0, 1.0))
+        co_dist_n = float(np.clip((closest_distance - 0.5) / self._lidar_range_m, 0.0, 1.0))
         co_angle_n = float(np.clip(closest_angle / math.pi, -1.0, 1.0))
         obs_closest = np.array([co_dist_n, co_angle_n], dtype=np.float32)
 
