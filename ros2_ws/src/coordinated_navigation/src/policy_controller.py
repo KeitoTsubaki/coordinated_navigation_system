@@ -425,26 +425,27 @@ class PolicyVelocityController:
         measured_v: Optional[float] = None
         measured_omega: Optional[float] = None
 
-        if odometry is not None:
-            measured_v = float(odometry.twist.twist.linear.x)
-            measured_omega = float(odometry.twist.twist.angular.z)
-        elif self._last_robot_pose is not None:
-            dt = self._dt
-            if dt > 0.0:
-                dx_pose = float(pose_source.position.x - self._last_robot_pose.position.x)
-                dy_pose = float(pose_source.position.y - self._last_robot_pose.position.y)
-                measured_v = math.hypot(dx_pose, dy_pose) / dt
+        # # if odometry is not None:
+        # #     measured_v = float(odometry.twist.twist.linear.x)
+        # #     measured_omega = float(odometry.twist.twist.angular.z)
+        # # el
+        # if self._last_robot_pose is not None:
+        #     dt = self._dt
+        #     if dt > 0.0:
+        #         dx_pose = float(pose_source.position.x - self._last_robot_pose.position.x)
+        #         dy_pose = float(pose_source.position.y - self._last_robot_pose.position.y)
+        #         measured_v = math.hypot(dx_pose, dy_pose) / dt
 
-                yaw_now = quaternion_to_yaw(pose_source.orientation)
-                yaw_prev = quaternion_to_yaw(self._last_robot_pose.orientation)
-                measured_omega = wrap_to_pi(yaw_now - yaw_prev) / dt
+        #         yaw_now = quaternion_to_yaw(pose_source.orientation)
+        #         yaw_prev = quaternion_to_yaw(self._last_robot_pose.orientation)
+        #         measured_omega = wrap_to_pi(yaw_now - yaw_prev) / dt
 
-        if measured_v is not None:
-            self._state.current_v = measured_v
-        if measured_omega is not None:
-            self._state.current_omega = measured_omega
+        # if measured_v is not None:
+        #     self._state.current_v = measured_v
+        # if measured_omega is not None:
+        #     self._state.current_omega = measured_omega
 
-        self._last_robot_pose = deepcopy(pose_source)
+        # self._last_robot_pose = deepcopy(pose_source)
 
         robot_position = pose_source.position
         robot_orientation = pose_source.orientation
@@ -485,9 +486,9 @@ class PolicyVelocityController:
         obs_lidar = np.array(history, dtype=np.float32)
         print(f"history shape: {obs_lidar.shape}")
 
-        # if odometry is not None:
-        #     self._state.current_v = float(odometry.twist.twist.linear.x)
-        #     self._state.current_omega = float(odometry.twist.twist.angular.z)
+        if odometry is not None:
+            self._state.current_v = float(odometry.twist.twist.linear.x)
+            self._state.current_omega = float(odometry.twist.twist.angular.z)
 
         v_n = float(np.clip((self._state.current_v or 0.0) / self._v_max, 0.0, 1.0))
         omega_n = float(

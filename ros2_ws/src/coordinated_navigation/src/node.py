@@ -32,13 +32,23 @@ from nav2_msgs.action import NavigateToPose
 from coordinated_navigation_interfaces.msg import Formation as FormationMsg
 
 try:
-    from .policy_controller import (
+    # from .policy_controller import (
+    #     PolicyVelocityController,
+    #     quaternion_to_yaw,
+    #     wrap_to_pi,
+    # )
+    from .policy_controller_2 import (
         PolicyVelocityController,
         quaternion_to_yaw,
         wrap_to_pi,
     )
 except:
-    from coordinated_navigation.policy_controller import (
+    # from coordinated_navigation.policy_controller import (
+    #     PolicyVelocityController,
+    #     quaternion_to_yaw,
+    #     wrap_to_pi,
+    # )
+    from coordinated_navigation.policy_controller_2 import (
         PolicyVelocityController,
         quaternion_to_yaw,
         wrap_to_pi,
@@ -77,8 +87,8 @@ class CoordinatedNavigationNode(Node):
         self.declare_parameter("policy.model_path", default_policy_model)
         self.declare_parameter("policy.step_period", timer_period)
         self.declare_parameter("policy.device", "cpu")
-        self.declare_parameter("navigation.distance_tolerance", 0.3)
-        self.declare_parameter("navigation.yaw_tolerance", 0.5)
+        self.declare_parameter("navigation.distance_tolerance", 0.6)
+        self.declare_parameter("navigation.yaw_tolerance", 1.5)
         self.declare_parameter("navigation.feedback_period", 0.1)
 
         # self._robot_namespace = self._normalise_robot_namespace(robot_namespace, robot_id)
