@@ -206,7 +206,7 @@ class PolicyVelocityController:
         print(f"v_n: {v_n}, omnga_n: {omega_n}")
 
         v_e, omega_e = self._action_to_executable_action(v_n, omega_n)
-        # print(f"v_e: {v_e}, omega_e: {omega_e}")
+        print(f"v_e: {v_e}, omega_e: {omega_e}")
 
         twist = Twist()
         twist.linear.x = v_e
