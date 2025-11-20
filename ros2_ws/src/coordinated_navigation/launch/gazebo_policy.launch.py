@@ -177,9 +177,6 @@ def generate_launch_description():
         parameters=[{
             'use_sim_time': use_sim_time,
         }],
-        # remappings=[
-        #     ('/navigate_to_pose', rviz_navigate_to_pose_action),
-        # ],
         output='screen'
     )
 
@@ -215,11 +212,6 @@ def generate_launch_description():
             ),
             description='Absolute path to the trained policy model zip file.'
         ),
-        # DeclareLaunchArgument(
-        #     'rviz_navigate_to_pose_action',
-        #     default_value='/robot_1/navigate_to_pose',
-        #     description='Action server name used by RViz for NavigateToPose goals.'
-        # ),
         rsp,
         gazebo,
         spawn_room,
