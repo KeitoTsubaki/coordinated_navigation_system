@@ -19,8 +19,10 @@ class EnvV4(gym.Env):
         super().__init__()
 
         # ===== Initialize and load config files =====
-        simulator_config_path = importlib.resources.files("simulation_core").joinpath(
-            "config", "simulator_config.yaml"
+        simulator_config_path = (
+            importlib.resources.files("simulation_core")
+            .joinpath("config")
+            .joinpath("simulator_config.yaml")
         )
         ddpg_config_path = os.path.join(
             os.path.dirname(__file__), "config", "ddpg_config.yaml"  # rl_training/
