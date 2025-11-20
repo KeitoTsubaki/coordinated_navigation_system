@@ -615,6 +615,8 @@ class EnvV4(gym.Env):
         # print("obs_velocity:", obs_velocity)
 
         co_dist, co_angle = self.env.get_closest_obstacle_info()
+        # Change!!
+        co_dist -= self.env.ROBOT_RADIUS_M
         co_dist_n = np.clip(co_dist / self.LIDAR_RANGE_M, 0.0, 1.0)
         co_angle_n = np.clip(co_angle / math.pi, -1.0, 1.0)
         obs_closest_obstacle = np.array([co_dist_n, co_angle_n], dtype=np.float32)
