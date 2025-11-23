@@ -135,14 +135,23 @@ class VWHybridAStarPlanner:
             inflated_obstacle = dist_m <= expansion_radius
 
             expanded_costmap = np.zeros_like(self.costmap, dtype=np.int16)
-            print(100 * i / (len(self.formation_priorities) + 1))
-            expanded_costmap[inflated_obstacle] = 100 * i / (len(self.formation_priorities) + 1)
+            print(100 - 100 * i / (len(self.formation_priorities) + 1))
+            expanded_costmap[inflated_obstacle] = 100 - 100 * i / (len(self.formation_priorities) + 1)
             if self.disp_map is None:
                 self.disp_map = expanded_costmap.copy()
             else:
                 self.disp_map += expanded_costmap
             self.expanded_costmap_dict[formation] = expanded_costmap
             i += 1
+            plt.figure(figsize=(6,6))
+            extent = [
+                self.origin_x,               # x_min
+                self.origin_x + self.width * self.res, # x_max
+                self.origin_y,               # y_min
+                self.origin_y + self.height * self.res # y_max
+            ]
+            plt.imshow(expanded_costmap, origin="lower", extent=extent, cmap="jet", alpha=0.5)
+        plt.show()
         self.disp_map += self.costmap
 
         # self.start_rc = self.world_to_grid(self.start_pos[0], self.start_pos[1]) + (0,)
@@ -236,7 +245,7 @@ class VWHybridAStarPlanner:
                 self.origin_y + self.height * self.res # y_max
             ]
             plt.imshow(h_map, origin="lower", extent=extent, cmap="jet", alpha=0.5)
-            plt.show()
+        plt.show()
         
         return h_map_dict
 
@@ -248,15 +257,8 @@ class VWHybridAStarPlanner:
         start_gx, start_gy = self.world_to_grid(sx, sy)
         goal_gx, goal_gy = self.world_to_grid(goal_x, goal_y)
 
-        plt.figure(figsize=(6,6))
-        extent = [
-            self.origin_x,               # x_min
-            self.origin_x + self.width * self.res, # x_max
-            self.origin_y,               # y_min
-            self.origin_y + self.height * self.res # y_max
-        ]
-        plt.imshow(self.expanded_costmap_dict[self.formation_priorities[0]], origin="lower", extent=extent, cmap="jet", alpha=0.5)
-        plt.show()
+        print("Start grid:", (start_gx, start_gy))
+        print("Goal grid:", (goal_gx, goal_gy))
 
         if not self.is_in_bounds(start_gx, start_gy) or \
             not self.is_in_bounds(goal_gx, goal_gy):
@@ -336,7 +338,7 @@ class VWHybridAStarPlanner:
                     state_data[nid] = (nx, ny, ntheta, formation_idx)
                     came_from[nid] = cid
                     h_val = max(self.h_map_dict[formation][n_gy, n_gx], math.hypot(nx - goal_x, ny - goal_y)) # heuristic
-                    print(f"h_val: {h_val:.2f}")
+                    # print(f"h_val: {h_val:.2f}")
                     nf = ng + 1.0 * h_val
                     heapq.heappush(open_heap, (nf, ng, nid, (nx, ny, ntheta, formation_idx)))
 
