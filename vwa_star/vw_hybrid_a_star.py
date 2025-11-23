@@ -173,13 +173,13 @@ class VWHybridAStarPlanner:
         bin_size = 2 * math.pi / self.num_heading_bins
         return int(theta / bin_size)
 
-    def is_in_bounds(self, gx, gy, costmap):
-        h, w = costmap.shape
-        return 0 <= gx < w and 0 <= gy < h
+    def is_in_bounds(self, gx, gy):
+        # h, w = costmap.shape
+        return 0 <= gx < self.width and 0 <= gy < self.height
     
     def is_collision(self, x, y, costmap):
         gx, gy = self.world_to_grid(x, y)
-        if not self.is_in_bounds(gx, gy, costmap):
+        if not self.is_in_bounds(gx, gy):
             return True
         if costmap[gy, gx] > 0:
             return True
@@ -209,7 +209,7 @@ class VWHybridAStarPlanner:
                     continue
                 for dx, dy, w in motions:
                     nx, ny = cx + dx, cy + dy
-                    if not self.is_in_bounds(nx, ny, self.expanded_costmap_dict[formation]): continue
+                    if not self.is_in_bounds(nx, ny): continue
 
                     extra_cost = 0.0
                     if self.expanded_costmap_dict[formation][ny, nx] > 0:
@@ -245,8 +245,8 @@ class VWHybridAStarPlanner:
         start_gx, start_gy = self.world_to_grid(sx, sy)
         goal_gx, goal_gy = self.world_to_grid(goal_x, goal_y)
 
-        if not self.is_in_bounds(start_gx, start_gy, self.costmap) or \
-            not self.is_in_bounds(goal_gx, goal_gy, self.costmap):
+        if not self.is_in_bounds(start_gx, start_gy) or \
+            not self.is_in_bounds(goal_gx, goal_gy):
             print("Start or goal is out of bounds.")
             return None
         if self.is_collision(sx, sy, self.costmap) or \
@@ -294,36 +294,38 @@ class VWHybridAStarPlanner:
             # print(g)
 
 
-            for formation_idx, formation in enumerate(self.formation_priorities):
-                for v, omega in self.motion_primitives:
-                    # Diff Drive Kinematics
-                    nx = cx + v * math.cos(ctheta) * self.dt
-                    ny = cy + v * math.sin(ctheta) * self.dt
-                    ntheta = (ctheta + omega * self.dt + math.pi) % (2 * math.pi) - math.pi
+            # for formation_idx, formation in enumerate(self.formation_priorities):
+            formation_idx = 0
+            formation = self.formation_priorities[formation_idx]
+            for v, omega in self.motion_primitives:
+                # Diff Drive Kinematics
+                nx = cx + v * math.cos(ctheta) * self.dt
+                ny = cy + v * math.sin(ctheta) * self.dt
+                ntheta = (ctheta + omega * self.dt + math.pi) % (2 * math.pi) - math.pi
 
-                    
-                    if self.is_collision(nx, ny, self.expanded_costmap_dict[formation]): continue
-                    n_gx, n_gy = self.world_to_grid(nx, ny)
-                    if not self.is_in_bounds(n_gx, n_gy, self.expanded_costmap_dict[formation]): continue
+                
+                if self.is_collision(nx, ny, self.expanded_costmap_dict[formation]): continue
+                n_gx, n_gy = self.world_to_grid(nx, ny)
+                if not self.is_in_bounds(n_gx, n_gy): continue
 
-                    # When the robot turns, the cost slightly increases
-                    step_cost = v * self.dt * (1.1 if abs(omega) > 0.1 else 1.0)
-                    ng = g + step_cost + self.formation_cost[formation]
-                    # print(f"ng: {ng:.2f}")
-                    # print(self.formation_cost[formation])
-                    hbin = self.heading_to_bin(ntheta)
+                # When the robot turns, the cost slightly increases
+                step_cost = v * self.dt * (1.1 if abs(omega) > 0.1 else 1.0)
+                ng = g + step_cost + self.formation_cost[formation]
+                # print(f"ng: {ng:.2f}")
+                # print(self.formation_cost[formation])
+                hbin = self.heading_to_bin(ntheta)
 
 
-                    if ng < visited[n_gy, n_gx, hbin, formation_idx]:
-                        visited[n_gy, n_gx, hbin, formation_idx] = ng
-                        nid = node_id_counter
-                        node_id_counter += 1
-                        state_data[nid] = (nx, ny, ntheta, formation_idx)
-                        came_from[nid] = cid
-                        h_val = max(self.h_map_dict[formation][n_gy, n_gx], math.hypot(nx - goal_x, ny - goal_y)) # heuristic
-                        print(f"h_val: {h_val:.2f}")
-                        nf = ng + 1.0 * h_val
-                        heapq.heappush(open_heap, (nf, ng, nid, (nx, ny, ntheta, formation_idx)))
+                if ng < visited[n_gy, n_gx, hbin, formation_idx]:
+                    visited[n_gy, n_gx, hbin, formation_idx] = ng
+                    nid = node_id_counter
+                    node_id_counter += 1
+                    state_data[nid] = (nx, ny, ntheta, formation_idx)
+                    came_from[nid] = cid
+                    h_val = max(self.h_map_dict[formation][n_gy, n_gx], math.hypot(nx - goal_x, ny - goal_y)) # heuristic
+                    print(f"h_val: {h_val:.2f}")
+                    nf = ng + 1.0 * h_val
+                    heapq.heappush(open_heap, (nf, ng, nid, (nx, ny, ntheta, formation_idx)))
 
         if goal_found_id is None:
             print("Failed to find a path.")
