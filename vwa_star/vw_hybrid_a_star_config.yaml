@@ -1,12 +1,13 @@
-start_pos: [5.0, 5.0, 3.14]
+# start_pos: [5.0, 5.0, 3.14]
+start_pos: [5.0, 7.0, -1.57]
 goal_pos: [7.0, -2.0]
 formation_priorities: ['side-by-side', 'one']
 formation_cost: {
   'side-by-side': 0,
-  'one': 5
+  'one': 0.5
 }
 expansion_radius_dict: {
-  'side-by-side': 1.0,
+  'side-by-side': 1.5,
   'one': 0.5
 }
 

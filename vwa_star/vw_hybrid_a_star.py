@@ -22,6 +22,7 @@ class VWHybridAStarPlanner:
     def __init__(self):
         map_yaml_path = "grid_maps/room1_map/room1_map.yaml"
         map_yaml_path = "grid_maps/room2_map/room2_map.yaml"
+        # map_yaml_path = "grid_maps/room3_map/room3_map.yaml"
     
         vw_hybrid_a_star_config_path = "vw_hybrid_a_star_config.yaml"
 
@@ -50,6 +51,8 @@ class VWHybridAStarPlanner:
         self.max_steer = None
         self.dt = None
         self.num_heading_bins = None
+        
+        self.dist_map = None
         
 
         self.load_config(vw_hybrid_a_star_config_path)
@@ -129,10 +132,10 @@ class VWHybridAStarPlanner:
             dist_cells = distance_transform_edt(~obstacle)
 
             # メートルに変換
-            dist_m = dist_cells * self.res
+            self.dist_map = dist_cells * self.res
 
             # self.expansion_radius 以内を全部障害物にする
-            inflated_obstacle = dist_m <= expansion_radius
+            inflated_obstacle = self.dist_map <= expansion_radius
 
             expanded_costmap = np.zeros_like(self.costmap, dtype=np.int16)
             print(100 - 100 * i / (len(self.formation_priorities) + 1))
@@ -143,15 +146,15 @@ class VWHybridAStarPlanner:
                 self.disp_map += expanded_costmap
             self.expanded_costmap_dict[formation] = expanded_costmap
             i += 1
-            plt.figure(figsize=(6,6))
-            extent = [
-                self.origin_x,               # x_min
-                self.origin_x + self.width * self.res, # x_max
-                self.origin_y,               # y_min
-                self.origin_y + self.height * self.res # y_max
-            ]
-            plt.imshow(expanded_costmap, origin="lower", extent=extent, cmap="jet", alpha=0.5)
-        plt.show()
+        #     plt.figure(figsize=(6,6))
+        #     extent = [
+        #         self.origin_x,               # x_min
+        #         self.origin_x + self.width * self.res, # x_max
+        #         self.origin_y,               # y_min
+        #         self.origin_y + self.height * self.res # y_max
+        #     ]
+        #     plt.imshow(expanded_costmap, origin="lower", extent=extent, cmap="jet", alpha=0.5)
+        # plt.show()
         self.disp_map += self.costmap
 
         # self.start_rc = self.world_to_grid(self.start_pos[0], self.start_pos[1]) + (0,)
@@ -197,6 +200,97 @@ class VWHybridAStarPlanner:
             return True
         return False
 
+    def pi_2_pi(self, angle):
+        return (angle + math.pi) % (2 * math.pi) - math.pi
+
+    def mod2pi(self, theta):
+        return theta - 2.0 * math.pi * math.floor(theta / 2.0 / math.pi)
+
+    def calc_dubins_distance(self, sx, sy, syaw, gx, gy, gyaw, c):
+        """
+        Dubinsパスの最短距離を計算する
+        sx, sy, syaw: スタート位置・角度
+        gx, gy, gyaw: ゴール位置・角度
+        c: 曲率 (1/最小回転半径)
+        """
+        dx = gx - sx
+        dy = gy - sy
+        D = math.hypot(dx, dy)
+        d = D * c
+
+        theta = self.mod2pi(math.atan2(dy, dx))
+        alpha = self.mod2pi(syaw - theta)
+        beta = self.mod2pi(gyaw - theta)
+
+        # 以下の6パターンのDubinsパスの長さを計算し、最小値を返す
+        # LSL, RSR, LSR, RSL, RLR, LRL
+        
+        def LSL(alpha, beta, d):
+            tmp = self.mod2pi(beta - alpha)
+            p_squared = 2 + d * d - 2 * math.cos(tmp) + 2 * d * math.sin(tmp)
+            if p_squared < 0: return float('inf')
+            tmp1 = math.atan2((math.cos(beta) - math.cos(alpha)), d + math.sin(alpha) - math.sin(beta))
+            d1 = self.mod2pi(-alpha + tmp1)
+            d2 = math.sqrt(p_squared)
+            d3 = self.mod2pi(beta - tmp1)
+            return d1 + d2 + d3
+
+        def RSR(alpha, beta, d):
+            tmp = self.mod2pi(alpha - beta)
+            p_squared = 2 + d * d - 2 * math.cos(tmp) + 2 * d * math.sin(tmp)
+            if p_squared < 0: return float('inf')
+            tmp1 = math.atan2((math.cos(alpha) - math.cos(beta)), d - math.sin(alpha) + math.sin(beta))
+            d1 = self.mod2pi(alpha - tmp1)
+            d2 = math.sqrt(p_squared)
+            d3 = self.mod2pi(-beta + tmp1)
+            return d1 + d2 + d3
+
+        def LSR(alpha, beta, d):
+            p_squared = -2 + d * d + 2 * math.cos(alpha - beta) + 2 * d * (math.sin(alpha) + math.sin(beta))
+            if p_squared < 0: return float('inf')
+            p = math.sqrt(p_squared)
+            tmp2 = math.atan2((-math.cos(alpha) - math.cos(beta)), (d + math.sin(alpha) + math.sin(beta))) - math.atan2(-2.0, p)
+            d1 = self.mod2pi(-alpha + tmp2)
+            d2 = p
+            d3 = self.mod2pi(-self.mod2pi(beta - tmp2))
+            return d1 + d2 + d3
+
+        def RSL(alpha, beta, d):
+            p_squared = d * d - 2 + 2 * math.cos(alpha - beta) - 2 * d * (math.sin(alpha) + math.sin(beta))
+            if p_squared < 0: return float('inf')
+            p = math.sqrt(p_squared)
+            tmp2 = math.atan2((math.cos(alpha) + math.cos(beta)), (d - math.sin(alpha) - math.sin(beta))) - math.atan2(2.0, p)
+            d1 = self.mod2pi(alpha - tmp2)
+            d2 = p
+            d3 = self.mod2pi(beta - tmp2)
+            return d1 + d2 + d3
+
+        def RLR(alpha, beta, d):
+            tmp = (6.0 - d * d + 2.0 * math.cos(alpha - beta) + 2.0 * d * (math.sin(alpha) - math.sin(beta))) / 8.0
+            if abs(tmp) > 1.0: return float('inf')
+            d2 = self.mod2pi(2 * math.pi - math.acos(tmp))
+            d1 = self.mod2pi(alpha - math.atan2((math.cos(alpha) - math.cos(beta)), d - math.sin(alpha) + math.sin(beta)) + d2 / 2.0)
+            d3 = self.mod2pi(alpha - beta + d1 + d2)
+            return d1 + d2 + d3
+
+        def LRL(alpha, beta, d):
+            tmp = (6.0 - d * d + 2.0 * math.cos(alpha - beta) - 2.0 * d * (math.sin(alpha) - math.sin(beta))) / 8.0
+            if abs(tmp) > 1.0: return float('inf')
+            d2 = self.mod2pi(2 * math.pi - math.acos(tmp))
+            d1 = self.mod2pi(-alpha - math.atan2((math.cos(alpha) - math.cos(beta)), d + math.sin(alpha) - math.sin(beta)) + d2 / 2.0)
+            d3 = self.mod2pi(self.mod2pi(beta) - alpha - d1 + self.mod2pi(d2))
+            return d1 + d2 + d3
+
+        funcs = [LSL, RSR, LSR, RSL, RLR, LRL]
+        best_cost = float('inf')
+        for f in funcs:
+            cost = f(alpha, beta, d)
+            if cost < best_cost:
+                best_cost = cost
+                
+        # 正規化距離を実距離に戻す (cost * radius)
+        return best_cost / c
+
     def calc_holonomic_heuristic(self, goal_gx, goal_gy, formations=None):
         # Heuristic Map from all pixels to the goal within no obstacle map
         if formations is None:
@@ -222,19 +316,22 @@ class VWHybridAStarPlanner:
                 for dx, dy, w in motions:
                     nx, ny = cx + dx, cy + dy
                     if not self.is_in_bounds(nx, ny): continue
-
-                    extra_cost = 0.0
-                    if self.expanded_costmap_dict[formation][ny, nx] > 0:
-                        if self.expanded_costmap_dict[formations[(id+1) % len(formations)]][ny, nx] > 0:
-                            continue
-                        # else: extra_cost = 1.0
-                    # if self.is_collision(nx, ny, self.expanded_costmap_dict[formation]): continue
-                    ncost = cost + w * self.res + extra_cost
+                    # if self.expanded_costmap_dict[formation][ny, nx] > 0: continue
+                    dist = self.dist_map[ny, nx]
+                    if dist <= 0.0: # 実質的な壁
+                        continue
+                    penalty = 0.0
+                    if dist < self.expansion_radius_dict[formation]:
+                        # コスト = ゲイン * (最大距離 - 現在距離)
+                        # 壁に近い(distが小さい)ほどコスト大
+                        penalty = 1 * (self.expansion_radius_dict[formation] - dist)
+                    ncost = cost + w * self.res
+                    ncost += penalty
                     if ncost < h_map[ny, nx]:
                         h_map[ny, nx] = ncost
                         heapq.heappush(queue, (ncost, nx, ny))
             
-            h_map[self.expanded_costmap_dict[formation] > 0] = np.inf
+            # h_map[self.expanded_costmap_dict[formation] > 0] = np.inf
             
             h_map_dict[formation] = h_map
             plt.figure(figsize=(6,6))
@@ -280,6 +377,7 @@ class VWHybridAStarPlanner:
         open_heap = []
         start_formation_idx = 0
         start_state = (sx, sy, stheta, start_formation_idx)  # formation_idx = 0
+        # start_state = (sx, sy, stheta)
         start_id = 0
         # print(f"first h value: {self.h_map_dict[self.formation_priorities[start_formation_idx]][start_gy, start_gx]}")
         initial_f = self.h_map_dict[self.formation_priorities[start_formation_idx]][start_gy, start_gx]
@@ -287,18 +385,38 @@ class VWHybridAStarPlanner:
 
         came_from = {start_id: None}
         state_data = {start_id: start_state}
-        visited = np.full((self.height, self.width, self.num_heading_bins, len(self.formation_priorities)), np.inf)
-        visited[start_gy, start_gx, self.heading_to_bin(stheta), 0] = 0.0
+        # visited = np.full((self.height, self.width, self.num_heading_bins, len(self.formation_priorities)), np.inf)
+        # print("Visited shape:", visited.shape)
+        # visited[start_gy, start_gx, self.heading_to_bin(stheta), 0] = 0.0
+        visited = np.full(( len(self.formation_priorities), self.height, self.width, self.num_heading_bins), np.inf)
+        print("Visited shape:", visited.shape)
+        visited[0, start_gy, start_gx, self.heading_to_bin(stheta)] = 0.0
+        
+        # visited = np.full((self.height, self.width, self.num_heading_bins), np.inf)
+        # visited[start_gy, start_gx, self.heading_to_bin(stheta)] = 0.0
 
         node_id_counter = 1
         goal_found_id = None
         dist_tolerance = 1.0  # [m]
         
+        if len(goal_world) == 3:
+            goal_x, goal_y, goal_theta = goal_world
+        else:
+            goal_x, goal_y = goal_world
+            goal_theta = 0.0  # 指定がなければ0と仮定、あるいは適当な値
+            
+        # ... (中略: 初期化処理など) ...
+
+        # 最小回転半径の逆数（曲率）を計算
+        # 半径 R = v / omega_max => 曲率 c = omega_max / v
+        # コード中のパラメータ変数名に合わせて調整してください
+        curvature = self.max_steer / self.linear_speed
+        
         for _ in range(max_iter):
             if not open_heap: break
 
             f, g, cid, (cx, cy, ctheta, _formation_idx) = heapq.heappop(open_heap)    # pick up lowest f score, which is a heapq characteristic
-
+            # f, g, cid, (cx, cy, ctheta) = heapq.heappop(open_heap) 
             # print(f"dist to goal: {math.hypot(cx - goal_x, cy - goal_y):.2f} m, g: {g:.2f}, f: {f:.2f}")
             # Goal check
             if math.hypot(cx - goal_x, cy - goal_y) <= dist_tolerance:
@@ -309,38 +427,56 @@ class VWHybridAStarPlanner:
             # print(g)
 
 
-            # for formation_idx, formation in enumerate(self.formation_priorities):
-            formation_idx = 0
-            formation = self.formation_priorities[formation_idx]
-            for v, omega in self.motion_primitives:
-                # Diff Drive Kinematics
-                nx = cx + v * math.cos(ctheta) * self.dt
-                ny = cy + v * math.sin(ctheta) * self.dt
-                ntheta = (ctheta + omega * self.dt + math.pi) % (2 * math.pi) - math.pi
+            for formation_idx, formation in enumerate(self.formation_priorities):
+            # formation_idx = 0
+            # formation = self.formation_priorities[formation_idx]
+                for v, omega in self.motion_primitives:
+                    # Diff Drive Kinematics
+                    nx = cx + v * math.cos(ctheta) * self.dt
+                    ny = cy + v * math.sin(ctheta) * self.dt
+                    ntheta = (ctheta + omega * self.dt + math.pi) % (2 * math.pi) - math.pi
 
-                
-                if self.is_collision(nx, ny, self.expanded_costmap_dict[formation]): continue
-                n_gx, n_gy = self.world_to_grid(nx, ny)
-                if not self.is_in_bounds(n_gx, n_gy): continue
+                    
+                    if self.is_collision(nx, ny, self.expanded_costmap_dict[formation]): continue
+                    n_gx, n_gy = self.world_to_grid(nx, ny)
+                    if not self.is_in_bounds(n_gx, n_gy): continue
 
-                # When the robot turns, the cost slightly increases
-                step_cost = v * self.dt * (1.1 if abs(omega) > 0.1 else 1.0)
-                ng = g + step_cost + self.formation_cost[formation]
-                # print(f"ng: {ng:.2f}")
-                # print(self.formation_cost[formation])
-                hbin = self.heading_to_bin(ntheta)
+                    # When the robot turns, the cost slightly increases
+                    step_cost = v * self.dt * (1.1 if abs(omega) > 0.1 else 1.0)
+                    ng = g + step_cost + self.formation_cost[formation]
+                    # print(f"ng: {ng:.2f}")
+                    # print(self.formation_cost[formation])
+                    hbin = self.heading_to_bin(ntheta)
 
 
-                if ng < visited[n_gy, n_gx, hbin, formation_idx]:
-                    visited[n_gy, n_gx, hbin, formation_idx] = ng
-                    nid = node_id_counter
-                    node_id_counter += 1
-                    state_data[nid] = (nx, ny, ntheta, formation_idx)
-                    came_from[nid] = cid
-                    h_val = max(self.h_map_dict[formation][n_gy, n_gx], math.hypot(nx - goal_x, ny - goal_y)) # heuristic
-                    # print(f"h_val: {h_val:.2f}")
-                    nf = ng + 1.0 * h_val
-                    heapq.heappush(open_heap, (nf, ng, nid, (nx, ny, ntheta, formation_idx)))
+                    # if ng < visited[n_gy, n_gx, hbin, formation_idx]:
+                    #     visited[n_gy, n_gx, hbin, formation_idx] = ng
+                    if ng < visited[formation_idx, n_gy, n_gx, hbin]:
+                        visited[formation_idx, n_gy, n_gx, hbin] = ng
+                    # if ng < visited[n_gy, n_gx, hbin]:
+                    #     visited[n_gy, n_gx, hbin] = ng
+                        nid = node_id_counter
+                        node_id_counter += 1
+                        state_data[nid] = (nx, ny, ntheta, formation_idx)
+                        # state_data[nid] = (nx, ny, ntheta)
+                        came_from[nid] = cid
+                        # h_val = max(self.h_map_dict[formation][n_gy, n_gx], math.hypot(nx - goal_x, ny - goal_y)) # heuristic
+                        # print(f"h_val: {h_val:.2f}")
+                        
+                        h_holo = self.h_map_dict[formation][n_gy, n_gx]
+                        h_holo = 0
+                        
+                        # 2. 障害物なしのDubins距離 (新規)
+                        h_dubins = self.calc_dubins_distance(nx, ny, ntheta, goal_x, goal_y, goal_theta, curvature)
+                        
+                        # 3. 両者の最大値を採用 (これがHybrid A*の肝です)
+                        h_val = max(h_holo, h_dubins)
+                        
+                        nf = ng + 1.0 * h_val
+                        print(f"Expanding Node ID {nid}: Pos({nx:.2f}, {ny:.2f}), Theta({ntheta:.2f}), g: {ng:.2f}, h: {h_val:.2f}")
+
+                        heapq.heappush(open_heap, (nf, ng, nid, (nx, ny, ntheta, formation_idx)))
+                        # heapq.heappush(open_heap, (nf, ng, nid, (nx, ny, ntheta)))
 
         if goal_found_id is None:
             print("Failed to find a path.")

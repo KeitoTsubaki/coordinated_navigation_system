@@ -1,4 +1,5 @@
 import yaml
+import math
 from pathlib import Path
 
 from PIL import Image
@@ -95,10 +96,10 @@ class VWAStarPlanner:
             dist_cells = distance_transform_edt(~obstacle)
 
             # メートルに変換
-            dist_m = dist_cells * self.res
+            self.dist_map = dist_cells * self.res
 
             # self.expansion_radius 以内を全部障害物にする
-            inflated_obstacle = dist_m <= expansion_radius
+            inflated_obstacle = self.dist_map <= expansion_radius
 
             expanded_costmap = np.zeros_like(self.costmap, dtype=np.int16)
             expanded_costmap[inflated_obstacle] = 100 / (len(self.formation_priorities) + 1)  # 軽いコストに設定
@@ -180,7 +181,7 @@ class VWAStarPlanner:
                     path.append(came_from[path[-1]])
                 path.reverse()
                 self.path = path
-                return
+                return path
 
             for formation_idx, formation in enumerate(self.formation_priorities):
                 for dy, dx, cost in neighbors:
@@ -202,21 +203,19 @@ class VWAStarPlanner:
         # 経路なし
         self.path = None
     
-    def show(self):
-        if self.path is None:
-            print("経路が見つかりませんでした")
-        else:
-            print("path length (cells):", len(self.path))
+    def show(self, path=None):
+        if path is not None:
+            print("path length (cells):", len(path))
 
             # 経路をワールド座標配列に変換（プロット用）
             xs = []
             ys = []
             segment_colors = []
-            for r, c, formation_idx in self.path:
+            for r, c, formation_idx in path:
                 xs.append(self.grid_to_world(r, c)[0])
                 ys.append(self.grid_to_world(r, c)[1])
                 segment_colors.append(self.formation_colors[formation_idx])
-            # path_xy = [self.grid_to_world(r, c) for (r, c, formation_idx) in self.path]
+            # path_xy = [self.grid_to_world(r, c) for (r, c, formation_idx) in path]
             # xs = [p[0] for p in path_xy]
             # ys = [p[1] for p in path_xy]
 
@@ -280,9 +279,152 @@ class VWAStarPlanner:
         return x, y
 
 
+class PathSmoother:
+    def __init__(self, max_iter=100, alpha=0.1, beta=0.5, obs_weight=0.2, obs_dist_thresh=1.0):
+        """
+        alpha: 平滑化の強さ (大きくすると直線的になる)
+        beta:  元のパスへの追従力 (大きくすると元のパスに戻ろうとする)
+        obs_weight: 障害物からの反発力
+        obs_dist_thresh: これ以上障害物に近いと反発を受ける距離 [m]
+        """
+        self.max_iter = max_iter
+        self.alpha = alpha 
+        self.beta = beta
+        self.obs_weight = obs_weight
+        self.obs_dist_thresh = obs_dist_thresh
+
+    def smooth(self, path, dist_map, resolution, origin_x, origin_y):
+        """
+        path: [(x,y,theta), ...]
+        dist_map: 障害物からの距離マップ [m] (scipy.distance_transform_edt の出力)
+        """
+        if not path or len(path) < 3:
+            return path
+
+        # (x, y) だけ取り出して最適化する
+        path_xy = np.array([[p[0], p[1]] for p in path], dtype=float)
+        orig_xy = path_xy.copy()
+        n_points = len(path_xy)
+        
+        h, w = dist_map.shape
+
+        for _ in range(self.max_iter):
+            # 両端(Start, Goal)は固定
+            for i in range(1, n_points - 1):
+                curr = path_xy[i]
+                prev = path_xy[i-1]
+                next_p = path_xy[i+1]
+                orig = orig_xy[i]
+
+                # 1. Smoothness (Neighbors)
+                gradient_smooth = (prev + next_p - 2 * curr)
+                
+                # 2. Data Fidelity (Original Path)
+                gradient_data = (orig - curr)
+                
+                # 3. Obstacle Repulsion
+                gradient_obs = np.zeros(2)
+                # 現在位置のグリッド座標
+                gx = int(np.round((curr[0] - origin_x) / resolution))
+                gy = int(np.round((curr[1] - origin_y) / resolution))
+                
+                if 0 <= gx < w and 0 <= gy < h:
+                    dist = dist_map[gy, gx]
+                    if dist < self.obs_dist_thresh:
+                        # 障害物に近い場合、勾配方向に押し戻す
+                        # 簡易的に周囲の勾配を見る (Sobel的な処理の簡易版)
+                        # ここでは「最も距離が大きい方向」へ動かしたい
+                        # 周囲の距離値を取得して数値微分
+                        d_x = 0.0
+                        d_y = 0.0
+                        if gx+1 < w and gx-1 >= 0:
+                            d_x = dist_map[gy, gx+1] - dist_map[gy, gx-1]
+                        if gy+1 < h and gy-1 >= 0:
+                            d_y = dist_map[gy+1, gx] - dist_map[gy-1, gx]
+                        
+                        # 距離マップの勾配方向 = 障害物から離れる方向
+                        norm = math.hypot(d_x, d_y)
+                        if norm > 0.01:
+                            gradient_obs = np.array([d_x, d_y]) / norm * (self.obs_dist_thresh - dist)
+
+                # Update
+                path_xy[i] += self.alpha * gradient_smooth + \
+                              self.beta * gradient_data + \
+                              self.obs_weight * gradient_obs
+
+        # theta の再計算 (移動方向に向ける)
+        new_path = []
+        # Start
+        new_path.append((path_xy[0][0], path_xy[0][1], path[0][2]))
+        
+        for i in range(1, n_points):
+            px, py = path_xy[i]
+            prev_x, prev_y = path_xy[i-1]
+            yaw = math.atan2(py - prev_y, px - prev_x)
+            new_path.append((px, py, yaw))
+            
+        return new_path
+
 
 
 if __name__ == "__main__":
     vwa_star_planner = VWAStarPlanner()
-    vwa_star_planner.vwastar(allow_diagonal=True)
-    vwa_star_planner.show()
+    # 1. Get the raw path in Grid Coordinates (row, col, formation_index)
+    grid_path = vwa_star_planner.vwastar(allow_diagonal=True)
+    
+    if grid_path is None:
+        print("No path found!")
+    else:
+        vwa_star_planner.show(grid_path)
+        
+        # --- CRITICAL FIX 1: Convert Grid Path to World Coordinates ---
+        # The smoother expects [x, y, theta] in meters, not grid indices.
+        world_path = []
+        for r, c, formation_idx in grid_path:
+            wx, wy = vwa_star_planner.grid_to_world(r, c)
+            # Passing 0.0 as dummy theta since the smoother calculates yaw later
+            world_path.append((wx, wy, 0.0))
+
+        smoother = PathSmoother(
+            max_iter=500,       
+            alpha=0.5,          
+            beta=0.01,           
+            obs_weight=0.2,     
+            obs_dist_thresh=0.8 
+        )
+        
+        # 2. Smooth the World Coordinate Path
+        smoothed_path = smoother.smooth(
+            world_path, 
+            vwa_star_planner.dist_map, 
+            vwa_star_planner.res, 
+            vwa_star_planner.origin_x, 
+            vwa_star_planner.origin_y
+        )
+        
+        # Extract X and Y for plotting
+        sx = [p[0] for p in smoothed_path]
+        sy = [p[1] for p in smoothed_path]
+        
+        plt.figure(figsize=(6,6))
+        plt.imshow(
+            vwa_star_planner.disp_map,
+            origin="lower",
+            extent=[
+                vwa_star_planner.origin_x,
+                vwa_star_planner.origin_x + vwa_star_planner.width * vwa_star_planner.res,
+                vwa_star_planner.origin_y,
+                vwa_star_planner.origin_y + vwa_star_planner.height * vwa_star_planner.res
+            ],
+            cmap="gray_r",
+            vmin=0,   # Ensure scale matches logic (0=free, 100=occupied)
+            vmax=100
+        )
+        
+        # --- CRITICAL FIX 2: Use plt.plot instead of plt.imshow ---
+        plt.plot(sx, sy, "-b", linewidth=2, label="Smoothed path")
+        
+        plt.scatter([vwa_star_planner.start_pos[0]], [vwa_star_planner.start_pos[1]], c="b", s=40, label="start")
+        plt.scatter([vwa_star_planner.goal_pos[0]],  [vwa_star_planner.goal_pos[1]],  c="g", s=40, label="goal")
+        plt.legend()
+        plt.show()
