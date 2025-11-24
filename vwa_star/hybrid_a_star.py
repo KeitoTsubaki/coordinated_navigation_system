@@ -16,6 +16,7 @@ class DiffDriveHybridAStarPlanner:
     def __init__(
         self,
         occ_grid: np.ndarray,
+        dist_map: np.ndarray,
         resolution: float,
         origin_x: float,
         origin_y: float,
@@ -34,6 +35,8 @@ class DiffDriveHybridAStarPlanner:
         self.linear_speed = linear_speed
         self.dt = dt
         self.num_heading_bins = num_heading_bins
+
+        self.dist_map = dist_map
 
         # 前進のみ (Forward Only)
         moves = []
@@ -79,6 +82,12 @@ class DiffDriveHybridAStarPlanner:
             (1, 0, 1.0), (0, 1, 1.0), (-1, 0, 1.0), (0, -1, 1.0),
             (1, 1, 1.414), (1, -1, 1.414), (-1, 1, 1.414), (-1, -1, 1.414)
         ]
+        
+        plt.figure(figsize=(6,6))
+        plt.imshow(self.dist_map, origin="lower", cmap="jet", alpha=0.5)
+        plt.show()
+        
+        
         while queue:
             cost, cx, cy = heapq.heappop(queue)
             if cost > h_map[cy, cx]:
@@ -86,11 +95,34 @@ class DiffDriveHybridAStarPlanner:
             for dx, dy, w in motions:
                 nx, ny = cx + dx, cy + dy
                 if not self.is_in_bounds(nx, ny): continue
-                if self.grid[ny, nx] > 50: continue
+                
+                # if self.grid[ny, nx] > 0: 
+                #     continue
+                
+                dist = self.dist_map[ny, nx]
+                if dist <= 0.0: # 実質的な壁
+                    continue
+                
+                # 2. 物理的な壁そのもの(grid値)もチェック
+                # if self.grid[ny, nx] >99: 
+                #     continue
+                
+                penalty = 0.0
+                inflation_radius = 1
+                if dist < inflation_radius:
+                    # コスト = ゲイン * (最大距離 - 現在距離)
+                    # 壁に近い(distが小さい)ほどコスト大
+                    penalty = 1 * (inflation_radius - dist)
+                
                 ncost = cost + w * self.res
+                ncost += penalty
                 if ncost < h_map[ny, nx]:
                     h_map[ny, nx] = ncost
                     heapq.heappush(queue, (ncost, nx, ny))
+                    
+        plt.figure(figsize=(6,6))
+        plt.imshow(h_map, origin="lower", cmap="jet", alpha=0.5)
+        plt.show()
         
         return h_map
 
@@ -156,6 +188,7 @@ class DiffDriveHybridAStarPlanner:
                     state_data[nid] = (nx, ny, ntheta)
                     came_from[nid] = cid
                     h_val = max(self.h_map[n_gy, n_gx], math.hypot(nx - gx_w, ny - gy_w))
+                    # print(f"Expanding Node ID {nid}: Pos({nx:.2f}, {ny:.2f}), Theta({ntheta:.2f}), g: {ng:.2f}, h: {h_val:.2f}")
                     heapq.heappush(open_heap, (ng + 1.0 * h_val, ng, nid, (nx, ny, ntheta)))
 
         if goal_found_id is None:
@@ -309,6 +342,7 @@ inflated_grid[dist_map_raw <= inflation_radius] = 100
 # Planner (前進のみ)
 planner = DiffDriveHybridAStarPlanner(
     inflated_grid,
+    dist_map = dist_map_raw,
     resolution=resolution,
     origin_x=origin[0],
     origin_y=origin[1],
@@ -370,7 +404,7 @@ if raw_path is not None:
     ax0.set_title("Step 1: Hybrid A* Raw Path & Heuristic")
     
     # 背景: ヒューリスティックマップを表示して探索の様子を確認
-    ax0.imshow(inflated_grid + occ_grid, origin="lower", extent=extent, cmap="gray_r", vmin=0, vmax=150)
+    # ax0.imshow(inflated_grid + occ_grid, origin="lower", extent=extent, cmap="gray_r", vmin=0, vmax=150)
     ax0.imshow(planner.h_map, origin="lower", extent=extent, cmap="jet", alpha=0.5) # ヒートマップ
     
     # Raw Path (Red)
