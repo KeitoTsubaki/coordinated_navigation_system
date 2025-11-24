@@ -66,7 +66,7 @@ class VWHybridAStarPlanner:
         self.collision_radius_cells = max(1, int(math.ceil(self.robot_radius / self.res)))
 
     def load_config(self, config_path):
-        with open(config_path, "r") as f:
+        with open(config_path, 'r', encoding='utf-8') as f:
             config = yaml.safe_load(f)
 
         self.start_pos = tuple(config["start_pos"])  # (x, y, theta) [m]
@@ -82,7 +82,7 @@ class VWHybridAStarPlanner:
         self.num_heading_bins = config.get("num_heading_bins", 72)      # 離散化する方位の数
 
     def load_map(self, map_yaml_path):
-        with open(map_yaml_path, "r") as f:
+        with open(map_yaml_path, "r", encoding="utf-8") as f:
             map_yaml = yaml.safe_load(f)
 
         image_file = map_yaml["image"]
