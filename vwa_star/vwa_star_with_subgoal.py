@@ -1,5 +1,6 @@
 import yaml
 import math
+import time
 from pathlib import Path
 
 from PIL import Image
@@ -218,9 +219,9 @@ class VWAStarPlanner:
             xs = []
             ys = []
             
-            # path_xy = [self.grid_to_world(r, c) for (r, c, formation_idx) in path]
-            # xs = [p[0] for p in path_xy]
-            # ys = [p[1] for p in path_xy]
+            path_xy = [self.grid_to_world(r, c) for (r, c, formation_idx) in path]
+            xs = [p[0] for p in path_xy]
+            ys = [p[1] for p in path_xy]
 
             
             points = np.array([xs, ys]).T.reshape(-1, 1, 2)
@@ -373,8 +374,19 @@ class PathSmoother:
 if __name__ == "__main__":
     vwa_star_planner = VWAStarPlanner()
     # 1. Get the raw path in Grid Coordinates (row, col, formation_index)
+    smoother = PathSmoother(
+        max_iter=500,       
+        alpha=0.5,          
+        beta=0.01,           
+        obs_weight=1,     
+        obs_dist_thresh=1.0 
+    )
+
+    start_time = time.time()
     grid_path = vwa_star_planner.vwastar(allow_diagonal=True)
-    
+    end_time = time.time()
+    print(f"Path planning took {end_time - start_time:.2f} seconds.")
+    # vwa_star_planner.show(grid_path)
     if grid_path is None:
         print("No path found!")
     else:
@@ -388,13 +400,6 @@ if __name__ == "__main__":
             # Passing 0.0 as dummy theta since the smoother calculates yaw later
             world_path.append((wx, wy, 0.0))
 
-        smoother = PathSmoother(
-            max_iter=500,       
-            alpha=0.5,          
-            beta=0.01,           
-            obs_weight=1,     
-            obs_dist_thresh=1.0 
-        )
         
         # 2. Smooth the World Coordinate Path
         smoothed_path = smoother.smooth(
@@ -404,7 +409,10 @@ if __name__ == "__main__":
             vwa_star_planner.origin_x, 
             vwa_star_planner.origin_y
         )
+        smooth_time = time.time()
+        print(f"Path smoothing took {smooth_time - end_time:.2f} seconds.")
         
+
         # Extract X and Y for plotting
         sx = [p[0] for p in smoothed_path]
         sy = [p[1] for p in smoothed_path]
@@ -470,7 +478,7 @@ if __name__ == "__main__":
         tips_y = []  # 両端の円のためのY座標リスト
         line_length = 1  # 線の長さ [m]
         
-        use_formation_in_narrow_areas = False
+        use_formation_in_narrow_areas = True
 
         for i in indices:
             
