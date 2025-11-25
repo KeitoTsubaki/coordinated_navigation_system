@@ -54,6 +54,7 @@ class EpisodeLoggerV2(BaseCallback):
         self.filename = filename or "episode_log.csv"
         self.decay_patience = decay_patience
         self.early_stop_patience = early_stop_patience
+        self.best_mean_reward = -np.inf
         self.best_success_rate = -np.inf
         self.no_improve_counter = 0
         self._evaluation_history: list[float] = []
@@ -220,6 +221,7 @@ class EpisodeLoggerV2(BaseCallback):
             ):
                 (
                     overall_success_rate,
+                    overall_mean_reward,
                     success_rate_by_map,
                 ) = self.periodic_test_and_record()
                 overall_success_rate_higher_than_90 = overall_success_rate > 0.9
@@ -228,6 +230,8 @@ class EpisodeLoggerV2(BaseCallback):
                 self.logger.record("evaluation/overall_success_rate", overall_success_rate)
                 self.logger.record("evaluation/running_best_success_rate", running_best)
                 random_success_rate = success_rate_by_map.get("random", 0.0)
+
+                # Decay
                 if not self._should_decay_parameters:
                     if random_success_rate > 0.8:
                         self._random_success_streak += 1
@@ -245,15 +249,29 @@ class EpisodeLoggerV2(BaseCallback):
                 else:
                     self._random_success_streak = 0
 
-                if overall_success_rate > self.best_success_rate:
+                # Success rate improvement check
+                is_success_improved = overall_success_rate > self.best_success_rate
+                is_reward_improved = overall_mean_reward > self.best_mean_reward
+                
+                if is_success_improved:
                     if self.verbose > 0 and self.best_success_rate > -np.inf:
                         print(
-                            "✅ Evaluation success improved from "
+                            "✅ Success Rate improved from "
                             f"{self.best_success_rate:.3f} to {overall_success_rate:.3f}"
                         )
                     self.best_success_rate = overall_success_rate
+                
+                if is_reward_improved:
+                    if self.verbose > 0 and self.best_mean_reward > -np.inf:
+                        print(
+                            "✅ Mean Reward improved from "
+                            f"{self.best_mean_reward:.3f} to {overall_mean_reward:.3f}"
+                        )
+                    self.best_mean_reward = overall_mean_reward
+                
+                if is_success_improved or is_reward_improved:
                     self.no_improve_counter = 0
-                elif random_success_rate > 0.8:
+                else:
                     self.no_improve_counter += self.eval_freq_episodes
                     self.logger.record(
                         "evaluation/episodes_without_improvement", self.no_improve_counter
@@ -309,6 +327,7 @@ class EpisodeLoggerV2(BaseCallback):
         self.periodic_test_count += 1
         total_episodes = sum(self.n_eval_episodes.values())
         episode_count = 0
+        all_rewards = []
         total_successes = []
         success_rate_by_map = {}
         for map_name, n_episodes in self.n_eval_episodes.items():
@@ -350,6 +369,7 @@ class EpisodeLoggerV2(BaseCallback):
                         print(f"Saved evaluation video to: {video_path}")
                 
                 rewards.append(total_reward)
+                all_rewards.append(total_reward)
                 successes.append(success)
                 total_successes.append(success)
                 episode_count += 1
@@ -358,7 +378,8 @@ class EpisodeLoggerV2(BaseCallback):
                 
             mean_reward = np.mean(rewards)
             success_rate = np.mean(successes)
-            overall_success_rate = np.mean(total_successes)
+            overall_mean_reward = np.mean(all_rewards) if all_rewards else 0.0
+            overall_success_rate = np.mean(total_successes) if total_successes else 0.0
             success_rate_by_map[map_name] = success_rate
 
             if self._eval_csv_writer is not None:
@@ -391,7 +412,7 @@ class EpisodeLoggerV2(BaseCallback):
         print(f"[PeriodicTest] Saved model to {save_path}")
         
         # self.in_eval = False
-        return overall_success_rate, success_rate_by_map
+        return overall_success_rate, overall_mean_reward, success_rate_by_map
     
     def show_test_progress(self, episode: int, total_episodes: int) -> None:
         progress = (episode / total_episodes) * 100
