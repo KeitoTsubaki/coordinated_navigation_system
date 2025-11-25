@@ -287,7 +287,7 @@ class EpisodeLoggerV2(BaseCallback):
                     self.no_improve_counter = 0
 
                 if (
-                    not self._should_decay_parameters
+                    self._should_decay_parameters
                     and self.no_improve_counter >= self.early_stop_patience
                     and overall_success_rate_higher_than_90
                 ):
