@@ -65,7 +65,7 @@ def generate_launch_description():
     rviz_config_dir = os.path.join(
         pkg_coordination,
         'rviz',
-        'tb3_navigation2.rviz'
+        'whill_navigation2.rviz'
     )
 
 
@@ -207,8 +207,11 @@ def generate_launch_description():
                 pkg_coordination,
                 'models',
                 'model_ep3700.zip'
+
                 # 'model_ep11200.zip'
                 # 'model_ep10800.zip'
+
+                # 'model_ep16500.zip' # best model but observation adjustment is needed
             ),
             description='Absolute path to the trained policy model zip file.'
         ),

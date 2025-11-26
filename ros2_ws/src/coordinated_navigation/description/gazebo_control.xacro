@@ -4,8 +4,9 @@
     <gazebo>
         <plugin name="diff_drive" filename="libgazebo_ros_diff_drive.so">
             <ros> 
-               <!--<namespace> added during multi bot launch </namespace>--> 
-               <!--<remapping> added during multi bot launch </remapping>-->
+                <!--<namespace> added during multi bot launch </namespace>--> 
+                <!--<remapping> added during multi bot launch </remapping>-->
+                <remapping>/tf:=tf</remapping>
             </ros>
 
             <!-- Wheel Information -->
