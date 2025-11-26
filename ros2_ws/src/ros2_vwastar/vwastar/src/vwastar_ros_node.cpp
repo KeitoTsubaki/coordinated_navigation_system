@@ -72,6 +72,8 @@ Node("vwastar_node")
     //Publishers
     mask_pub = this->create_publisher<nav_msgs::msg::OccupancyGrid>("/vwastar/mask", 10);
     path_pub = this->create_publisher<nav_msgs::msg::Path>("/vwastar/nav_path", 10);
+    robot1_formation_target_pub = this->create_publisher<geometry_msgs::msg::PoseArray>("/vwastar/robot1_formation_target", 10);
+    robot2_formation_target_pub = this->create_publisher<geometry_msgs::msg::PoseArray>("/vwastar/robot2_formation_target", 10);
 
     OccGridParam = std::make_unique<OccupancyGridParam>();
     vwastar = std::make_unique<pathplanning::VWAstar>();
@@ -259,6 +261,7 @@ void VWAstarROSNode::compute_path()
         vwastar->PathPlanning(startPoint, targetPoint, PathList);
         path.poses.clear();
         RCLCPP_INFO(this->get_logger(), "num of path points: %ld ", PathList.size());
+        geometry_msgs::msg::PoseArray robot1_msg, robot2_msg;
         if(!PathList.empty())
         {
             path.header.stamp = Node::now();
@@ -274,6 +277,11 @@ void VWAstarROSNode::compute_path()
             // Point2d dst_point;
             // OccGridParam->Image2MapTransform(PathList[i], dst_point);
 
+            robot1_msg.header = path.header;
+            robot2_msg.header = path.header;
+
+            double offset_dist_m = 1.0;
+
             for (size_t i = 0; i < world_points.size(); i++)
             {
                 geometry_msgs::msg::PoseStamped pose_stamped;
@@ -286,20 +294,47 @@ void VWAstarROSNode::compute_path()
                 pose_stamped.pose.position.z = 0;
                 
                 // Orientation
+                double yaw = 0.0;
                 if(i < world_points.size() - 1)
                 {
                     double dy = world_points[i+1].y - world_points[i].y;
                     double dx = world_points[i+1].x - world_points[i].x;
-                    double yaw = atan2(dy, dx);
+                    yaw = atan2(dy, dx);
 
                     pose_stamped.pose.orientation = createQuaternionFromYaw(yaw);
                 }
                 else
                 {
-                    pose_stamped.pose.orientation = target_orientation;
+                    double dy = world_points[i].y - world_points[i-1].y;
+                    double dx = world_points[i].x - world_points[i-1].x;
+                    yaw = atan2(dy, dx);
+
+                    pose_stamped.pose.orientation = createQuaternionFromYaw(yaw);
+                    // pose_stamped.pose.orientation = target_orientation;
+
+                    // transform orientation to yaw
+                    // tf2::Quaternion q(target_orientation.x, target_orientation.y, target_orientation.z, target_orientation.w);
+                    // double roll, pitch;
+                    // tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);
                 }
 
                 path.poses.push_back(pose_stamped);
+
+                // Make formation targets
+                // x: forward, y: left
+                if(i > 0)
+                {
+                    geometry_msgs::msg::Pose robot1_pose = pose_stamped.pose; // copy orientation
+                    robot1_pose.position.x = world_points[i].x - offset_dist_m * sin(yaw);
+                    robot1_pose.position.y = world_points[i].y + offset_dist_m * cos(yaw);
+                    robot1_msg.poses.push_back(robot1_pose);
+    
+                    geometry_msgs::msg::Pose robot2_pose = pose_stamped.pose; // copy orientation
+                    robot2_pose.position.x = world_points[i].x + offset_dist_m * sin(yaw);
+                    robot2_pose.position.y = world_points[i].y - offset_dist_m * cos(yaw);
+                    robot2_msg.poses.push_back(robot2_pose);
+                }
+
             }
             std::chrono::high_resolution_clock::time_point last_time = std::chrono::high_resolution_clock::now();
             double dt = std::chrono::duration_cast<std::chrono::milliseconds>(last_time - current_time).count();
@@ -313,6 +348,9 @@ void VWAstarROSNode::compute_path()
 
         // Publish map
         path_pub->publish(path);
+        robot1_formation_target_pub->publish(robot1_msg);
+        robot2_formation_target_pub->publish(robot2_msg);
+
         // Set flag
         start_flag = false;
 

@@ -22,6 +22,7 @@
 #include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/quaternion.hpp>
+#include <geometry_msgs/msg/pose_array.hpp>
 
 #include "path_msgs/srv/get_path.hpp"
 #include "path_msgs/srv/pose.hpp"
@@ -77,6 +78,8 @@ private:
   //Publishers
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr mask_pub;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub;
+  rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr robot1_formation_target_pub;
+  rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr robot2_formation_target_pub;
   rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr startPoint_pub;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr targetPoint_pub;
 
@@ -85,7 +88,7 @@ private:
   rclcpp::Service<path_msgs::srv::GetPath>::SharedPtr get_path_srv;
 
   geometry_msgs::msg::Quaternion createQuaternionFromYaw(double yaw);
-  
+
   // Service callbacks
   void getPathCallback(const std::shared_ptr<path_msgs::srv::GetPath::Request> request,
                        std::shared_ptr<path_msgs::srv::GetPath::Response> response);

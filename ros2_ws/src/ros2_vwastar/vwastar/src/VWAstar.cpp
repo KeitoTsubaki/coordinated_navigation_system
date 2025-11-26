@@ -364,7 +364,8 @@ vector<Point> VWAstar::SmoothPath(const vector<Node*>& nodes) {
     }
 
     vector<Point> spaced_smoothed_path;
-    for(size_t i=0; i<smoothed_path.size(); i+=10)
+    int step = 20;
+    for(size_t i=0; i<smoothed_path.size(); i+=step)
     {
         spaced_smoothed_path.push_back(smoothed_path[i]);
     }
