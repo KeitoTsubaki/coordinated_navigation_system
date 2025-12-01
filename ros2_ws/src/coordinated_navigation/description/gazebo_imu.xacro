@@ -1,13 +1,13 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-    <joint name="imu_sensor_joint" type="fixed">
-        <parent link="sensor_frame_top"/>
-        <child link="imu_sensor"/>
+    <joint name="$(arg prefix)imu_sensor_joint" type="fixed">
+        <parent link="$(arg prefix)sensor_frame_top"/>
+        <child link="$(arg prefix)imu_sensor"/>
         <origin xyz="0 -0.07 0.03" rpy="0 0 0"/>
     </joint>
 
-    <link name="imu_sensor">
+    <link name="$(arg prefix)imu_sensor">
         <visual>
             <geometry>
                 <box size="0.03 0.03 0.01"/>
@@ -24,7 +24,7 @@
         </xacro:inertial_box>
     </link>
 
-    <gazebo reference="imu_sensor">
+    <gazebo reference="$(arg prefix)imu_sensor">
         <sensor name="imu_sensor" type="imu">
             <always_on>1</always_on>
             <update_rate>1</update_rate>
@@ -33,7 +33,7 @@
         </sensor>
     </gazebo>
 
-    <gazebo reference="imu_sensor">
+    <gazebo reference="$(arg prefix)imu_sensor">
         <material>Gazebo/DarkYellow</material>
     </gazebo>
 </robot>

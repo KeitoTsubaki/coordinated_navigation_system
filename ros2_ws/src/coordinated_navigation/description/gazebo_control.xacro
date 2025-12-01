@@ -6,12 +6,12 @@
             <ros> 
                 <!--<namespace> added during multi bot launch </namespace>--> 
                 <!--<remapping> added during multi bot launch </remapping>-->
-                <remapping>/tf:=tf</remapping>
+                <!-- <remapping>/tf:=tf</remapping> -->
             </ros>
 
             <!-- Wheel Information -->
-            <left_joint>left_wheel_joint</left_joint>
-            <right_joint>right_wheel_joint</right_joint>
+            <left_joint>$(arg prefix)left_wheel_joint</left_joint>
+            <right_joint>$(arg prefix)right_wheel_joint</right_joint>
             <wheel_separation>0.52</wheel_separation>
             <wheel_diameter>0.265</wheel_diameter>
 
@@ -20,8 +20,8 @@
             <max_wheel_acceleration>12.0</max_wheel_acceleration>
 
             <!-- Output -->
-            <odometry_frame>odom</odometry_frame>
-            <robot_base_frame>base_footprint</robot_base_frame>
+            <odometry_frame>$(arg prefix)odom</odometry_frame>
+            <robot_base_frame>$(arg prefix)base_footprint</robot_base_frame>
 
             <publish_odom>true</publish_odom>
             <publish_odom_tf>true</publish_odom_tf>
@@ -35,8 +35,8 @@
                 <remapping>~/out:=joint_states</remapping>
             </ros>
             <update_rate>10</update_rate>
-            <joint_name>left_wheel_joint</joint_name>
-            <joint_name>right_wheel_joint</joint_name>
+            <joint_name>$(arg prefix)left_wheel_joint</joint_name>
+            <joint_name>$(arg prefix)right_wheel_joint</joint_name>
         </plugin> 
     </gazebo>
     

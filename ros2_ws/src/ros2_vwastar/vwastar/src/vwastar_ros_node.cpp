@@ -48,13 +48,13 @@ Node("vwastar_node")
     {
         // Receive the start point
         startPoint_sub = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
-            "/initialpose",
+            "initialpose",
             10,
             std::bind(&VWAstarROSNode::StartPointCallback, this, _1));
 
         // Receive the target point
         targetPoint_sub = this->create_subscription<geometry_msgs::msg::PoseStamped>(
-            "/goal_pose",
+            "goal_pose",
             10,
             std::bind(&VWAstarROSNode::TargetPointCallback, this, _1));
         //Timers
@@ -64,7 +64,7 @@ Node("vwastar_node")
 
     //Subscribe map
     map_sub = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
-        "/map", 
+        "map", 
         10, 
         std::bind(&VWAstarROSNode::MapCallback, this, _1));
 

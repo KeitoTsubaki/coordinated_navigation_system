@@ -18,20 +18,20 @@
         <origin xyz="0 0 0" rpy="0 0 0"/>
     </joint> -->
 
-    <link name="base_footprint"/>
+    <link name="$(arg prefix)base_footprint"/>
     <!-- BASE LINK -->
     <!-- <link name="base_link">
     </link> -->
 
 
     <!-- base_link LINK -->
-    <joint name="base_link_joint" type="fixed">
-        <parent link="base_footprint"/>
-        <child link="base_link"/>
+    <joint name="$(arg prefix)base_link_joint" type="fixed">
+        <parent link="$(arg prefix)base_footprint"/>
+        <child link="$(arg prefix)base_link"/>
         <origin xyz="0.3 0 0.1325" rpy="0 0 0"/>
     </joint>
 
-    <link name="base_link">
+    <link name="$(arg prefix)base_link">
         <visual>
             <pose>0.3 0 0 0 0 0</pose>
             <geometry>
@@ -50,20 +50,20 @@
         </xacro:inertial_box>
     </link>
 
-    <gazebo reference="base_link">
+    <gazebo reference="$(arg prefix)base_link">
         <material>Gazebo/FlatBlack</material>
     </gazebo>
 
     <!-- LEFT WHEEL LINK -->
-    <joint name="left_wheel_joint" type="continuous">
-        <parent link="base_link" />
-        <child link="left_wheel" />
+    <joint name="$(arg prefix)left_wheel_joint" type="continuous">
+        <parent link="$(arg prefix)base_link" />
+        <child link="$(arg prefix)left_wheel" />
         <origin xyz="-0.3 0.260 0" rpy="-${pi/2} 0 0" />
         <axis xyz="0 0 1" />
         <dynamics damping="1.0" friction="0.1"/>
     </joint>
 
-    <link name="left_wheel">
+    <link name="$(arg prefix)left_wheel">
         <visual>
             <geometry>
                 <cylinder length="0.05" radius="0.1325"/>
@@ -81,22 +81,22 @@
         </xacro:inertial_cylinder>
     </link>
 
-    <gazebo reference="left_wheel">
+    <gazebo reference="$(arg prefix)left_wheel">
         <material>Gazebo/DarkGrey</material>
         <mu1 value="1.0"/>
         <mu2 value="1.0"/>
     </gazebo>
 
     <!-- RIGHT WHEEL LINK -->
-    <joint name="right_wheel_joint" type="continuous">
-        <parent link="base_link" />
-        <child link="right_wheel" />
+    <joint name="$(arg prefix)right_wheel_joint" type="continuous">
+        <parent link="$(arg prefix)base_link" />
+        <child link="$(arg prefix)right_wheel" />
         <origin xyz="-0.3 -0.260 0" rpy="${pi/2} 0 0" />
         <axis xyz="0 0 -1" />
         <dynamics damping="1.0" friction="0.1"/>
     </joint>
 
-    <link name="right_wheel">
+    <link name="$(arg prefix)right_wheel">
         <visual>
             <geometry>
                 <cylinder length="0.05" radius="0.1325"/>
@@ -114,7 +114,7 @@
         </xacro:inertial_cylinder>
     </link>
 
-    <gazebo reference="right_wheel">
+    <gazebo reference="$(arg prefix)right_wheel">
         <material>Gazebo/DarkGrey</material>
         <mu1 value="1.0"/>
         <mu2 value="1.0"/>
@@ -122,15 +122,15 @@
 
     
     <!-- LEFT FRONT WHEEL LINK -->
-    <joint name="left_front_wheel_joint" type="continuous">
-        <parent link="base_link" />
-        <child link="left_front_wheel" />
+    <joint name="$(arg prefix)left_front_wheel_joint" type="fixed">
+        <parent link="$(arg prefix)base_link" />
+        <child link="$(arg prefix)left_front_wheel" />
         <origin xyz="0.330 0.235 0" rpy="-${pi/2} 0 0" />
         <axis xyz="0 0 1" />
-        <dynamics damping="0.1" friction="0.01"/>
+        <!-- <dynamics damping="0.1" friction="0.01"/> -->
     </joint>
 
-    <link name="left_front_wheel">
+    <link name="$(arg prefix)left_front_wheel">
         <visual>
             <geometry>
                 <cylinder length="0.05" radius="0.1325"/>
@@ -147,7 +147,7 @@
         </xacro:inertial_cylinder>
     </link>
 
-    <gazebo reference="left_front_wheel">
+    <gazebo reference="$(arg prefix)left_front_wheel">
         <material>Gazebo/DarkGrey</material>
         <mu1 value="0.1"/>
         <mu2 value="0.1"/>
@@ -156,15 +156,15 @@
     </gazebo>
 
     <!-- RIGHT FRONT WHEEL LINK -->
-    <joint name="right_front_wheel_joint" type="continuous">
-        <parent link="base_link" />
-        <child link="right_front_wheel" />
+    <joint name="$(arg prefix)right_front_wheel_joint" type="fixed">
+        <parent link="$(arg prefix)base_link" />
+        <child link="$(arg prefix)right_front_wheel" />
         <origin xyz="0.330 -0.235 0" rpy="${pi/2} 0 0" />
         <axis xyz="0 0 -1" />
-        <dynamics damping="0.1" friction="0.01"/>
+        <!-- <dynamics damping="0.1" friction="0.01"/> -->
     </joint>
 
-    <link name="right_front_wheel">
+    <link name="$(arg prefix)right_front_wheel">
         <visual>
             <geometry>
                 <cylinder length="0.05" radius="0.1325"/>
@@ -181,7 +181,7 @@
         </xacro:inertial_cylinder>
     </link>
 
-    <gazebo reference="right_front_wheel">
+    <gazebo reference="$(arg prefix)right_front_wheel">
         <material>Gazebo/DarkGrey</material>
         <mu1 value="0.1"/>
         <mu2 value="0.1"/>
@@ -214,13 +214,13 @@
 
     
     <!-- SEAT LINK -->
-    <joint name="seat_joint" type="fixed">
-        <parent link="base_link" />
-        <child link="seat" />
+    <joint name="$(arg prefix)seat_joint" type="fixed">
+        <parent link="$(arg prefix)base_link" />
+        <child link="$(arg prefix)seat" />
         <origin xyz="-0.10 0 0.215" rpy="0 0 0"/>
     </joint>
 
-    <link name="seat">
+    <link name="$(arg prefix)seat">
         <visual>
             <geometry>
                 <box size="0.42 0.42 0.40"/>
@@ -237,17 +237,17 @@
         </xacro:inertial_box>
     </link>
 
-    <gazebo reference="seat">
+    <gazebo reference="$(arg prefix)seat">
         <material>Gazebo/FlatBlack</material>
     </gazebo>
 
     <!-- LEFT SENSOR ARM LINK -->
-    <joint name="left_sensor_arm_joint" type="fixed">
-        <parent link="seat"/>
-        <child link="left_sensor_arm"/>
+    <joint name="$(arg prefix)left_sensor_arm_joint" type="fixed">
+        <parent link="$(arg prefix)seat"/>
+        <child link="$(arg prefix)left_sensor_arm"/>
         <origin xyz="0.20 0.235 0.07" rpy="0 0 0"/>
     </joint>
-    <link name="left_sensor_arm">
+    <link name="$(arg prefix)left_sensor_arm">
         <visual>
             <geometry>
                 <cylinder length="0.11" radius="0.013"/>
@@ -261,17 +261,17 @@
         </collision>
     </link>
 
-    <gazebo reference="left_sensor_arm">
+    <gazebo reference="$(arg prefix)left_sensor_arm">
         <material>Gazebo/FlatBlack</material>
     </gazebo>
 
     <!-- RIGHT SENSOR ARM LINK -->
-    <joint name="right_sensor_arm_joint" type="fixed">
-        <parent link="seat"/>
-        <child link="right_sensor_arm"/>
+    <joint name="$(arg prefix)right_sensor_arm_joint" type="fixed">
+        <parent link="$(arg prefix)seat"/>
+        <child link="$(arg prefix)right_sensor_arm"/>
         <origin xyz="0.20 -0.235 0.07" rpy="0 0 0"/>
     </joint>
-    <link name="right_sensor_arm">
+    <link name="$(arg prefix)right_sensor_arm">
         <visual>
             <geometry>
                 <cylinder length="0.11" radius="0.013"/>
@@ -285,17 +285,17 @@
         </collision>
     </link>
 
-    <gazebo reference="right_sensor_arm">
+    <gazebo reference="$(arg prefix)right_sensor_arm">
         <material>Gazebo/FlatBlack</material>
     </gazebo>
 
     <!-- BACKREST LINK -->
-    <joint name="backrest_joint" type="fixed">
-        <parent link="base_link" />
-        <child link="backrest" />
+    <joint name="$(arg prefix)backrest_joint" type="fixed">
+        <parent link="$(arg prefix)base_link" />
+        <child link="$(arg prefix)backrest" />
         <origin xyz="-0.36 0 0.375" rpy="0 0 0"/>
     </joint>
-    <link name="backrest">
+    <link name="$(arg prefix)backrest">
         <visual>
             <geometry>
                 <box size="0.10 0.42 0.72"/>
@@ -312,17 +312,17 @@
         </xacro:inertial_box>
     </link>
 
-    <gazebo reference="backrest">
+    <gazebo reference="$(arg prefix)backrest">
         <material>Gazebo/FlatBlack</material>
     </gazebo>
 
     <!-- LEFT ARM LINK -->
-    <joint name="left_arm_joint" type="fixed">
-        <parent link="seat" />
-        <child link="left_arm" />
+    <joint name="$(arg prefix)left_arm_joint" type="fixed">
+        <parent link="$(arg prefix)seat" />
+        <child link="$(arg prefix)left_arm" />
         <origin xyz="0.2 0.245 0.20" rpy="0 1.0 0"/>
     </joint>
-    <link name="left_arm">
+    <link name="$(arg prefix)left_arm">
         <visual>
             <geometry>
                 <box size="0.12 0.07 0.385"/>
@@ -339,18 +339,18 @@
         </xacro:inertial_box>
     </link>
 
-    <gazebo reference="left_arm">
+    <gazebo reference="$(arg prefix)left_arm">
         <material>Gazebo/FlatBlack</material>
     </gazebo>
 
     <!-- LEFT ARM COVER LINK -->
-    <joint name="left_arm_cover_joint" type="fixed">
-        <parent link="left_arm" />
-        <child link="left_arm_cover" />
+    <joint name="$(arg prefix)left_arm_cover_joint" type="fixed">
+        <parent link="$(arg prefix)left_arm" />
+        <child link="$(arg prefix)left_arm_cover" />
         <origin xyz="0 0.04 0" rpy="0 0 1.57"/>
     </joint>
 
-    <link name="left_arm_cover">
+    <link name="$(arg prefix)left_arm_cover">
         <visual>
             <geometry>
                 <box size="0.01 0.12 0.385"/>
@@ -364,17 +364,17 @@
         </collision>
     </link>
 
-    <gazebo reference="left_arm_cover">
+    <gazebo reference="$(arg prefix)left_arm_cover">
         <material>Gazebo/White</material>
     </gazebo>
     
     <!-- RIGHT ARM LINK -->
-    <joint name="right_arm_joint" type="fixed">
-        <parent link="seat" />
-        <child link="right_arm" />
+    <joint name="$(arg prefix)right_arm_joint" type="fixed">
+        <parent link="$(arg prefix)seat" />
+        <child link="$(arg prefix)right_arm" />
         <origin xyz="0.2 -0.245 0.20" rpy="0 1.0 0"/>
     </joint>
-    <link name="right_arm">
+    <link name="$(arg prefix)right_arm">
         <visual>
             <geometry>
                 <box size="0.12 0.07 0.385"/>
@@ -391,18 +391,18 @@
         </xacro:inertial_box>
     </link>
 
-    <gazebo reference="right_arm">
+    <gazebo reference="$(arg prefix)right_arm">
         <material>Gazebo/FlatBlack</material>
     </gazebo>
 
     <!-- RIGHT ARM COVER LINK -->
-    <joint name="right_arm_cover_joint" type="fixed">
-        <parent link="right_arm" />
-        <child link="right_arm_cover" />
+    <joint name="$(arg prefix)right_arm_cover_joint" type="fixed">
+        <parent link="$(arg prefix)right_arm" />
+        <child link="$(arg prefix)right_arm_cover" />
         <origin xyz="0 -0.04 0" rpy="0 0 1.57"/>
     </joint>
     
-    <link name="right_arm_cover">
+    <link name="$(arg prefix)right_arm_cover">
         <visual>
             <geometry>
                 <box size="0.01 0.12 0.385"/>
@@ -416,30 +416,30 @@
         </collision>
     </link>
 
-    <gazebo reference="right_arm_cover">
+    <gazebo reference="$(arg prefix)right_arm_cover">
         <material>Gazebo/White</material>
     </gazebo>
 
     <!-- SENSOR FRAME LINK -->
-    <joint name="sensor_frame_left_joint" type="fixed">
-        <parent link="base_link" />
-        <child link="sensor_frame_left" />
+    <joint name="$(arg prefix)sensor_frame_left_joint" type="fixed">
+        <parent link="$(arg prefix)base_link" />
+        <child link="$(arg prefix)sensor_frame_left" />
         <origin xyz="-0.44 0.17 0.74" rpy="0 0 0"/>
     </joint>
 
-    <joint name="sensor_frame_right_joint" type="fixed">
-        <parent link="base_link" />
-        <child link="sensor_frame_right" />
+    <joint name="$(arg prefix)sensor_frame_right_joint" type="fixed">
+        <parent link="$(arg prefix)base_link" />
+        <child link="$(arg prefix)sensor_frame_right" />
         <origin xyz="-0.44 -0.17 0.74" rpy="0 0 0"/>
     </joint>
 
-    <joint name="sensor_frame_top_joint" type="fixed">
-        <parent link="base_link" />
-        <child link="sensor_frame_top" />
+    <joint name="$(arg prefix)sensor_frame_top_joint" type="fixed">
+        <parent link="$(arg prefix)base_link" />
+        <child link="$(arg prefix)sensor_frame_top" />
         <origin xyz="-0.44 0 1.325" rpy="0 0 0"/>
     </joint>
     
-    <link name="sensor_frame_left">
+    <link name="$(arg prefix)sensor_frame_left">
         <visual>
             <geometry>
                 <box size="0.05 0.05 1.22"/>
@@ -456,7 +456,7 @@
         </xacro:inertial_box>
     </link>
 
-    <link name="sensor_frame_right">
+    <link name="$(arg prefix)sensor_frame_right">
         <visual>
             <geometry>
                 <box size="0.05 0.05 1.22"/>
@@ -474,7 +474,7 @@
     </link>
 
 
-    <link name="sensor_frame_top">
+    <link name="$(arg prefix)sensor_frame_top">
         <visual>
             <geometry>
                 <box size="0.05 0.34 0.05"/>
@@ -491,15 +491,15 @@
         </xacro:inertial_box>
     </link>
 
-    <gazebo reference="sensor_frame_left">
+    <gazebo reference="$(arg prefix)sensor_frame_left">
         <material>Gazebo/Grey</material>
     </gazebo>
 
-    <gazebo reference="sensor_frame_right">
+    <gazebo reference="$(arg prefix)sensor_frame_right">
         <material>Gazebo/Grey</material>
     </gazebo>
 
-    <gazebo reference="sensor_frame_top">
+    <gazebo reference="$(arg prefix)sensor_frame_top">
         <material>Gazebo/Grey</material>
     </gazebo>
 </robot>

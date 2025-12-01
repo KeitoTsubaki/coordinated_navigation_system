@@ -1,8 +1,8 @@
 # Extracted actuator and sensor limits required by the policy controllers.
 robot:
-  v_max: 1.2
+  v_max: 0.5
   omega_max: 2.71
-  a_max: 2
+  a_max: 0.5
   alpha_max: 12.61
 # robot:
   # v_max: 1.2
@@ -13,6 +13,6 @@ robot:
 #   v_max: 0.6 #1.2
 #   omega_max: 2 #4.71
 #   a_max: 1 #2
-#   alpha_max: 0.5 #12.61
+#   alpha_max: 5 #12.61
 lidar:
   range_m: 10

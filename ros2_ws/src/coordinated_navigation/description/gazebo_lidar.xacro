@@ -1,13 +1,13 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
     
-    <joint name="lidar_sensor_joint" type="fixed">
-        <parent link="sensor_frame_top"/>
-        <child link="lidar_sensor"/>
+    <joint name="$(arg prefix)lidar_sensor_joint" type="fixed">
+        <parent link="$(arg prefix)sensor_frame_top"/>
+        <child link="$(arg prefix)lidar_sensor"/>
         <origin xyz="0 0 0.067" rpy="0 0 0"/>
     </joint>
     
-    <link name="lidar_sensor">
+    <link name="$(arg prefix)lidar_sensor">
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0" />
             <geometry>
@@ -23,7 +23,7 @@
         </collision>
     </link>
 
-    <gazebo reference="lidar_sensor">
+    <gazebo reference="$(arg prefix)lidar_sensor">
         <material>Gazebo/DarkYellow</material>
         <sensor name='gpu_lidar' type='gpu_lidar'>"
             <pose>0 0 0 0 0 0</pose>
@@ -55,7 +55,7 @@
                     <remapping>~/out:=scan</remapping>
                 </ros>
                 <output_type>sensor_msgs/LaserScan</output_type>
-                <frame_name>lidar_sensor</frame_name>
+                <frame_name>$(arg prefix)lidar_sensor</frame_name>
             </plugin>
             <always_on>1</always_on>
             <visualize>false</visualize>

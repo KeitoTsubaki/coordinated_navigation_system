@@ -22,6 +22,8 @@ from rclpy.qos import (
 from rclpy.parameter import ParameterType
 from rclpy.task import Future
 from rclpy.time import Time
+from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.executors import MultiThreadedExecutor
 
 from geometry_msgs.msg import Point, PoseStamped, PoseWithCovarianceStamped, Quaternion, Twist
 from nav_msgs.msg import Odometry
@@ -32,23 +34,40 @@ from nav2_msgs.action import NavigateToPose
 
 from coordinated_navigation_interfaces.msg import Formation as FormationMsg
 
-try:
-    from .policy_controller import (
-        PolicyVelocityController,
-        quaternion_to_yaw,
-        wrap_to_pi,
-    )
-    # from .policy_controller_2 import (
+from coordinated_navigation.policy_controller import (
+    PolicyVelocityController,
+    quaternion_to_yaw,
+    wrap_to_pi,
+)
+
+# from coordinated_navigation.policy_controller_3 import (
+#     PolicyVelocityController,
+#     quaternion_to_yaw,
+#     wrap_to_pi,
+# )
+
+# try:
+#     # from .policy_controller import (
+#     #     PolicyVelocityController,
+#     #     quaternion_to_yaw,
+#     #     wrap_to_pi,
+#     # )
+#     # from .policy_controller_2 import (
+#     #     PolicyVelocityController,
+#     #     quaternion_to_yaw,
+#     #     wrap_to_pi,
+#     # )
+#     from .policy_controller_3 import (
+#         PolicyVelocityController,
+#         quaternion_to_yaw,
+#         wrap_to_pi,
+#     )
+# except:
+    # from coordinated_navigation.policy_controller import (
     #     PolicyVelocityController,
     #     quaternion_to_yaw,
     #     wrap_to_pi,
     # )
-except:
-    from coordinated_navigation.policy_controller import (
-        PolicyVelocityController,
-        quaternion_to_yaw,
-        wrap_to_pi,
-    )
     # from coordinated_navigation.policy_controller_2 import (
     #     PolicyVelocityController,
     #     quaternion_to_yaw,
@@ -75,7 +94,7 @@ class CoordinatedNavigationNode(Node):
         robot_namespace: Optional[str] = None,
         robot_id: Optional[str] = None,
         formation_msg_type: Optional[Type[object]] = None,
-        timer_period: float = 0.1,
+        timer_period: float = 0.05,
     ) -> None:
         super().__init__(node_name)
 
@@ -124,6 +143,8 @@ class CoordinatedNavigationNode(Node):
             device=policy_device,
         )
 
+        self._callback_group = ReentrantCallbackGroup()
+
         self.latest_target_pose: Optional[PoseStamped] = None
         self.latest_robot_pose: Optional[PoseStamped] = None
         self._pose_velocity_odometry: Optional[Odometry] = None
@@ -136,11 +157,12 @@ class CoordinatedNavigationNode(Node):
         self._navigate_action_server = ActionServer(
             self,
             NavigateToPose,
-            self._topic("navigate_to_pose"),
-            # '/navigate_to_pose',
+            # self._topic("navigate_to_pose"),
+            "navigate_to_pose",
             execute_callback=self._execute_navigation,
             goal_callback=self._navigate_goal_callback,
             cancel_callback=self._navigate_cancel_callback,
+            callback_group=self._callback_group
         )
 
         pose_qos = QoSProfile(depth=1, reliability=QoSReliabilityPolicy.RELIABLE)
@@ -154,41 +176,51 @@ class CoordinatedNavigationNode(Node):
 
         self._amcl_subscription = self.create_subscription(
             PoseWithCovarianceStamped,
-            self._topic("amcl_pose"),
-            self._amcl_pose_callback,
+            # self._topic("amcl_pose"),
+            "pose",
+            self._pose_callback,
             pose_qos,
         )
         self._formation_subscription = self.create_subscription(
             self._formation_msg_type,
-            self._topic("formation"),
+            # self._topic("formation"),
+            "formation",
             self._robot_formation_callback,
             formation_qos,
         )
         self._odometry_subscription = self.create_subscription(
             Odometry,
-            self._topic("odom"),
+            # self._topic("odom"),
+            "odom",
             self._robot_odometry_callback,
             odometry_qos,
         )
         self._scan_subscription = self.create_subscription(
             LaserScan,
-            self._topic("scan"),
+            # self._topic("scan"),
+            "scan",
             self._robot_scan_callback,
             qos_profile_sensor_data,
         )
         self._cmd_vel_publisher = self.create_publisher(
             Twist,
-            self._topic("cmd_vel"),
+            # self._topic("cmd_vel"),
+            "cmd_vel",
             cmd_vel_qos,
         )
         self._marker_publisher = self.create_publisher(
-            MarkerArray, self._topic("navigation_markers"), 10
+            MarkerArray,
+            # self._topic("navigation_markers"),
+            "navigation_markers",
+            10
         )
 
         self.latest_cmd_vel: Optional[Twist] = None
 
         self._coordination_timer = self.create_timer(
-            max(policy_step_period, 1e-3), self._coordination_timer_callback
+            max(policy_step_period, 1e-3), 
+            self._coordination_timer_callback,
+            callback_group=self._callback_group
         )
 
     # ------------------------------------------------------------------
@@ -343,26 +375,32 @@ class CoordinatedNavigationNode(Node):
         self.latest_target_pose = goal_pose
         self._active_goal_handle = goal_handle
 
+        self._navigation_success = False
+
         try:
             while rclpy.ok():
                 if goal_handle.is_cancel_requested:
                     self.get_logger().info("NavigateToPose goal cancelled")
-                    goal_handle.canceled()
                     self.latest_target_pose = None
                     self._stop_robot()
+                    goal_handle.canceled()
                     result = self._populate_navigation_result(start_time, success=False)
                     return result
 
-                if self._has_reached_goal(goal_pose):
-                    self.get_logger().info("NavigateToPose goal reached")
-                    goal_handle.succeed()
-                    self.latest_target_pose = None
-                    self._stop_robot()
-                    result = self._populate_navigation_result(start_time, success=True)
-                    return result
+                if self.latest_target_pose is None:
+                    break
 
                 self._publish_navigation_feedback(goal_handle, start_time)
                 await self._wait_for(self._action_feedback_period)
+
+            if self._navigation_success:
+                self.get_logger().info("NavigateToPose goal reached")
+                goal_handle.succeed()
+                return self._populate_navigation_result(start_time, success=True)
+            else:
+                goal_handle.abort()
+                return self._populate_navigation_result(start_time, success=False)
+
         finally:
             if self._active_goal_handle is goal_handle:
                 self._active_goal_handle = None
@@ -385,7 +423,7 @@ class CoordinatedNavigationNode(Node):
         finally:
             timer.cancel()
 
-    def _amcl_pose_callback(self, msg: PoseWithCovarianceStamped) -> None:
+    def _pose_callback(self, msg: PoseWithCovarianceStamped) -> None:
         self.get_logger().debug("AMCL pose update received")
         previous_pose = self.latest_robot_pose
         previous_stamp = self._last_pose_stamp
@@ -446,6 +484,7 @@ class CoordinatedNavigationNode(Node):
         if self._policy_controller is None:
             self.get_logger().debug("Policy controller is not initialised")
             return
+        
 
         required_missing = []
         if self.latest_target_pose is None:
@@ -490,6 +529,12 @@ class CoordinatedNavigationNode(Node):
         )
         self._cmd_vel_publisher.publish(twist)
         self.latest_cmd_vel = twist
+
+        if self._has_reached_goal(self.latest_target_pose):
+            self._stop_robot()
+            self._navigation_success = True
+            self.latest_target_pose = None
+
 
     def _publish_navigation_feedback(self, goal_handle, start_time) -> None:
         if self.latest_robot_pose is None:
@@ -761,8 +806,11 @@ class CoordinatedNavigationNode(Node):
 def main(args: Optional[Sequence[str]] = None) -> None:
     rclpy.init(args=args)
     node = CoordinatedNavigationNode()
+
+    executer = MultiThreadedExecutor()
+    executer.add_node(node)
     try:
-        rclpy.spin(node)
+        executer.spin()
     finally:
         node.destroy_node()
         rclpy.shutdown()

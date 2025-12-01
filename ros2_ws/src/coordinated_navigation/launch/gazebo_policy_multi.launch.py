@@ -26,7 +26,7 @@ def generate_launch_description():
     
     # URDF / Xacro
     xacro_file = os.path.join(pkg_coordination, 'description', 'whill.urdf.xacro')
-    urdf = xacro.process_file(xacro_file)
+    
 
     # World
     # world_file_path = os.path.join(pkg_coordination, 'worlds', 'test.world')
@@ -41,13 +41,6 @@ def generate_launch_description():
         default_value='true',
         description='Use simulation/Gazebo clock'
     )
-
-    # namespace = LaunchConfiguration('namespace')
-    # declare_namespace = DeclareLaunchArgument(
-    #     'namespace',
-    #     default_value='',   # TODO: bug occurs when namespace is exist
-    #     description='Top-level namespace'
-    # )
     
     policy_model_path = LaunchConfiguration('policy_model_path')
     declare_policy_model_path = DeclareLaunchArgument(
@@ -58,6 +51,7 @@ def generate_launch_description():
             'model_ep3700.zip'
             # 'model_ep11200.zip'
             # 'model_ep10800.zip'
+            # 'model_ep16500.zip'
         ),
         description='Absolute path to the trained policy model zip file.'
     )
@@ -77,18 +71,49 @@ def generate_launch_description():
         description='Full path to map file to load'
     )
 
-    param_file = LaunchConfiguration(
-        'params_file',
+    map_dir = LaunchConfiguration(
+        'map_dir',
+        default=os.path.join(
+            pkg_coordination,
+            'worlds',
+            'room1_localization',
+            'room1'
+        ),
+    )
+    declare_map_dir = DeclareLaunchArgument(
+        'map_dir',
+        default_value=map_dir,
+        description='Full path to map file to load'
+    )
+
+
+    # param_file = LaunchConfiguration(
+    #     'params_file',
+    #     default=os.path.join(
+    #         pkg_coordination,
+    #         'params',
+    #         'multi_whill_nav2_params.yaml',
+    #     )
+    # )
+    # declare_param_file = DeclareLaunchArgument(
+    #     'params_file',
+    #     default_value=param_file,
+    #     description='Full path to param file to load'
+    # )
+
+    # SLAM Toolbox param file
+    slam_param_fle = LaunchConfiguration(
+        'slam_params_file',
         default=os.path.join(
             pkg_coordination,
             'params',
-            'multi_whill_nav2_params.yaml',
+            'slam_toolbox_localization.yaml'
         )
     )
-    declare_param_file = DeclareLaunchArgument(
-        'params_file',
-        default_value=param_file,
-        description='Full path to param file to load'
+    declare_slam_params_file = DeclareLaunchArgument(
+        'slam_params_file',
+        default_value=slam_param_fle,
+        description='Full path to SLAM Toolbox param file to load'
     )
 
     # Rviz config file
@@ -112,7 +137,9 @@ def generate_launch_description():
     # ld.add_action(declare_namespace)
     ld.add_action(declare_policy_model_path)
     ld.add_action(declare_map_file)
-    ld.add_action(declare_param_file)
+    # ld.add_action(declare_param_file)
+    ld.add_action(declare_map_dir)
+    ld.add_action(declare_slam_params_file)
     ld.add_action(declare_rviz_config)
 
     
@@ -148,15 +175,22 @@ def generate_launch_description():
     
     
 
-    remappings = [('/tf', 'tf'), ('/tf_static', 'tf_static')]
+    # remappings = [('/tf', 'tf'), ('/tf_static', 'tf_static')]
 
     last_action = None
     # ===== Spawn =====
     for robot in robots:
+        prefix = robot['name'] + '/'
         namespace =  '/' + robot['name'] 
         # for i in range(10):
         #     print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
 
+        urdf = xacro.process_file(
+            xacro_file,
+            mappings={
+                'prefix': prefix,
+            }
+        )
 
         # Include the robot_state_publisher to publish transforms
         rsp = Node(
@@ -168,7 +202,6 @@ def generate_launch_description():
                 {'robot_description': urdf.toxml()},
                 {'use_sim_time': use_sim_time},
                 ],
-            remappings=remappings
         )
 
         spawn_whill = Node(
@@ -186,63 +219,88 @@ def generate_launch_description():
         )
 
         # YAML Rewrite setting
-        param_substitutions = {
-            'use_sim_time': use_sim_time,
-            'yaml_filename': map_file
-        }
+        # param_substitutions = {
+        #     'use_sim_time': use_sim_time,
+        #     'yaml_filename': map_file
+        # }
         # namespaced_param_file = ReplaceString(
         #     source_file=param_file,
         #     replacements={'<robot_namespace>': namespace}
         # )
-        configured_params = ParameterFile(
-            RewrittenYaml(
-                source_file=param_file,
-                root_key=namespace,
-                param_rewrites=param_substitutions,
-                convert_types=True),
-            allow_substs=True
-        )
+        # configured_params = ParameterFile(
+        #     RewrittenYaml(
+        #         source_file=param_file,
+        #         root_key=namespace,
+        #         param_rewrites=param_substitutions,
+        #         convert_types=True),
+        #     allow_substs=True
+        # )
         
 
         # AMCL (Localization)
-        amcl = Node(
-            package='nav2_amcl',
-            executable='amcl',
-            namespace=namespace,
-            name='amcl',
-            output='screen',
-            parameters=[configured_params],
-            remappings=remappings,
-        )
+        # amcl = Node(
+        #     package='nav2_amcl',
+        #     executable='amcl',
+        #     namespace=namespace,
+        #     name='amcl',
+        #     output='screen',
+        #     parameters=[configured_params],
+        #     remappings=remappings,
+        # )
 
         
 
-        # # Lifecycle Manager for map_server and amcl
+        # # # Lifecycle Manager for map_server and amcl
         
-        amcl_lifecycle = Node(
-            package='nav2_lifecycle_manager',
-            executable='lifecycle_manager',
-            name='lifecycle_manager_amcl',
-            namespace=namespace,
-            output='screen',
+        # amcl_lifecycle = Node(
+        #     package='nav2_lifecycle_manager',
+        #     executable='lifecycle_manager',
+        #     name='lifecycle_manager_amcl',
+        #     namespace=namespace,
+        #     output='screen',
+        #     parameters=[
+        #         {'use_sim_time': use_sim_time},
+        #         {'autostart': True},
+        #         {'node_names': ['amcl']}
+        #     ]
+        # )
+
+        # ===== SLAM Toolbox Localization =====
+        start_async_slam_toolbox_node = Node(
             parameters=[
+                slam_param_fle,
                 {'use_sim_time': use_sim_time},
-                {'autostart': True},
-                {'node_names': ['amcl']}
-            ]
+                {'map_file_name': map_dir},
+                {'map_start_pose': [float(robot['x_pose']), float(robot['y_pose']), float(robot['z_pose'])]},
+                {'odom_frame': robot['name'] + '/odom'},
+                {'base_frame': robot['name'] + '/base_footprint'}
+            ],
+            namespace=namespace,
+            package='slam_toolbox',
+            executable='async_slam_toolbox_node',
+            name='slam_toolbox',
+            remappings=[
+                # ('/tf', 'tf'),
+                # ('/tf_static', 'tf_static'),
+                ('/scan', 'scan'),
+                # ('/map', 'map')
+            ],
+            output='screen'
         )
 
         if last_action is None:
             ld.add_action(rsp)
             ld.add_action(spawn_whill)
             
-            ld.add_action(amcl)
-            ld.add_action(amcl_lifecycle)
+            # ld.add_action(amcl)
+            # ld.add_action(amcl_lifecycle)
+            ld.add_action(start_async_slam_toolbox_node)
         else: 
             spawn_whill_event = RegisterEventHandler(
                 event_handler=OnProcessExit(
                     target_action=last_action,
-                    on_exit=[rsp, spawn_whill, amcl, amcl_lifecycle],
+                    # on_exit=[rsp, spawn_whill, amcl, amcl_lifecycle],
+                    on_exit=[rsp, spawn_whill, start_async_slam_toolbox_node],
                     # on_exit=[rsp, spawn_whill],
                 )
             )
@@ -251,48 +309,48 @@ def generate_launch_description():
         last_action = spawn_whill
 
 
-    remappings = [('/tf', 'tf'), ('/tf_static', 'tf_static')]
+    # remappings = [('/tf', 'tf'), ('/tf_static', 'tf_static')]
 
-    map_server = Node(
-        package='nav2_map_server',
-        executable='map_server',
-        name='map_server',
-        output='screen',
-        parameters=[
-            {'yaml_filename': map_file},
-        ],
-        # remappings=remappings,
-    )
-    map_server_lifecycle = Node(
-        package='nav2_lifecycle_manager',
-        executable='lifecycle_manager',
-        name='lifecycle_manager_map_server',
-        output='screen',
-        parameters=[
-            {'use_sim_time': use_sim_time},
-            {'autostart': True},
-            {'node_names': ['map_server']}
-        ]
-    )
+    # map_server = Node(
+    #     package='nav2_map_server',
+    #     executable='map_server',
+    #     name='map_server',
+    #     output='screen',
+    #     parameters=[
+    #         {'yaml_filename': map_file},
+    #     ],
+    #     # remappings=remappings,
+    # )
+    # map_server_lifecycle = Node(
+    #     package='nav2_lifecycle_manager',
+    #     executable='lifecycle_manager',
+    #     name='lifecycle_manager_map_server',
+    #     output='screen',
+    #     parameters=[
+    #         {'use_sim_time': use_sim_time},
+    #         {'autostart': True},
+    #         {'node_names': ['map_server']}
+    #     ]
+    # )
 
-    ld.add_action(map_server)
-    ld.add_action(map_server_lifecycle)
+    # ld.add_action(map_server)
+    # ld.add_action(map_server_lifecycle)
 
     for robot in robots:
         namespace =  '/' + robot['name'] 
 
         # Set initial pose from spawn setting
-        message = '{header: {frame_id: map}, ' + \
-            'pose: {pose: {position: {x: ' + robot['x_pose']+ \
-            ', y: ' + robot['y_pose'] + \
-            ', z: ' + robot['z_pose'] + \
-            '}, orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}},}}'
-        initial_pose_pub_cmd = ExecuteProcess(
-            cmd=['ros2', 'topic', 'pub', '-t', '1', '--qos-reliability', 'reliable',
-                namespace + '/initialpose', 
-                'geometry_msgs/msg/PoseWithCovarianceStamped', message],
-            output='screen'
-        )
+        # message = '{header: {frame_id: map}, ' + \
+        #     'pose: {pose: {position: {x: ' + robot['x_pose']+ \
+        #     ', y: ' + robot['y_pose'] + \
+        #     ', z: ' + robot['z_pose'] + \
+        #     '}, orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}},}}'
+        # initial_pose_pub_cmd = ExecuteProcess(
+        #     cmd=['ros2', 'topic', 'pub', '-t', '1', '--qos-reliability', 'reliable',
+        #         namespace + '/initialpose', 
+        #         'geometry_msgs/msg/PoseWithCovarianceStamped', message],
+        #     output='screen'
+        # )
         namespaced_rviz_config = ReplaceString(
             source_file=rviz_config,
             replacements={'<robot_namespace>': namespace}
@@ -308,11 +366,16 @@ def generate_launch_description():
             parameters=[{
                 'use_sim_time': use_sim_time,
             }],
-            remappings=[('/tf', 'tf'),
-                    ('/tf_static', 'tf_static'),
-                    ('/goal_pose', 'goal_pose'),
-                    ('/clicked_point', 'clicked_point'),
-                    ('/initialpose', 'initialpose')],
+            remappings=[
+                # ('/tf', 'tf'),
+                # ('/tf_static', 'tf_static'),
+                # ('/clock', '/clock'),
+                ('/goal_pose', 'goal_pose'),
+                ('/clicked_point', 'clicked_point'),
+                ('/initialpose', 'initialpose'),
+                ('/scan', 'scan'),
+                ('/robot_description', 'robot_description')
+            ],
             output='screen'
         )
 
@@ -322,6 +385,7 @@ def generate_launch_description():
             executable='coordinated_navigation_node',
             name='coordinated_navigation',
             output='screen',
+            namespace=namespace,
             parameters=[
                 {
                     'use_sim_time': use_sim_time,
@@ -331,18 +395,19 @@ def generate_launch_description():
             ],
         )
 
-        post_spawn_event = RegisterEventHandler(
-            event_handler=OnProcessExit(
-                target_action=last_action,
-                on_exit=[initial_pose_pub_cmd, start_rviz],
-            )
-        )
+        # post_spawn_event = RegisterEventHandler(
+        #     event_handler=OnProcessExit(
+        #         target_action=last_action,
+        #         on_exit=[initial_pose_pub_cmd, start_rviz],
+        #     )
+        # )
 
-        last_action = initial_pose_pub_cmd
+        # last_action = initial_pose_pub_cmd
 
         
 
-        ld.add_action(post_spawn_event)
+        # ld.add_action(post_spawn_event)
+        ld.add_action(start_rviz)
         ld.add_action(coordinated_nav)
 
     return ld

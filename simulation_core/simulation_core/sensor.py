@@ -80,6 +80,7 @@ class LiDARSensor:
 
             # robot frame
             relative_angle = -global_angle + robot_global_angle
+            # = scan angle ?
 
             intersected = False
             for i in range(0, 100):  # If wall is within laser's path ...
