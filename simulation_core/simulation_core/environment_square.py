@@ -181,7 +181,7 @@ class SimCoreSquareEnvironment(SimCoreEnvironment):
         if wheel_radius_pixels <= 0 or (half_track == 0 and half_base == 0):
             return
 
-        wheel_radius = max(1, int(round(wheel_radius_pixels)))
+        half_side = max(1, int(round(wheel_radius_pixels)))
 
         cos_theta = math.cos(self.robot_theta)
         sin_theta = math.sin(self.robot_theta)
@@ -199,15 +199,29 @@ class SimCoreSquareEnvironment(SimCoreEnvironment):
             rotated_x = offset_x * cos_theta - offset_y * sin_theta
             rotated_y = offset_x * sin_theta + offset_y * cos_theta
             wheel_center = (
-                int(self.robot_position[0] + rotated_x),
-                int(self.robot_position[1] + rotated_y),
+                self.robot_position[0] + rotated_x,
+                self.robot_position[1] + rotated_y,
             )
-            pygame.draw.circle(
-                self.robot_and_lidar_layer,
-                wheel_color,
-                wheel_center,
-                wheel_radius,
-            )
+
+            local_corners = [
+                (-half_side, -half_side),
+                (half_side, -half_side),
+                (half_side, half_side),
+                (-half_side, half_side),
+            ]
+
+            wheel_vertices: List[Tuple[int, int]] = []
+            for corner_x, corner_y in local_corners:
+                rotated_corner_x = corner_x * cos_theta - corner_y * sin_theta
+                rotated_corner_y = corner_x * sin_theta + corner_y * cos_theta
+                wheel_vertices.append(
+                    (
+                        int(wheel_center[0] + rotated_corner_x),
+                        int(wheel_center[1] + rotated_corner_y),
+                    )
+                )
+
+            pygame.draw.polygon(self.robot_and_lidar_layer, wheel_color, wheel_vertices)
 
     def show_robot_and_lidar(self, sensor_data=None):
         if sensor_data is not False:
