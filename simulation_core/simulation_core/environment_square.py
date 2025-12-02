@@ -90,6 +90,12 @@ class SimCoreSquareEnvironment(SimCoreEnvironment):
 
         self.map_creator.ROBOT_RADIUS_PIXELS = self.ROBOT_RADIUS_PIXELS
 
+        self.WHEEL_HALF_BASE_PIXELS = (self.WHEEL_BASE_M / 2.0) * self.PIXELS_PER_METER
+        self.WHEEL_HALF_TRACK_PIXELS = (
+            self.WHEEL_TRACK_M / 2.0
+        ) * self.PIXELS_PER_METER
+        self.WHEEL_RADIUS_PIXELS = self.WHEEL_RADIUS_M * self.PIXELS_PER_METER
+
     def _rectangle_vertices(
         self, position: Tuple[float, float], theta: float
     ) -> List[Tuple[int, int]]:
@@ -167,6 +173,56 @@ class SimCoreSquareEnvironment(SimCoreEnvironment):
         vertices = self._rectangle_vertices(position, theta)
         pygame.draw.polygon(self.robot_and_lidar_layer, color, vertices)
 
+    def _draw_wheels(self):
+        wheel_radius_pixels = self.WHEEL_RADIUS_PIXELS
+        half_track = self.WHEEL_HALF_TRACK_PIXELS
+        half_base = self.WHEEL_HALF_BASE_PIXELS
+
+        if wheel_radius_pixels <= 0 or (half_track == 0 and half_base == 0):
+            return
+
+        half_side = max(1, int(round(wheel_radius_pixels)))
+
+        cos_theta = math.cos(self.robot_theta)
+        sin_theta = math.sin(self.robot_theta)
+
+        local_wheel_centers = [
+            (-half_track, -half_base),
+            (half_track, -half_base),
+            (-half_track, half_base),
+            (half_track, half_base),
+        ]
+
+        wheel_color = utils.hex_to_rgb(self.ROBOT_COLOR)
+
+        for offset_x, offset_y in local_wheel_centers:
+            rotated_x = offset_x * cos_theta - offset_y * sin_theta
+            rotated_y = offset_x * sin_theta + offset_y * cos_theta
+            wheel_center = (
+                self.robot_position[0] + rotated_x,
+                self.robot_position[1] + rotated_y,
+            )
+
+            local_corners = [
+                (-half_side, -half_side),
+                (half_side, -half_side),
+                (half_side, half_side),
+                (-half_side, half_side),
+            ]
+
+            wheel_vertices: List[Tuple[int, int]] = []
+            for corner_x, corner_y in local_corners:
+                rotated_corner_x = corner_x * cos_theta - corner_y * sin_theta
+                rotated_corner_y = corner_x * sin_theta + corner_y * cos_theta
+                wheel_vertices.append(
+                    (
+                        int(wheel_center[0] + rotated_corner_x),
+                        int(wheel_center[1] + rotated_corner_y),
+                    )
+                )
+
+            pygame.draw.polygon(self.robot_and_lidar_layer, wheel_color, wheel_vertices)
+
     def show_robot_and_lidar(self, sensor_data=None):
         if sensor_data is not False:
             lidar_point_color = utils.hex_to_rgb(self.ROBOT_COLOR)
@@ -211,6 +267,7 @@ class SimCoreSquareEnvironment(SimCoreEnvironment):
             self.visualize_goal_info(self.robot_position)
             self.visualize_closest_obstacle_info(self.robot_position)
             self._draw_rectangle(self.robot_position, self.robot_theta, self.ROBOT_COLOR)
+            self._draw_wheels()
             robot_head_position = self._compute_orientation_endpoint(
                 self.robot_position, self.robot_theta, frame_extent
             )
