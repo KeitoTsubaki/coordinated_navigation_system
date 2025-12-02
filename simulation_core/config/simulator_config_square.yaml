@@ -22,9 +22,10 @@ robot:
   radius_m: 0.6          # ロボットの安全半径（m）（円形モデル用の既定値を維持）
   width_m: 0.5           # 矩形ロボットの幅（m）
   height_m: 1.0          # 矩形ロボットの高さ（m）
-  wheel_base_m: 0.9      # 後輪車軸中心から前輪キャスターまでのホイールベース（m）
-  wheel_track_m: 0.65    # 左右後輪のトレッド幅（m）
-  wheel_radius_m: 0.18   # 後輪半径（m）
+  wheel_base_m: 0.63      # 後輪車軸中心から前輪キャスターまでのホイールベース（m）
+  wheel_track_m: 0.52    # 左右後輪のトレッド幅（m）
+  wheel_radius_m: 0.265   # 後輪半径（m）
+  wheel_width: 0.1
   safety_radius_m: 0.6   # LiDAR フィルタリングなどに利用する安全半径（m）
   robot_color: "#1492C7"  # RGBでロボットの色
   target_color: "#F5BF98"    # RGBでゴールの色

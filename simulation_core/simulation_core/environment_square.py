@@ -33,6 +33,7 @@ class SimCoreSquareEnvironment(SimCoreEnvironment):
         wheel_base_m = float(robot_cfg.get("wheel_base_m", 0.0) or 0.0)
         wheel_track_m = float(robot_cfg.get("wheel_track_m", 0.0) or 0.0)
         wheel_radius_m = float(robot_cfg.get("wheel_radius_m", 0.0) or 0.0)
+        self.wheel_width_m = float(robot_cfg.get("wheel_width", 0.0) or 0.0)
 
         drivetrain_length_m = wheel_base_m + 2 * wheel_radius_m
         drivetrain_width_m = wheel_track_m + 2 * wheel_radius_m
@@ -95,6 +96,7 @@ class SimCoreSquareEnvironment(SimCoreEnvironment):
             self.WHEEL_TRACK_M / 2.0
         ) * self.PIXELS_PER_METER
         self.WHEEL_RADIUS_PIXELS = self.WHEEL_RADIUS_M * self.PIXELS_PER_METER
+        self.WHEEL_WIDTH_PIXELS = self.wheel_width_m * self.PIXELS_PER_METER
 
     def _rectangle_vertices(
         self, position: Tuple[float, float], theta: float
@@ -174,7 +176,7 @@ class SimCoreSquareEnvironment(SimCoreEnvironment):
         pygame.draw.polygon(self.robot_and_lidar_layer, color, vertices)
 
     def _draw_wheels(self):
-        wheel_radius_pixels = self.WHEEL_RADIUS_PIXELS
+        wheel_radius_pixels = self.WHEEL_WIDTH_PIXELS
         half_track = self.WHEEL_HALF_TRACK_PIXELS
         half_base = self.WHEEL_HALF_BASE_PIXELS
 
@@ -193,7 +195,7 @@ class SimCoreSquareEnvironment(SimCoreEnvironment):
             (half_track, half_base),
         ]
 
-        wheel_color = utils.hex_to_rgb(self.ROBOT_COLOR)
+        wheel_color = utils.hex_to_rgb("#202020")
 
         for offset_x, offset_y in local_wheel_centers:
             rotated_x = offset_x * cos_theta - offset_y * sin_theta
@@ -204,10 +206,10 @@ class SimCoreSquareEnvironment(SimCoreEnvironment):
             )
 
             local_corners = [
-                (-half_side, -half_side),
-                (half_side, -half_side),
-                (half_side, half_side),
-                (-half_side, half_side),
+                (-half_side//2, -half_side),
+                (half_side//2, -half_side),
+                (half_side//2, half_side),
+                (-half_side//2, half_side),
             ]
 
             wheel_vertices: List[Tuple[int, int]] = []
