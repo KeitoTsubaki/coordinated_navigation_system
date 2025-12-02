@@ -20,9 +20,8 @@ speed_adjustment:
   T_df: 0.6
 robot:
   radius_m: 0.6          # ロボットの安全半径（m）（円形モデル用の既定値を維持）
-  side_length_m: 0.8     # 正方形ロボットの一辺の長さ（m）
-  width_m: 0.8           # 正方形ロボット用の幅（m）
-  height_m: 0.8          # 正方形ロボット用の高さ（m）
+  width_m: 0.9           # 矩形ロボットの幅（m）
+  height_m: 1.2          # 矩形ロボットの高さ（m）
   wheel_base_m: 0.9      # 後輪車軸中心から前輪キャスターまでのホイールベース（m）
   wheel_track_m: 0.65    # 左右後輪のトレッド幅（m）
   wheel_radius_m: 0.18   # 後輪半径（m）
