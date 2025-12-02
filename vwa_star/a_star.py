@@ -138,7 +138,7 @@ goal_world  = ( 7.0,  -2.0)  # (x, y) [m]
 yaml_path = "grid_maps/room1_map/room1_map.yaml"
 yaml_path = "grid_maps/room2_map/room2_map.yaml"
 
-inflation_radius = 1  # m
+inflation_radius = 0  # m
 # =======================
 
 # YAML を読む
@@ -249,7 +249,7 @@ else:
     plt.scatter([goal_world[0]],  [goal_world[1]],  c="g", s=40, label="goal")
     plt.xlabel("x [m]")
     plt.ylabel("y [m]")
-    plt.title("A* path on inflated grid")
-    plt.legend()
+    # plt.title("A* path on inflated grid")
+    # plt.legend()
     plt.tight_layout()
     plt.show()

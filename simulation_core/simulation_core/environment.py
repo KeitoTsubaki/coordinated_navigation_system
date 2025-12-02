@@ -257,7 +257,10 @@ class SimCoreEnvironment:
 
     # ===== Visualization functions =====
 
-    def visualize_search_point(self, position, color=(255, 0, 0)):
+    def visualize_search_point(self, position, theta=0.0, color=(255, 0, 0)):
+        # Added theta=0.0 to signature to support child classes passing theta.
+        # For circular robots, theta is ignored.
+        
         # The number of points to check around the robot's circumference.
         # This should match the value in is_collision.
         for i in range(self.NUM_CHECK_POINTS):
@@ -303,8 +306,14 @@ class SimCoreEnvironment:
     #     )
 
 
-    def visualize_goal_info(self, position, color=(255, 0, 0)):
-        distance_to_target, angle_to_target = self.get_goal_info()
+    def visualize_goal_info(self, position, color=(255, 0, 0), val_dist_angle=None):
+        # Support optionally passing the pre-calculated distance/angle (val_dist_angle)
+        # to avoid recalculating from self.robot_position which might be the axle.
+        if val_dist_angle:
+             distance_to_target, angle_to_target = val_dist_angle
+        else:
+             distance_to_target, angle_to_target = self.get_goal_info()
+             
         goal_angle = self.robot_theta + angle_to_target
         font = pygame.font.SysFont("arial", 16)
 
@@ -341,8 +350,12 @@ class SimCoreEnvironment:
             ),
         )
 
-    def visualize_closest_obstacle_info(self, position, color=(106, 90, 205)):
-        distance_to_obstacle, angle_to_obstacle = self.get_closest_obstacle_info()
+    def visualize_closest_obstacle_info(self, position, color=(106, 90, 205), val_dist_angle=None):
+        if val_dist_angle:
+            distance_to_obstacle, angle_to_obstacle = val_dist_angle
+        else:
+            distance_to_obstacle, angle_to_obstacle = self.get_closest_obstacle_info()
+            
         font = pygame.font.SysFont("arial", 16)
         # Convert robot-relative angle to a global angle for drawing
         obstacle_angle = self.robot_theta - math.pi / 2 - angle_to_obstacle
@@ -411,12 +424,16 @@ class SimCoreEnvironment:
     def show_robot_and_lidar(self, sensor_data=None):
         if sensor_data != False:  # if sensor_data exists, then start for loop
             lidar_point_color = utils.hex_to_rgb(self.ROBOT_COLOR)
+            
+            # Use a helper to get lidar origin, defaulting to robot_position (axle)
+            lidar_origin = self._get_lidar_position()
+            
             for element in sensor_data:
                 obstacle_angle = self.robot_theta - math.pi / 2 - element[1]
                 point = utils.AD2pos(
                     element[0],
                     obstacle_angle,
-                    self.robot_position,
+                    lidar_origin, # Use lidar origin instead of hardcoded robot_position
                     self.PIXELS_PER_METER,
                 )  # Input: sensor_data = [Distance, Angle]. Output: (x,y) coordinate of objects/walls.
                 pygame.draw.circle(
@@ -429,7 +446,7 @@ class SimCoreEnvironment:
             robot_frame_radius = self.ROBOT_RADIUS_M * self.PIXELS_PER_METER
             robot_radius = self.ROBOT_RADIUS_M * 0.8 * self.PIXELS_PER_METER
 
-            self.visualize_search_point(self.target_position, self.TARGET_COLOR)
+            self.visualize_search_point(self.target_position, 0.0, self.TARGET_COLOR)
             pygame.draw.circle(
                 self.robot_and_lidar_layer,
                 self.TARGET_COLOR,
@@ -448,7 +465,7 @@ class SimCoreEnvironment:
             )
 
             self.visualize_path()
-            self.visualize_search_point(self.robot_position, self.ROBOT_COLOR)
+            self.visualize_search_point(self.robot_position, self.robot_theta, self.ROBOT_COLOR)
             self.visualize_goal_info(self.robot_position)
             self.visualize_closest_obstacle_info(self.robot_position)
             # self.visualize_robot_theta(self.robot_position)
@@ -738,9 +755,17 @@ class SimCoreEnvironment:
 
     def reset_path(self):
         self.path = []
+        
+    def _get_lidar_position(self):
+        """
+        Returns the position from where the LiDAR scan should originate.
+        Default is self.robot_position. Child classes can override this.
+        """
+        return self.robot_position
 
     def lidar_scan(self):
-        self.sensor.position = self.robot_position
+        # Use the helper to get the scan origin (allows overriding by child class)
+        self.sensor.position = self._get_lidar_position()
         self.sensor.theta = self.robot_theta
         sensor_data = self.sensor.sense_obstacles(
             self.obstacle_layer, self.OBSTACLE_COLOR

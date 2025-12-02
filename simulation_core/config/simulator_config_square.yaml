@@ -34,10 +34,15 @@ robot:
   T_dt_m_random: 10 # The threshold distance between the start and end position (
   T_dt_m_empty: 20
   T_dt_m_image: 15
-  v_max: 1.2            # 最大線速度（m/s）
-  omega_max: 4.71        # 最大角速度（rad/s） 1.5 * pi
-  a_max: 2            # 最大線加速度（m/ss）
-  alpha_max: 12.61        # 最大角加速度（rad/ss） 4 * pi
+  # v_max: 1.2            # 最大線速度（m/s）
+  # omega_max: 4.71        # 最大角速度（rad/s） 1.5 * pi
+  # a_max: 2            # 最大線加速度（m/ss）
+  # alpha_max: 12.61        # 最大角加速度（rad/ss） 4 * pi
+  v_max: 0.6
+  omega_max: 0.8
+  a_max: 0.3
+  alpha_max: 0.8
+
   max_d: 0.12          # 1ステップで進む最大距離（m）
   max_theta: 0.47    # 1ステップで回転する最大角度（rad）0.15 * pi
   num_check_points: 16  # ロボット周囲の障害物チェックポイントの数

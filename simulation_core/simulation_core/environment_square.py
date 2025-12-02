@@ -35,21 +35,11 @@ class SimCoreSquareEnvironment(SimCoreEnvironment):
         wheel_radius_m = float(robot_cfg.get("wheel_radius_m", 0.0) or 0.0)
         self.wheel_width_m = float(robot_cfg.get("wheel_width", 0.0) or 0.0)
 
-        drivetrain_length_m = wheel_base_m + 2 * wheel_radius_m
-        drivetrain_width_m = wheel_track_m + 2 * wheel_radius_m
-        base_diameter_m = float(robot_cfg.get("radius_m", 0.0)) * 2.0
-
         width_candidates = [
             robot_cfg.get("width_m"),
-            # drivetrain_width_m if drivetrain_width_m > 0 else None,
-            # robot_cfg.get("side_length_m"),
-            # base_diameter_m if base_diameter_m > 0 else None,
         ]
         height_candidates = [
             robot_cfg.get("height_m"),
-            # drivetrain_length_m if drivetrain_length_m > 0 else None,
-            # robot_cfg.get("side_length_m"),
-            # base_diameter_m if base_diameter_m > 0 else None,
         ]
 
         valid_widths = [float(value) for value in width_candidates if value is not None]
@@ -98,15 +88,31 @@ class SimCoreSquareEnvironment(SimCoreEnvironment):
         self.WHEEL_RADIUS_PIXELS = self.WHEEL_RADIUS_M * self.PIXELS_PER_METER
         self.WHEEL_WIDTH_PIXELS = self.wheel_width_m * self.PIXELS_PER_METER
 
-        self.REAR_AXLE_TO_FRONT_M = self.WHEEL_BASE_M
+        # --- Adjusted for Rear Wheel Drive ---
+        self.REAR_AXLE_TO_FRONT_M = self.ROBOT_HALF_HEIGHT_M * 0.8
         self.REAR_AXLE_TO_FRONT_PIXELS = (
             self.REAR_AXLE_TO_FRONT_M * self.PIXELS_PER_METER
         )
+        
+        # --- LiDAR Mounting Position ---
+        # 車軸（後輪）からのオフセット。正なら前方、負なら後方。
+        self.LIDAR_MOUNT_OFFSET_M = -0.15 
+        self.LIDAR_MOUNT_OFFSET_PIXELS = self.LIDAR_MOUNT_OFFSET_M * self.PIXELS_PER_METER
+
+        # --- Visualization Variables ---
+        self.v = 0.0
+        self.omega = 0.0
+
+    def _rotate_vector(self, x: float, y: float, cos_theta: float, sin_theta: float) -> Tuple[float, float]:
+        rotated_x = x * cos_theta + y * sin_theta
+        rotated_y = -x * sin_theta + y * cos_theta
+        return rotated_x, rotated_y
 
     def _rectangle_vertices(
         self, position: Tuple[float, float], theta: float
     ) -> List[Tuple[int, int]]:
-        position = self._axle_to_body_center(position, theta)
+        body_center = self._axle_to_body_center(position, theta)
+        
         half_width = self.ROBOT_HALF_WIDTH_PIXELS
         half_height = self.ROBOT_HALF_HEIGHT_PIXELS
         cos_theta = math.cos(theta)
@@ -121,9 +127,8 @@ class SimCoreSquareEnvironment(SimCoreEnvironment):
 
         vertices: List[Tuple[int, int]] = []
         for dx, dy in local_vertices:
-            rotated_x = dx * cos_theta - dy * sin_theta
-            rotated_y = dx * sin_theta + dy * cos_theta
-            vertices.append((int(position[0] + rotated_x), int(position[1] + rotated_y)))
+            rx, ry = self._rotate_vector(dx, dy, cos_theta, sin_theta)
+            vertices.append((int(body_center[0] + rx), int(body_center[1] + ry)))
         return vertices
 
     def _axle_to_body_center(
@@ -133,10 +138,28 @@ class SimCoreSquareEnvironment(SimCoreEnvironment):
         if forward_offset == 0:
             return position
 
-        offset_x = -forward_offset * math.sin(theta)
-        offset_y = -forward_offset * math.cos(theta)
-
-        return position[0] + offset_x, position[1] + offset_y
+        cos_theta = math.cos(theta)
+        sin_theta = math.sin(theta)
+        
+        # Local Y is forward (negative screen Y)
+        # Vector (0, -offset) is forward
+        rx, ry = self._rotate_vector(0, -forward_offset, cos_theta, sin_theta)
+        
+        return position[0] + rx, position[1] + ry
+        
+    def _get_lidar_position(self):
+        """
+        LiDARの取り付け位置を計算して返す。
+        self.LIDAR_MOUNT_OFFSET_PIXELS に基づき、車軸からの相対位置を計算する。
+        """
+        offset = self.LIDAR_MOUNT_OFFSET_PIXELS
+        cos_theta = math.cos(self.robot_theta)
+        sin_theta = math.sin(self.robot_theta)
+        
+        # オフセットが正なら前方(0, -offset)、負なら後方(0, +abs(offset))
+        rx, ry = self._rotate_vector(0, -offset, cos_theta, sin_theta)
+        
+        return (self.robot_position[0] + rx, self.robot_position[1] + ry)
 
     def _rectangle_perimeter_points(
         self, position: Tuple[float, float], theta: float
@@ -189,6 +212,25 @@ class SimCoreSquareEnvironment(SimCoreEnvironment):
                     1,
                 )
 
+    def visualize_velocities(self, position, color=(0, 0, 255)):
+        """ロボットの上部に現在の速度と角速度を表示する"""
+        if not pygame.font.get_init():
+            pygame.font.init()
+        font = pygame.font.SysFont("arial", 16)
+        
+        # テキストのレンダリング
+        text_surf = font.render(
+            f"v: {self.v:.2f} m/s, w: {self.omega:.2f} rad/s", True, color
+        )
+        
+        # ロボットの上部に配置
+        draw_pos = (
+            int(position[0] - text_surf.get_width() // 2),
+            int(position[1] - self.ROBOT_RADIUS_PIXELS - text_surf.get_height() - 10),
+        )
+        
+        self.robot_and_lidar_layer.blit(text_surf, draw_pos)
+
     def _draw_rectangle(self, position: Tuple[float, float], theta: float, color):
         vertices = self._rectangle_vertices(position, theta)
         pygame.draw.polygon(self.robot_and_lidar_layer, color, vertices)
@@ -196,78 +238,129 @@ class SimCoreSquareEnvironment(SimCoreEnvironment):
     def _draw_wheels(self):
         wheel_radius_pixels = self.WHEEL_WIDTH_PIXELS
         half_track = self.WHEEL_HALF_TRACK_PIXELS
-        half_base = self.WHEEL_HALF_BASE_PIXELS
-
-        if wheel_radius_pixels <= 0 or (half_track == 0 and half_base == 0):
+        
+        if wheel_radius_pixels <= 0 or half_track == 0:
             return
-
-        half_side = max(1, int(round(wheel_radius_pixels)))
 
         cos_theta = math.cos(self.robot_theta)
         sin_theta = math.sin(self.robot_theta)
 
+        if self.WHEEL_BASE_M > 0.01:
+             front_axle_offset = self.WHEEL_BASE_M * self.PIXELS_PER_METER
+        else:
+             front_axle_offset = self.REAR_AXLE_TO_FRONT_PIXELS * 0.9
+
         local_wheel_centers = [
-            (-half_track, -half_base),
-            (half_track, -half_base),
-            (-half_track, half_base),
-            (half_track, half_base),
+            (-half_track, 0),
+            (half_track, 0),
+            (-half_track, -front_axle_offset),
+            (half_track, -front_axle_offset),
         ]
 
         wheel_color = utils.hex_to_rgb("#202020")
-
-        robot_body_center = self._axle_to_body_center(
-            self.robot_position, self.robot_theta
-        )
+        axle_center = self.robot_position
 
         for offset_x, offset_y in local_wheel_centers:
-            rotated_x = offset_x * cos_theta - offset_y * sin_theta
-            rotated_y = offset_x * sin_theta + offset_y * cos_theta
+            rx, ry = self._rotate_vector(offset_x, offset_y, cos_theta, sin_theta)
             wheel_center = (
-                robot_body_center[0] + rotated_x,
-                robot_body_center[1] + rotated_y,
+                axle_center[0] + rx,
+                axle_center[1] + ry,
             )
 
+            wheel_len = 6 
+            wheel_wid = 3
             local_corners = [
-                (-half_side//2, -half_side),
-                (half_side//2, -half_side),
-                (half_side//2, half_side),
-                (-half_side//2, half_side),
+                (-wheel_wid, -wheel_len),
+                (wheel_wid, -wheel_len),
+                (wheel_wid, wheel_len),
+                (-wheel_wid, wheel_len),
             ]
 
             wheel_vertices: List[Tuple[int, int]] = []
             for corner_x, corner_y in local_corners:
-                rotated_corner_x = corner_x * cos_theta - corner_y * sin_theta
-                rotated_corner_y = corner_x * sin_theta + corner_y * cos_theta
+                crx, cry = self._rotate_vector(corner_x, corner_y, cos_theta, sin_theta)
                 wheel_vertices.append(
                     (
-                        int(wheel_center[0] + rotated_corner_x),
-                        int(wheel_center[1] + rotated_corner_y),
+                        int(wheel_center[0] + crx),
+                        int(wheel_center[1] + cry),
                     )
                 )
 
             pygame.draw.polygon(self.robot_and_lidar_layer, wheel_color, wheel_vertices)
 
+    def _draw_arrow(self, start_pos, end_pos, theta, color, size=10):
+        """
+        線を描画し、終点に矢尻（三角形）を追加して矢印にする。
+        start_pos, end_pos: (x, y) coordinates
+        theta: ロボットの向き (rad)
+        color: RGB tuple
+        size: 矢尻の長さ
+        """
+        # メインの線を描画
+        pygame.draw.line(self.robot_and_lidar_layer, color, start_pos, end_pos, 2)
+        
+        # 矢尻の描画
+        # 矢印の先端(end_pos)から、左右後ろ方向に点を計算する
+        # ロボットの進行方向は theta (screen coordinate系で計算済み)
+        # 矢尻の角度: 進行方向から ±150度 (後ろ斜め30度)
+        
+        angle_left = theta + 2.6 # approx 150 degrees
+        angle_right = theta - 2.6
+        
+        # x = -sin, y = -cos が基本の前方ベクトル定義なのでそれに従う
+        # 左側
+        dx_l = - size * math.sin(angle_left)
+        dy_l = - size * math.cos(angle_left)
+        p_left = (int(end_pos[0] + dx_l), int(end_pos[1] + dy_l))
+        
+        # 右側
+        dx_r = - size * math.sin(angle_right)
+        dy_r = - size * math.cos(angle_right)
+        p_right = (int(end_pos[0] + dx_r), int(end_pos[1] + dy_r))
+        
+        pygame.draw.polygon(self.robot_and_lidar_layer, color, [end_pos, p_left, p_right])
+
     def show_robot_and_lidar(self, sensor_data=None):
         if sensor_data is not False:
             lidar_point_color = utils.hex_to_rgb(self.ROBOT_COLOR)
+            lidar_origin = self._get_lidar_position()
+            
+            # --- LiDAR Ray Color ---
+            lidar_line_color = (150, 150, 150) # Light Grey
+            
             for element in sensor_data:
                 obstacle_angle = self.robot_theta - math.pi / 2 - element[1]
                 point = utils.AD2pos(
                     element[0],
                     obstacle_angle,
-                    self.robot_position,
+                    lidar_origin,
                     self.PIXELS_PER_METER,
                 )
+                
+                # --- Draw Ray (Line from origin to point) ---
+                start_pos = (int(lidar_origin[0]), int(lidar_origin[1]))
+                end_pos = (int(point[0]), int(point[1]))
+                
+                # pygame.draw.line(
+                #     self.robot_and_lidar_layer,
+                #     lidar_line_color,
+                #     start_pos,
+                #     end_pos,
+                #     1
+                # )
+                # --------------------------------------------
+
                 pygame.draw.circle(
                     self.robot_and_lidar_layer,
                     lidar_point_color,
-                    (int(point[0]), int(point[1])),
+                    end_pos,
                     2,
                 )
 
             frame_extent = self.ROBOT_HALF_DIAGONAL_PIXELS
 
-            target_body_position = self._axle_to_body_center(
+            # Target drawing
+            target_body_center = self._axle_to_body_center(
                 self.target_position, self.target_theta
             )
 
@@ -278,36 +371,57 @@ class SimCoreSquareEnvironment(SimCoreEnvironment):
                 self.target_position, self.target_theta, self.TARGET_COLOR
             )
             target_head_position = self._compute_orientation_endpoint(
-                target_body_position, self.target_theta, frame_extent
+                target_body_center, self.target_theta, frame_extent
             )
-            pygame.draw.line(
-                self.robot_and_lidar_layer,
-                (255, 0, 0),
-                target_body_position,
-                target_head_position,
-                2,
+            
+            # --- ターゲットの向きを矢印で描画 ---
+            self._draw_arrow(
+                (int(target_body_center[0]), int(target_body_center[1])),
+                (int(target_head_position[0]), int(target_head_position[1])),
+                self.target_theta,
+                (255, 0, 0)
             )
 
             self.visualize_path()
-            robot_body_position = self._axle_to_body_center(
+            
+            # Robot drawing
+            robot_body_center = self._axle_to_body_center(
                 self.robot_position, self.robot_theta
             )
+            
             self.visualize_search_point(
                 self.robot_position, self.robot_theta, self.ROBOT_COLOR
             )
-            self.visualize_goal_info(robot_body_position)
-            self.visualize_closest_obstacle_info(robot_body_position)
+            
+            self.visualize_goal_info(robot_body_center)
+            self.visualize_closest_obstacle_info(robot_body_center)
+            
             self._draw_rectangle(self.robot_position, self.robot_theta, self.ROBOT_COLOR)
             self._draw_wheels()
-            robot_head_position = self._compute_orientation_endpoint(
-                robot_body_position, self.robot_theta, frame_extent
-            )
-            pygame.draw.line(
+            
+            # --- LiDAR取り付け位置（オレンジ色） ---
+            pygame.draw.circle(
                 self.robot_and_lidar_layer,
-                (255, 0, 0),
-                robot_body_position,
-                robot_head_position,
-                2,
+                (255, 165, 0),  # Orange
+                (int(lidar_origin[0]), int(lidar_origin[1])),
+                5,
+            )
+            # ------------------------------------
+
+            # --- 速度の可視化 ---
+            self.visualize_velocities(robot_body_center)
+            # --------------------
+            
+            robot_head_position = self._compute_orientation_endpoint(
+                robot_body_center, self.robot_theta, frame_extent
+            )
+            
+            # --- ロボットの向きを矢印で描画 ---
+            self._draw_arrow(
+                (int(robot_body_center[0]), int(robot_body_center[1])),
+                (int(robot_head_position[0]), int(robot_head_position[1])),
+                self.robot_theta,
+                (255, 0, 0)
             )
 
             self.screen.blit(self.robot_and_lidar_layer, (0, 0))
@@ -338,6 +452,5 @@ class SimCoreSquareEnvironment(SimCoreEnvironment):
     def update_path(self, new_position, new_theta):
         self.robot_position = new_position
         self.robot_theta = new_theta
-
         body_center = self._axle_to_body_center(new_position, new_theta)
         self.path.append([body_center, new_theta])
