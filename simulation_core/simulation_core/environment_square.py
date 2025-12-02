@@ -96,6 +96,11 @@ class SimCoreSquareEnvironment(SimCoreEnvironment):
         ) * self.PIXELS_PER_METER
         self.WHEEL_RADIUS_PIXELS = self.WHEEL_RADIUS_M * self.PIXELS_PER_METER
 
+        self.REAR_AXLE_TO_FRONT_M = self.WHEEL_BASE_M
+        self.REAR_AXLE_TO_FRONT_PIXELS = (
+            self.REAR_AXLE_TO_FRONT_M * self.PIXELS_PER_METER
+        )
+
     def _rectangle_vertices(
         self, position: Tuple[float, float], theta: float
     ) -> List[Tuple[int, int]]:
@@ -122,7 +127,7 @@ class SimCoreSquareEnvironment(SimCoreEnvironment):
     def _axle_to_body_center(
         self, position: Tuple[float, float], theta: float
     ) -> Tuple[float, float]:
-        forward_offset = self.WHEEL_HALF_BASE_PIXELS
+        forward_offset = self.REAR_AXLE_TO_FRONT_PIXELS
         if forward_offset == 0:
             return position
 
@@ -327,3 +332,10 @@ class SimCoreSquareEnvironment(SimCoreEnvironment):
             self.target_position, self.target_theta
         )
         return self._rectangles_intersect(robot_vertices, target_vertices)
+
+    def update_path(self, new_position, new_theta):
+        self.robot_position = new_position
+        self.robot_theta = new_theta
+
+        body_center = self._axle_to_body_center(new_position, new_theta)
+        self.path.append([body_center, new_theta])
