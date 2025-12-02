@@ -63,6 +63,11 @@ class LiDARSensor:
         # self.thetaは真上(Y軸負方向)が0 radなので、pi/2を引くとX軸正方向が0の基準に揃う
         robot_global_angle = self.theta - math.pi / 2
 
+        # self.theta == self.robot_theta
+        # clockwise == negative
+        # is it reversed?
+        # I guess it may be 0 rad at negative x
+
         for scan_angle in np.linspace(0, 2 * math.pi, self.NUM_SCANS, endpoint=False):
             # 基準を揃えたロボットの向きに、センサーのローカルなスキャン角度を加算する
             # ロボットの向きからセンサーを回転

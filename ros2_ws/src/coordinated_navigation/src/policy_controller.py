@@ -509,7 +509,7 @@ class PolicyVelocityController:
         if not math.isfinite(closest_distance):
             closest_distance = self._lidar_range_m
 
-        co_dist_n = float(np.clip((closest_distance - 0.5) / self._lidar_range_m, 0.0, 1.0))
+        co_dist_n = float(np.clip((closest_distance - 0.6) / self._lidar_range_m, 0.0, 1.0))
         co_angle_n = float(np.clip(closest_angle / math.pi, -1.0, 1.0))
         obs_closest = np.array([co_dist_n, co_angle_n], dtype=np.float32)
 

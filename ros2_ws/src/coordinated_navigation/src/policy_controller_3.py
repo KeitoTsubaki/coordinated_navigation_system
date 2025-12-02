@@ -114,7 +114,8 @@ def laser_scan_to_polar(msg: Optional[LaserScan]) -> List[Tuple[float, float]]:
             samples.append((float(distance), proccessed_angle))
         angle += float(msg.angle_increment)
     samples.reverse()
-    processed_samples = samples[314:] + samples[:314]
+    # processed_samples = samples[314:] + samples[:314]
+    processed_samples = samples
     angle=0.0
     new_samples = []
     for sample in processed_samples:

@@ -4,7 +4,7 @@
     <joint name="$(arg prefix)lidar_sensor_joint" type="fixed">
         <parent link="$(arg prefix)sensor_frame_top"/>
         <child link="$(arg prefix)lidar_sensor"/>
-        <origin xyz="0 0 0.067" rpy="0 0 0"/>
+        <origin xyz="0.144 0 0.067" rpy="0 0 0"/>
     </joint>
     
     <link name="$(arg prefix)lidar_sensor">
@@ -28,7 +28,7 @@
         <sensor name='gpu_lidar' type='gpu_lidar'>"
             <pose>0 0 0 0 0 0</pose>
             <topic>lidar</topic>
-            <update_rate>10</update_rate>
+            <update_rate>5</update_rate>
             <ray>
                 <scan>
                     <horizontal>
