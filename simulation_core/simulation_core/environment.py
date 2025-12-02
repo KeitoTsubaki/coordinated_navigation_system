@@ -53,6 +53,11 @@ class SimCoreEnvironment:
         self.ROBOT_BODY_RADIUS_M = base_radius_m
         self.ROBOT_WIDTH_M = float(robot_cfg.get("width_m", self.ROBOT_RADIUS_M * 2.0))
         self.ROBOT_HEIGHT_M = float(robot_cfg.get("height_m", self.ROBOT_RADIUS_M * 2.0))
+        self.WHEEL_BASE_M = float(robot_cfg.get("wheel_base_m", self.ROBOT_HEIGHT_M))
+        self.WHEEL_TRACK_M = float(robot_cfg.get("wheel_track_m", self.ROBOT_WIDTH_M))
+        self.WHEEL_RADIUS_M = float(
+            robot_cfg.get("wheel_radius_m", self.ROBOT_BODY_RADIUS_M)
+        )
         self.ROBOT_COLOR = robot_cfg["robot_color"]
         self.TARGET_COLOR = robot_cfg["target_color"]
         self.T_DT_M_TRAP_SHAPED = robot_cfg["T_dt_m_trap_shaped"]
@@ -147,6 +152,9 @@ class SimCoreEnvironment:
         self.ROBOT_SAFETY_RADIUS_PIXELS = self.ROBOT_RADIUS_PIXELS
         self.ROBOT_WIDTH_PIXELS = self.ROBOT_WIDTH_M * self.PIXELS_PER_METER
         self.ROBOT_HEIGHT_PIXELS = self.ROBOT_HEIGHT_M * self.PIXELS_PER_METER
+        self.WHEEL_BASE_PIXELS = self.WHEEL_BASE_M * self.PIXELS_PER_METER
+        self.WHEEL_TRACK_PIXELS = self.WHEEL_TRACK_M * self.PIXELS_PER_METER
+        self.WHEEL_RADIUS_PIXELS = self.WHEEL_RADIUS_M * self.PIXELS_PER_METER
         self.LIDAR_RANGE_PIXELS = self.LIDAR_RANGE_M * self.PIXELS_PER_METER
         self.DEFAULT_FORMATION_SPACING_PIXELS = (
             self.DEFAULT_FORMATION_SPACING_M * self.PIXELS_PER_METER
@@ -157,6 +165,27 @@ class SimCoreEnvironment:
         self.FORMATION_ANGULAR_TOLERANCE_RAD = math.radians(
             self.FORMATION_ANGULAR_TOLERANCE_DEG
         )
+
+        # ===== Derived drivetrain limits =====
+        if self.WHEEL_RADIUS_M > 0:
+            linear_wheel_speed = self.V_MAX / self.WHEEL_RADIUS_M
+            angular_wheel_speed = (
+                self.OMEGA_MAX * self.WHEEL_TRACK_M / (2 * self.WHEEL_RADIUS_M)
+                if self.WHEEL_TRACK_M > 0
+                else 0.0
+            )
+            self.WHEEL_OMEGA_MAX = max(linear_wheel_speed, angular_wheel_speed)
+
+            linear_wheel_alpha = self.A_MAX / self.WHEEL_RADIUS_M
+            angular_wheel_alpha = (
+                self.ALPHA_MAX * self.WHEEL_TRACK_M / (2 * self.WHEEL_RADIUS_M)
+                if self.WHEEL_TRACK_M > 0
+                else float("inf")
+            )
+            self.WHEEL_ALPHA_MAX = min(linear_wheel_alpha, angular_wheel_alpha)
+        else:
+            self.WHEEL_OMEGA_MAX = 0.0
+            self.WHEEL_ALPHA_MAX = 0.0
 
         # ===== Initialize rendering screen =====
         self.render_mode = render_mode

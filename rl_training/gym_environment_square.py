@@ -46,6 +46,11 @@ class EnvSquare(gym.Env):
         self.OMEGA_MAX = self.env.OMEGA_MAX
         self.A_MAX = self.env.A_MAX
         self.ALPHA_MAX = self.env.ALPHA_MAX
+        self.WHEEL_BASE_M = self.env.WHEEL_BASE_M
+        self.WHEEL_TRACK_M = self.env.WHEEL_TRACK_M
+        self.WHEEL_RADIUS_M = self.env.WHEEL_RADIUS_M
+        self.WHEEL_OMEGA_MAX = self.env.WHEEL_OMEGA_MAX
+        self.WHEEL_ALPHA_MAX = self.env.WHEEL_ALPHA_MAX
         self.K_D = self.env.K_D
         self.T_DF = self.env.T_DF
         self.MAX_D = self.env.MAX_D
@@ -57,11 +62,18 @@ class EnvSquare(gym.Env):
         self.DT = 1 / self.metadata["render_fps"]
         self.MAX_EPISODE_STEPS = self.ddpg_config["max_episode_steps"]
 
-        # DDPG allows continuous action space, and the action of differential-
-        # driven robots includes the linear and angular velocity.
-        # v_n: 0 ~ V_MAX
-        # omega_n: -OMEGA_MAX ~ OMEGA_MAX
-        # action = [v_n, omega_n]
+        achievable_v_max = self.WHEEL_RADIUS_M * self.WHEEL_OMEGA_MAX
+        achievable_omega_max = (
+            2 * self.WHEEL_RADIUS_M * self.WHEEL_OMEGA_MAX / self.WHEEL_TRACK_M
+            if self.WHEEL_TRACK_M > 0
+            else 0.0
+        )
+        self.MAX_LINEAR_V = min(self.V_MAX, achievable_v_max)
+        self.MAX_ANGULAR_V = min(self.OMEGA_MAX, achievable_omega_max)
+
+        # DDPG allows continuous action space. For this differential drive robot,
+        # actions correspond to normalized left/right rear wheel angular
+        # velocities in [-1, 1].
         self.action_space = spaces.Box(
             # Normalize action space to [-1, 1] for better compatibility with RL algorithms.
             low=np.array([-1.0, -1.0], dtype=np.float32),
@@ -149,6 +161,8 @@ class EnvSquare(gym.Env):
         self.current_omega = None
         self.previous_v = 0.0
         self.previous_omega = 0.0
+        self.previous_left_wheel_omega = 0.0
+        self.previous_right_wheel_omega = 0.0
 
         self.current_step = 0
 
@@ -280,6 +294,8 @@ class EnvSquare(gym.Env):
         self.current_omega = 0.0
         self.previous_v = 0.0
         self.previous_omega = 0.0
+        self.previous_left_wheel_omega = 0.0
+        self.previous_right_wheel_omega = 0.0
 
         # 報酬計算用の変数を初期化
         initial_dist_to_target, initial_angle_to_target = self.env.get_goal_info()
@@ -373,8 +389,14 @@ class EnvSquare(gym.Env):
 
         # r_v: the robot is encouraging the robot to move quickly and smoothly
         # The robot is awarded when the linear velocity is large, and punished when the angular velocity is large
-        r_v_v = k_6 * (self.current_v / self.V_MAX)
-        r_v_omega = -k_7 * (abs(self.current_omega) / self.OMEGA_MAX)
+        r_v_v = k_6 * (
+            self.current_v / self.MAX_LINEAR_V if self.MAX_LINEAR_V > 0 else 0.0
+        )
+        r_v_omega = -k_7 * (
+            abs(self.current_omega) / self.MAX_ANGULAR_V
+            if self.MAX_ANGULAR_V > 0
+            else 0.0
+        )
         r_v = r_v_v + r_v_omega
 
         # r_m: minor penalty to encourage the robot to actively explore the environment and shorten the trajectory. penalty for time passage
@@ -386,25 +408,31 @@ class EnvSquare(gym.Env):
         return reward
 
     def _action_to_executable_action(self, action, dt):
-        # De-normalize the action from [-1, 1] to the robot's physical limits.
-        # Linear velocity: maps [-1, 1] to [0, V_MAX]
-        # Note: action[0] is used. A value of -1 maps to 0, and 1 maps to V_MAX.
-        # Linear velocity from tanh [-1, 1] -> maps to [0, V_MAX] (robot only moves forward)
-        v_n = (action[0] + 1) / 2 * self.V_MAX
-        # Angular velocity: maps [-1, 1] to [-OMEGA_MAX, OMEGA_MAX]
-        # Angular velocity from sigmoid [0, 1] -> maps to [-OMEGA_MAX, OMEGA_MAX]
-        # omega_n = (action[1] - 0.5) * 2 * self.OMEGA_MAX
-        omega_n = action[1] * self.OMEGA_MAX
-        # print(f"omega: {action[1]:.2f}  |  omega_n: {omega_n:.2f}")
+        """Convert normalized wheel commands into executable linear/angular velocities."""
 
-        v_kmin = max(0, self.previous_v - self.A_MAX * dt)
-        v_kmax = min(self.V_MAX, self.previous_v + self.A_MAX * dt)
-        omega_kmin = max(-self.OMEGA_MAX, self.previous_omega - self.ALPHA_MAX * dt)
-        omega_kmax = min(self.OMEGA_MAX, self.previous_omega + self.ALPHA_MAX * dt)
+        target_left_omega = float(np.clip(action[0], -1.0, 1.0) * self.WHEEL_OMEGA_MAX)
+        target_right_omega = float(np.clip(action[1], -1.0, 1.0) * self.WHEEL_OMEGA_MAX)
 
-        v_e = np.clip(v_n, v_kmin, v_kmax)
-        omega_e = np.clip(omega_n, omega_kmin, omega_kmax)
+        wheel_delta_limit = (
+            self.WHEEL_ALPHA_MAX * dt if self.WHEEL_ALPHA_MAX > 0 else float("inf")
+        )
+        left_min = self.previous_left_wheel_omega - wheel_delta_limit
+        left_max = self.previous_left_wheel_omega + wheel_delta_limit
+        right_min = self.previous_right_wheel_omega - wheel_delta_limit
+        right_max = self.previous_right_wheel_omega + wheel_delta_limit
 
+        left_omega = np.clip(target_left_omega, left_min, left_max)
+        right_omega = np.clip(target_right_omega, right_min, right_max)
+
+        v_e = self.WHEEL_RADIUS_M * (right_omega + left_omega) / 2.0
+        omega_e = (
+            self.WHEEL_RADIUS_M * (right_omega - left_omega) / self.WHEEL_TRACK_M
+            if self.WHEEL_TRACK_M > 0
+            else 0.0
+        )
+
+        self.previous_left_wheel_omega = float(left_omega)
+        self.previous_right_wheel_omega = float(right_omega)
         self.previous_v = float(v_e)
         self.previous_omega = float(omega_e)
         return float(v_e), float(omega_e)
@@ -486,8 +514,16 @@ class EnvSquare(gym.Env):
         # print("robot theta: ", self.env.robot_theta)
         # print("obs_goal shape:", obs_goal.shape)
         # print("obs_goal:", obs_goal)
-        v_n = np.clip((self.current_v or 0.0) / self.V_MAX, 0.0, 1.0)
-        omega_n = np.clip((self.current_omega or 0.0) / self.OMEGA_MAX, -1.0, 1.0)
+        v_n = (
+            np.clip((self.current_v or 0.0) / self.MAX_LINEAR_V, 0.0, 1.0)
+            if self.MAX_LINEAR_V > 0
+            else 0.0
+        )
+        omega_n = (
+            np.clip((self.current_omega or 0.0) / self.MAX_ANGULAR_V, -1.0, 1.0)
+            if self.MAX_ANGULAR_V > 0
+            else 0.0
+        )
         obs_velocity = np.array([v_n, omega_n], dtype=np.float32)
         # print("obs_velocity shape:", obs_velocity.shape)
         # print("obs_velocity:", obs_velocity)

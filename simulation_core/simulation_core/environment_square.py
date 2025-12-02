@@ -30,6 +30,10 @@ class SimCoreSquareEnvironment(SimCoreEnvironment):
         config = yaml.safe_load(config_text)
         robot_cfg = config["robot"]
 
+        wheel_base_m = float(robot_cfg.get("wheel_base_m", 0.0) or 0.0)
+        wheel_track_m = float(robot_cfg.get("wheel_track_m", 0.0) or 0.0)
+        wheel_radius_m = float(robot_cfg.get("wheel_radius_m", 0.0) or 0.0)
+
         square_side_m = robot_cfg.get("side_length_m")
         if square_side_m is None:
             width_m = robot_cfg.get("width_m")
@@ -38,7 +42,16 @@ class SimCoreSquareEnvironment(SimCoreEnvironment):
                 square_side_m = max(float(width_m), float(height_m))
             else:
                 square_side_m = float(robot_cfg.get("radius_m", 0.0)) * 2.0
-        self.ROBOT_SQUARE_SIDE_M = float(square_side_m)
+
+        drivetrain_length_m = wheel_base_m + 2 * wheel_radius_m
+        drivetrain_width_m = wheel_track_m + 2 * wheel_radius_m
+        footprint_candidates = [
+            square_side_m,
+            drivetrain_length_m if drivetrain_length_m > 0 else None,
+            drivetrain_width_m if drivetrain_width_m > 0 else None,
+        ]
+        valid_candidates = [value for value in footprint_candidates if value is not None]
+        self.ROBOT_SQUARE_SIDE_M = float(max(valid_candidates)) if valid_candidates else 0.0
 
         super().__init__(
             render_mode=render_mode,
