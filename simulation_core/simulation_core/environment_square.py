@@ -99,6 +99,7 @@ class SimCoreSquareEnvironment(SimCoreEnvironment):
     def _rectangle_vertices(
         self, position: Tuple[float, float], theta: float
     ) -> List[Tuple[int, int]]:
+        position = self._axle_to_body_center(position, theta)
         half_width = self.ROBOT_HALF_WIDTH_PIXELS
         half_height = self.ROBOT_HALF_HEIGHT_PIXELS
         cos_theta = math.cos(theta)
@@ -117,6 +118,18 @@ class SimCoreSquareEnvironment(SimCoreEnvironment):
             rotated_y = dx * sin_theta + dy * cos_theta
             vertices.append((int(position[0] + rotated_x), int(position[1] + rotated_y)))
         return vertices
+
+    def _axle_to_body_center(
+        self, position: Tuple[float, float], theta: float
+    ) -> Tuple[float, float]:
+        forward_offset = self.WHEEL_HALF_BASE_PIXELS
+        if forward_offset == 0:
+            return position
+
+        offset_x = -forward_offset * math.sin(theta)
+        offset_y = -forward_offset * math.cos(theta)
+
+        return position[0] + offset_x, position[1] + offset_y
 
     def _rectangle_perimeter_points(
         self, position: Tuple[float, float], theta: float
@@ -195,12 +208,16 @@ class SimCoreSquareEnvironment(SimCoreEnvironment):
 
         wheel_color = utils.hex_to_rgb(self.ROBOT_COLOR)
 
+        robot_body_center = self._axle_to_body_center(
+            self.robot_position, self.robot_theta
+        )
+
         for offset_x, offset_y in local_wheel_centers:
             rotated_x = offset_x * cos_theta - offset_y * sin_theta
             rotated_y = offset_x * sin_theta + offset_y * cos_theta
             wheel_center = (
-                self.robot_position[0] + rotated_x,
-                self.robot_position[1] + rotated_y,
+                robot_body_center[0] + rotated_x,
+                robot_body_center[1] + rotated_y,
             )
 
             local_corners = [
@@ -243,6 +260,10 @@ class SimCoreSquareEnvironment(SimCoreEnvironment):
 
             frame_extent = self.ROBOT_HALF_DIAGONAL_PIXELS
 
+            target_body_position = self._axle_to_body_center(
+                self.target_position, self.target_theta
+            )
+
             self.visualize_search_point(
                 self.target_position, self.target_theta, self.TARGET_COLOR
             )
@@ -250,31 +271,34 @@ class SimCoreSquareEnvironment(SimCoreEnvironment):
                 self.target_position, self.target_theta, self.TARGET_COLOR
             )
             target_head_position = self._compute_orientation_endpoint(
-                self.target_position, self.target_theta, frame_extent
+                target_body_position, self.target_theta, frame_extent
             )
             pygame.draw.line(
                 self.robot_and_lidar_layer,
                 (255, 0, 0),
-                self.target_position,
+                target_body_position,
                 target_head_position,
                 2,
             )
 
             self.visualize_path()
+            robot_body_position = self._axle_to_body_center(
+                self.robot_position, self.robot_theta
+            )
             self.visualize_search_point(
                 self.robot_position, self.robot_theta, self.ROBOT_COLOR
             )
-            self.visualize_goal_info(self.robot_position)
-            self.visualize_closest_obstacle_info(self.robot_position)
+            self.visualize_goal_info(robot_body_position)
+            self.visualize_closest_obstacle_info(robot_body_position)
             self._draw_rectangle(self.robot_position, self.robot_theta, self.ROBOT_COLOR)
             self._draw_wheels()
             robot_head_position = self._compute_orientation_endpoint(
-                self.robot_position, self.robot_theta, frame_extent
+                robot_body_position, self.robot_theta, frame_extent
             )
             pygame.draw.line(
                 self.robot_and_lidar_layer,
                 (255, 0, 0),
-                self.robot_position,
+                robot_body_position,
                 robot_head_position,
                 2,
             )
