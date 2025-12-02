@@ -40,15 +40,15 @@ class SimCoreSquareEnvironment(SimCoreEnvironment):
 
         width_candidates = [
             robot_cfg.get("width_m"),
-            drivetrain_width_m if drivetrain_width_m > 0 else None,
-            robot_cfg.get("side_length_m"),
-            base_diameter_m if base_diameter_m > 0 else None,
+            # drivetrain_width_m if drivetrain_width_m > 0 else None,
+            # robot_cfg.get("side_length_m"),
+            # base_diameter_m if base_diameter_m > 0 else None,
         ]
         height_candidates = [
             robot_cfg.get("height_m"),
-            drivetrain_length_m if drivetrain_length_m > 0 else None,
-            robot_cfg.get("side_length_m"),
-            base_diameter_m if base_diameter_m > 0 else None,
+            # drivetrain_length_m if drivetrain_length_m > 0 else None,
+            # robot_cfg.get("side_length_m"),
+            # base_diameter_m if base_diameter_m > 0 else None,
         ]
 
         valid_widths = [float(value) for value in width_candidates if value is not None]
