@@ -529,13 +529,17 @@ class PolicyVelocityController:
     def _action_to_executable_action(self, v_n: float, omega_n: float) -> Tuple[float, float]:
         dt = self._dt
 
-        v_kmin = max(0.0, self._state.previous_v - self._a_max * dt)
-        v_kmax = min(self._v_max, self._state.previous_v + self._a_max * dt)
-        omega_kmin = max(-self._omega_max, self._state.previous_omega - self._alpha_max * dt)
-        omega_kmax = min(self._omega_max, self._state.previous_omega + self._alpha_max * dt)
+        # v_kmin = max(0.0, self._state.previous_v - self._a_max * dt)
+        # v_kmax = min(self._v_max, self._state.previous_v + self._a_max * dt)
+        # omega_kmin = max(-self._omega_max, self._state.previous_omega - self._alpha_max * dt)
+        # omega_kmax = min(self._omega_max, self._state.previous_omega + self._alpha_max * dt)
 
-        v_e = float(np.clip(v_n, v_kmin, v_kmax))
-        omega_e = float(np.clip(omega_n, omega_kmin, omega_kmax))
+        # v_e = float(np.clip(v_n, v_kmin, v_kmax))
+        # omega_e = float(np.clip(omega_n, omega_kmin, omega_kmax))
+
+        v_e = float(np.clip(v_n, 0.0, self._v_max))
+        omega_e = float(np.clip(omega_n, -self._omega_max, self._omega_max))
+
         return v_e, omega_e
 
 

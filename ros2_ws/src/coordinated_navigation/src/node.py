@@ -94,7 +94,7 @@ class CoordinatedNavigationNode(Node):
         robot_namespace: Optional[str] = None,
         robot_id: Optional[str] = None,
         formation_msg_type: Optional[Type[object]] = None,
-        timer_period: float = 0.05,
+        timer_period: float = 0.1,
     ) -> None:
         super().__init__(node_name)
 
@@ -131,7 +131,7 @@ class CoordinatedNavigationNode(Node):
         self._goal_distance_tolerance = self._parameter_float(
             "navigation.distance_tolerance", 0.3
         )
-        self._goal_yaw_tolerance = self._parameter_float("navigation.yaw_tolerance", 0.5)
+        self._goal_yaw_tolerance = self._parameter_float("navigation.yaw_tolerance", 3.14)
         self._action_feedback_period = max(
             self._parameter_float("navigation.feedback_period", 0.5), 0.05
         )

@@ -48,10 +48,11 @@ def generate_launch_description():
         default_value=os.path.join(
             pkg_coordination,
             'models',
-            # 'model_ep3700.zip'
-            # 'model_ep11200.zip'
-            # 'model_ep10800.zip'
-            'model_ep16500.zip'
+            # 'model_ep3700.zip'    # 2 0
+            # 'model_ep11200.zip'     # 2 0
+            # 'model_ep10800.zip'   # 3 2,3
+            'model_ep16500.zip',  # 3 2,3
+            # 'model_ep3700_2.zip'    # 3 4
         ),
         description='Absolute path to the trained policy model zip file.'
     )

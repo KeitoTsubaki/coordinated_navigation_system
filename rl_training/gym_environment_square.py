@@ -9,6 +9,7 @@ import math
 import importlib.resources
 from collections import deque
 
+# Square用の環境をインポート
 from simulation_core import environment_square
 
 
@@ -37,6 +38,7 @@ class EnvSquare(gym.Env):
         assert render_mode is None or render_mode in self.metadata["render_modes"]
         self.render_mode = render_mode
 
+        # SimCoreSquareEnvironment (四角いロボット) を使用
         self.env = environment_square.SimCoreSquareEnvironment(
             render_mode=self.render_mode,
             config_path=simulator_config_path,
@@ -44,6 +46,7 @@ class EnvSquare(gym.Env):
         )
         self.env.eval_mode = eval_mode
 
+        # ===== Parameters from Environment =====
         self.V_MAX = self.env.V_MAX
         self.OMEGA_MAX = self.env.OMEGA_MAX
         self.A_MAX = self.env.A_MAX
@@ -53,6 +56,8 @@ class EnvSquare(gym.Env):
         self.MAX_D = self.env.MAX_D
         self.MAX_THETA = self.env.MAX_THETA
         self.LIDAR_RANGE_M = self.env.LIDAR_RANGE_M
+        
+        # ===== RL Parameters from DDPG Config =====
         self.N_L = self.ddpg_config["lidar"]["n_l"]
         self.N_E = self.ddpg_config["lidar"]["n_e"]
         self.LIDAR_HISTORY_LEN = self.ddpg_config["lidar"]["lidar_history_len"]
@@ -64,6 +69,7 @@ class EnvSquare(gym.Env):
             self.ddpg_config.get("angle_diff_threshold", math.radians(10.0))
         )
 
+        # ===== Physical parameters to mimic Gazebo dynamics =====
         self.ROBOT_MASS_KG = 56.5
         self.ROTATIONAL_INERTIA = 8.16
         self.LINEAR_DAMPING = 1.0
@@ -71,6 +77,7 @@ class EnvSquare(gym.Env):
         self.ROLLING_RESISTANCE_COEFF = 0.8
         self.RESPONSE_TIME_CONSTANT = 1.0 / 12.0
 
+        # Action Space
         self.action_space = spaces.Box(
             low=np.array([-1.0, -1.0], dtype=np.float32),
             high=np.array([1.0, 1.0], dtype=np.float32),
@@ -82,11 +89,12 @@ class EnvSquare(gym.Env):
             / self.env.PIXELS_PER_METER
         )
 
+        # Observation Space
         self.observation_space = spaces.Dict(
             {
                 "lidar": spaces.Box(
                     low=0.0,
-                    high=100.0,
+                    high=1.0,
                     shape=(self.LIDAR_HISTORY_LEN, self.N_L + self.N_E),
                     dtype=np.float32,
                 ),
@@ -111,6 +119,8 @@ class EnvSquare(gym.Env):
         self.clock = None
         self.lidar_history = deque(maxlen=self.LIDAR_HISTORY_LEN)
         self.is_collision = False
+        
+        # State variables
         self.previous_distance_to_taret = None
         self.previous_angle_to_target = None
         self.current_distance_to_target = None
@@ -118,6 +128,7 @@ class EnvSquare(gym.Env):
         self.current_angle_diff_robot_target = None
         self.previous_distance_to_closest_obstacle = None
         self.current_distance_to_closest_obstacle = None
+        
         self.current_v = 0.0
         self.current_omega = 0.0
         self.previous_v = 0.0
@@ -358,45 +369,50 @@ class EnvSquare(gym.Env):
         return v_cmd, omega_cmd
 
     def _update_robot_position(self, v_cmd, omega_cmd, dt):
+        """
+        慣性（応答遅れ）と加速度制限を考慮して速度を更新する。
+        摩擦項を削除し、純粋な一次遅れ系＋レートリミッタとして実装することで
+        低速時のスタックを防ぐ。
+        """
         prev_v = self.previous_v or 0.0
         prev_omega = self.previous_omega or 0.0
 
-        desired_linear_accel = np.clip(
-            (v_cmd - prev_v) / max(dt, 1e-6), -self.A_MAX, self.A_MAX
-        )
-        desired_angular_accel = np.clip(
-            (omega_cmd - prev_omega) / max(dt, 1e-6), -self.ALPHA_MAX, self.ALPHA_MAX
-        )
-
-        rolling_sign = math.copysign(1.0, prev_v) if abs(prev_v) > 1e-6 else 0.0
-        friction_accel = self.ROLLING_RESISTANCE_COEFF * rolling_sign
-        damping_accel = self.LINEAR_DAMPING * prev_v
-        inertia_scale = max(1.0, self.ROBOT_MASS_KG / 75.0)
-
-        angular_damping = self.ANGULAR_DAMPING * prev_omega
-        angular_inertia_scale = max(1.0, self.ROTATIONAL_INERTIA / 8.0)
-
-        net_linear_accel = (
-            desired_linear_accel - friction_accel - damping_accel
-        ) / inertia_scale
-        net_angular_accel = (
-            desired_angular_accel - angular_damping
-        ) / angular_inertia_scale
-
-        new_v = prev_v + net_linear_accel * dt
-        new_omega = prev_omega + net_angular_accel * dt
+        # --- 1. Acceleration Limit (Rate Limiter) ---
+        # 目標速度(v_cmd)に対して、最大加速度(A_MAX)の範囲内で近づける
         
-        new_v = np.clip(new_v, 0.0, self.V_MAX) 
+        # 線形速度の更新
+        v_diff = v_cmd - prev_v
+        max_v_change = self.A_MAX * dt
+        v_change = np.clip(v_diff, -max_v_change, max_v_change)
+        target_v_limited = prev_v + v_change
+
+        # 角速度の更新
+        omega_diff = omega_cmd - prev_omega
+        max_omega_change = self.ALPHA_MAX * dt
+        omega_change = np.clip(omega_diff, -max_omega_change, max_omega_change)
+        target_omega_limited = prev_omega + omega_change
+
+        # --- 2. Response Lag (First-Order Lag) ---
+        # 実機の「ぬるっとした動き（慣性）」を再現するための一次遅れフィルタ
+        # response_time_constant (例: 1/12秒) を時定数として使用
+        
+        tau = self.RESPONSE_TIME_CONSTANT
+        alpha = dt / (tau + dt)  # フィルタ係数 (0~1)
+
+        new_v = prev_v * (1.0 - alpha) + target_v_limited * alpha
+        new_omega = prev_omega * (1.0 - alpha) + target_omega_limited * alpha
+
+        # 念のためクリップ (後退禁止はここでも保証)
+        new_v = np.clip(new_v, 0.0, self.V_MAX)
         new_omega = np.clip(new_omega, -self.OMEGA_MAX, self.OMEGA_MAX)
 
-        avg_v = 0.5 * (prev_v + new_v)
-        avg_omega = 0.5 * (prev_omega + new_omega)
-
-        v_pps = avg_v * self.env.PIXELS_PER_METER
+        # --- 3. Update Position (Integration) ---
+        # 台形積分ではなく、単純なオイラー積分でも十分精度は出る（安定性重視）
+        v_pps = new_v * self.env.PIXELS_PER_METER
         
         dx = float(-v_pps * math.sin(self.env.robot_theta) * dt)
         dy = float(-v_pps * math.cos(self.env.robot_theta) * dt)
-        dtheta = float(avg_omega * dt)
+        dtheta = float(new_omega * dt)
 
         next_robot_position = (
             self.env.robot_position[0] + dx,
@@ -409,34 +425,43 @@ class EnvSquare(gym.Env):
         ):
             if self.env.is_collision(next_robot_position):
                 self.is_collision = True
+                # 衝突したら速度をゼロにリセットする（めり込み防止）
+                new_v = 0.0
+                new_omega = 0.0
             else:
                 self.env.robot_position = next_robot_position
 
         self.env.robot_theta += dtheta
         self.env.robot_theta = (self.env.robot_theta + math.pi) % (2 * math.pi) - math.pi
 
+        # --- 4. Store State ---
         self.previous_v = float(new_v)
         self.previous_omega = float(new_omega)
         self.current_v = float(new_v)
         self.current_omega = float(new_omega)
 
-        # 速度情報を環境オブジェクトへ渡す (可視化用)
         self.env.v = self.current_v
         self.env.omega = self.current_omega
 
         self.env.update_path(self.env.robot_position, self.env.robot_theta)
 
     def _process_lidar_data(self, sensor_data):
+        """
+        sensor_dataは [distance, angle] のリスト (angleは -pi ~ pi でソート済み)
+        """
         if not sensor_data:
             return np.full(self.N_L + self.N_E, self.LIDAR_RANGE_M, dtype=np.float32)
 
         processed_lidar = []
         for data in sensor_data:
+            # data[0] は距離。sensor.py は範囲外の場合 self.LIDAR_RANGE_M を返す
             if data[0] < self.LIDAR_RANGE_M:
                 distance = data[0] / self.LIDAR_RANGE_M
             else:
-                distance = 100.0 # No obstacle
+                distance = 1.0  # No obstacle (range out)
             processed_lidar.append(distance)
+            
+        # N_E分だけデータを水増し（先頭データを末尾に追加）
         processed_lidar += processed_lidar[: self.N_E]
 
         lidar_in_meters = np.array(processed_lidar, dtype=np.float32)
@@ -460,10 +485,16 @@ class EnvSquare(gym.Env):
         omega_n = np.clip((self.current_omega or 0.0) / self.OMEGA_MAX, -1.0, 1.0)
         obs_velocity = np.array([v_n, omega_n], dtype=np.float32)
 
+        # sensor.py の get_closest_obstacle_info は [raw_dist, angle] を返す
         co_dist, co_angle = self.env.get_closest_obstacle_info()
+        
+        # 安全距離(半径)を引いて「表面までの距離」にする
         co_dist -= self.env.ROBOT_RADIUS_M
+        
         co_dist_n = np.clip(co_dist / self.LIDAR_RANGE_M, 0.0, 1.0)
+        # co_angle は -pi ~ pi なので pi で割って正規化
         co_angle_n = np.clip(co_angle / math.pi, -1.0, 1.0)
+        
         obs_closest_obstacle = np.array([co_dist_n, co_angle_n], dtype=np.float32)
 
         observation = {

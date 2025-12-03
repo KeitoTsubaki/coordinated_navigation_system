@@ -104,6 +104,10 @@ class SimCoreSquareEnvironment(SimCoreEnvironment):
         self.omega = 0.0
 
     def _rotate_vector(self, x: float, y: float, cos_theta: float, sin_theta: float) -> Tuple[float, float]:
+        """
+        Pygame座標系（Y軸下向き）でのベクトル回転。
+        cos_theta, sin_theta はロボットの現在の角度から計算されたもの。
+        """
         rotated_x = x * cos_theta + y * sin_theta
         rotated_y = -x * sin_theta + y * cos_theta
         return rotated_x, rotated_y
@@ -291,29 +295,16 @@ class SimCoreSquareEnvironment(SimCoreEnvironment):
     def _draw_arrow(self, start_pos, end_pos, theta, color, size=10):
         """
         線を描画し、終点に矢尻（三角形）を追加して矢印にする。
-        start_pos, end_pos: (x, y) coordinates
-        theta: ロボットの向き (rad)
-        color: RGB tuple
-        size: 矢尻の長さ
         """
-        # メインの線を描画
         pygame.draw.line(self.robot_and_lidar_layer, color, start_pos, end_pos, 2)
-        
-        # 矢尻の描画
-        # 矢印の先端(end_pos)から、左右後ろ方向に点を計算する
-        # ロボットの進行方向は theta (screen coordinate系で計算済み)
-        # 矢尻の角度: 進行方向から ±150度 (後ろ斜め30度)
         
         angle_left = theta + 2.6 # approx 150 degrees
         angle_right = theta - 2.6
         
-        # x = -sin, y = -cos が基本の前方ベクトル定義なのでそれに従う
-        # 左側
         dx_l = - size * math.sin(angle_left)
         dy_l = - size * math.cos(angle_left)
         p_left = (int(end_pos[0] + dx_l), int(end_pos[1] + dy_l))
         
-        # 右側
         dx_r = - size * math.sin(angle_right)
         dy_r = - size * math.cos(angle_right)
         p_right = (int(end_pos[0] + dx_r), int(end_pos[1] + dy_r))
@@ -324,36 +315,38 @@ class SimCoreSquareEnvironment(SimCoreEnvironment):
         if sensor_data is not False:
             lidar_point_color = utils.hex_to_rgb(self.ROBOT_COLOR)
             lidar_origin = self._get_lidar_position()
+            lidar_origin_px = (int(lidar_origin[0]), int(lidar_origin[1]))
             
-            # --- LiDAR Ray Color ---
             lidar_line_color = (150, 150, 150) # Light Grey
             
             for element in sensor_data:
-                obstacle_angle = self.robot_theta - math.pi / 2 - element[1]
-                point = utils.AD2pos(
-                    element[0],
-                    obstacle_angle,
-                    lidar_origin,
-                    self.PIXELS_PER_METER,
+                distance_m = element[0]
+                local_angle = element[1]
+
+                global_angle = self.robot_theta + local_angle
+                distance_pixels = distance_m * self.PIXELS_PER_METER
+
+                dx = -distance_pixels * math.sin(global_angle)
+                dy = -distance_pixels * math.cos(global_angle)
+
+                point_px = (
+                    int(lidar_origin[0] + dx),
+                    int(lidar_origin[1] + dy),
                 )
                 
-                # --- Draw Ray (Line from origin to point) ---
-                start_pos = (int(lidar_origin[0]), int(lidar_origin[1]))
-                end_pos = (int(point[0]), int(point[1]))
-                
+                # --- Draw Ray ---
                 # pygame.draw.line(
                 #     self.robot_and_lidar_layer,
                 #     lidar_line_color,
-                #     start_pos,
-                #     end_pos,
+                #     lidar_origin_px,
+                #     point_px,
                 #     1
                 # )
-                # --------------------------------------------
-
+                
                 pygame.draw.circle(
                     self.robot_and_lidar_layer,
                     lidar_point_color,
-                    end_pos,
+                    point_px,
                     2,
                 )
 
@@ -374,7 +367,7 @@ class SimCoreSquareEnvironment(SimCoreEnvironment):
                 target_body_center, self.target_theta, frame_extent
             )
             
-            # --- ターゲットの向きを矢印で描画 ---
+            # --- Target Arrow ---
             self._draw_arrow(
                 (int(target_body_center[0]), int(target_body_center[1])),
                 (int(target_head_position[0]), int(target_head_position[1])),
@@ -399,24 +392,32 @@ class SimCoreSquareEnvironment(SimCoreEnvironment):
             self._draw_rectangle(self.robot_position, self.robot_theta, self.ROBOT_COLOR)
             self._draw_wheels()
             
+            # --- Safety Circle Visualization ---
+            pygame.draw.circle(
+                self.robot_and_lidar_layer,
+                (0, 255, 255),  # Cyan
+                (int(robot_body_center[0]), int(robot_body_center[1])),
+                int(self.ROBOT_SAFETY_RADIUS_PIXELS),
+                1  # width=1 for outline
+            )
+            # -----------------------------------
+            
             # --- LiDAR取り付け位置（オレンジ色） ---
             pygame.draw.circle(
                 self.robot_and_lidar_layer,
                 (255, 165, 0),  # Orange
-                (int(lidar_origin[0]), int(lidar_origin[1])),
+                lidar_origin_px,
                 5,
             )
-            # ------------------------------------
 
             # --- 速度の可視化 ---
             self.visualize_velocities(robot_body_center)
-            # --------------------
             
             robot_head_position = self._compute_orientation_endpoint(
                 robot_body_center, self.robot_theta, frame_extent
             )
             
-            # --- ロボットの向きを矢印で描画 ---
+            # --- Robot Arrow ---
             self._draw_arrow(
                 (int(robot_body_center[0]), int(robot_body_center[1])),
                 (int(robot_head_position[0]), int(robot_head_position[1])),
@@ -454,3 +455,45 @@ class SimCoreSquareEnvironment(SimCoreEnvironment):
         self.robot_theta = new_theta
         body_center = self._axle_to_body_center(new_position, new_theta)
         self.path.append([body_center, new_theta])
+
+    def render_obstacle_and_robots(self, map_type="empty"):
+        screen_center_xy = (self.SCREEN_CENTER_X, self.SCREEN_CENTER_Y)
+        screen_size_wh = (self.SCREEN_W, self.SCREEN_H)
+        if map_type == "image" and self.image_map_path is None:
+            raise FileNotFoundError(
+                "Image map type selected but no image path was configured."
+            )
+        self.map_creator.create_map(
+            map_type,
+            self.obstacle_layer,
+            pt=self.pt,
+            pz=self.pz,
+            image_path=self.image_map_path,
+        )
+        start_spawn_area, target_spawn_area = (
+            self.map_creator.initialize_map_parameters(
+                map_type, screen_center_xy, screen_size_wh, self.ROBOT_RADIUS_PIXELS
+            )
+        )
+        self.create_start_and_target_position(
+            map_type, start_spawn_area, target_spawn_area
+        )
+
+        # --- 追加: 高速化用マップキャッシュ ---
+        map_pixels = pygame.surfarray.array3d(self.obstacle_layer)
+        target_color = self._obstacle_color_rgb
+        # 障害物がある場所がTrueの2次元配列を作成
+        self.collision_map = (map_pixels == target_color).all(axis=2)
+
+        if not self._robot_heading_initialized:
+            self.robot_theta = 0.0
+        if not self._target_heading_initialized:
+            self.target_theta = 0.0
+
+    def lidar_scan(self):
+        self.sensor.position = self._get_lidar_position()
+        self.sensor.theta = self.robot_theta
+        
+        # キャッシュ済みのマップ配列を渡す
+        sensor_data = self.sensor.sense_obstacles(self.collision_map)
+        return sensor_data

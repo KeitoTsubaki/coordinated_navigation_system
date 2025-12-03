@@ -108,17 +108,17 @@ class EpisodeLoggerV2(BaseCallback):
                 "success_rate",
             ]
         )
-        velocity_log_path = os.path.join(self.log_dir, "velocity_log.csv")
-        self._velocity_log_file = open(velocity_log_path, "w", newline="", encoding="utf-8")
-        self._velocity_csv_writer = csv.writer(self._velocity_log_file)
-        self._velocity_csv_writer.writerow(
-            [
-                "timestamp",
-                "episode",
-                "linear_velocity",
-                "angular_velocity"
-            ]
-        )
+        # velocity_log_path = os.path.join(self.log_dir, "velocity_log.csv")
+        # self._velocity_log_file = open(velocity_log_path, "w", newline="", encoding="utf-8")
+        # self._velocity_csv_writer = csv.writer(self._velocity_log_file)
+        # self._velocity_csv_writer.writerow(
+        #     [
+        #         "timestamp",
+        #         "episode",
+        #         "linear_velocity",
+        #         "angular_velocity"
+        #     ]
+        # )
 
     def _close_logger(self) -> None:
         if self._log_file is not None:
@@ -129,10 +129,10 @@ class EpisodeLoggerV2(BaseCallback):
             self._eval_log_file.close()
         self._eval_log_file = None
         self._eval_csv_writer = None
-        if self._velocity_log_file is not None:
-            self._velocity_log_file.close()
-        self._velocity_log_file = None
-        self._velocity_csv_writer = None
+        # if self._velocity_log_file is not None:
+        #     self._velocity_log_file.close()
+        # self._velocity_log_file = None
+        # self._velocity_csv_writer = None
 
     def _on_training_start(self) -> None:
         self._init_logger()
@@ -148,15 +148,15 @@ class EpisodeLoggerV2(BaseCallback):
         for idx, done in enumerate(dones):
 
             timestamp = datetime.utcnow().isoformat()
-            self._velocity_csv_writer.writerow(
-                [
-                    timestamp,
-                    self._episode_counter,
-                    self.gym_env.unwrapped.current_v,
-                    self.gym_env.unwrapped.current_omega,
-                ]
-            )
-            self._velocity_log_file.flush()
+            # self._velocity_csv_writer.writerow(
+            #     [
+            #         timestamp,
+            #         self._episode_counter,
+            #         self.gym_env.unwrapped.current_v,
+            #         self.gym_env.unwrapped.current_omega,
+            #     ]
+            # )
+            # self._velocity_log_file.flush()
 
             if not done:
                 continue
