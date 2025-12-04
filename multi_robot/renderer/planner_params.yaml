@@ -1,0 +1,21 @@
+# VW-Astar & Formation Planning Parameters
+
+# ロボットの半径 (m)
+# robot_radius: 0.35 # 例: WHILL Model CRの概算
+robot_radius_m: 0.5
+
+# フォーメーション間距離 (m) - ロボットの側面間の距離 (side-to-side)
+formation_spacing_m: 0.7
+
+# 安全マージン (m) - 障害物との余白
+safety_margin_m: 0.3
+
+lookahead_m: 0.7
+
+# スタート位置 (メートル) [x, y]
+# コメントアウトするとランダム配置になります
+start_pos_m: [-5.0, -6.0]
+
+# ゴール位置 (メートル) [x, y]
+# コメントアウトするとランダム配置になります
+goal_pos_m: [-5.0, 6.0]

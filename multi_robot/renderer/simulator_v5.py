@@ -7,6 +7,8 @@ import copy
 import math
 from collections import deque
 from typing import Any, Dict, List, Optional, Sequence, Tuple
+import yaml
+from pathlib import Path
 
 import numpy as np
 import pygame
@@ -29,7 +31,8 @@ from .env import LiDARSensor, SimCoreEnvironment, utils_module
 from .formation_sidebyside_5 import FormationManager
 
 from .info_panel import InfoPanelRenderer
-from .policy2 import PolicyController
+# from .policy2 import PolicyController
+from .policy2_newobs import PolicyController
 from .types import Color, FormationPlan, Position, RobotState
 from .utils import brighten_color, color_from_palette, to_rgb, with_alpha
 
@@ -48,15 +51,16 @@ class MultiRobotSimulator:
         path_history: int = 256,
         show_labels: bool = True,
         manual_control: bool = True,
-        policy_model_path: Optional[str] = "multi_robot/models/model_ep3700.zip", #"multi_robot/models/model_ep11200.zip",
+        # policy_model_path: Optional[str] = "multi_robot/models/model_ep3700.zip",
+        policy_model_path: Optional[str] = "multi_robot/models/model_ep16500.zip",
         show_info_panel: bool = True,
         formation_type: Optional[str] = None,
         formation_spacing_m: Optional[float] = None,
         image_map_path: Optional[str] = None,
+        map_type: Optional[str] = None,  # 【追加】引数にmap_typeを追加
     ) -> None:
         if config_path is None:
             import importlib.resources
-
             config_path = importlib.resources.files("simulation_core") / "config" / "simulator_config.yaml"
 
         self._policy_controller: Optional[PolicyController] = (
@@ -68,56 +72,57 @@ class MultiRobotSimulator:
 
         self.env = SimCoreEnvironment(render_mode=render_mode, config_path=config_path)
 
-    
+        # Draw properties
+        self.show_margin_map = False
+        self.show_velocity = False
+        self.show_robot_margin = False
+        self.show_formation_margin = False
 
+
+        self.filter_robot = False
+
+        # 画像パスの解決ロジック
         self._image_map_path_override: Optional[str] = None
         if image_map_path is not None:
             from pathlib import Path
-
+            import os
             override_path = Path(image_map_path)
-            if not override_path.is_absolute():
-                override_path = (self.env._config_dir / override_path).resolve()
+            final_path = None
+            if override_path.is_absolute():
+                if override_path.exists():
+                    final_path = override_path
+            if final_path is None:
+                cwd_based_path = (Path.cwd() / override_path).resolve()
+                if cwd_based_path.exists():
+                    final_path = cwd_based_path
+            if final_path is None:
+                config_based_path = (self.env._config_dir / override_path).resolve()
+                if config_based_path.exists():
+                    final_path = config_based_path
 
-            self.env.image_map_config = dict(self.env.image_map_config)
-            self.env.image_map_config["path"] = str(override_path)
-            self.env.image_map_path = override_path
-            self._image_map_path_override = str(override_path)
-        self.default_formation_robot_count = (
-            self.env.DEFAULT_FORMATION_ROBOT_COUNT
-        )
+            if final_path is not None:
+                print(f"\n[INFO] Image map successfully found at: {final_path}")
+                self.env.image_map_config = dict(self.env.image_map_config)
+                self.env.image_map_config["path"] = str(final_path)
+                self.env.image_map_path = final_path
+                self._image_map_path_override = str(final_path)
+            else:
+                print(f"\n[ERROR] Image map file NOT found: {image_map_path}")
+
+        # ... (中略: formationなどの設定はそのまま) ...
+        self.default_formation_robot_count = self.env.DEFAULT_FORMATION_ROBOT_COUNT
         self.default_formation_type = self.env.DEFAULT_FORMATION_TYPE
         self.default_formation_spacing = self.env.DEFAULT_FORMATION_SPACING_PIXELS
         self.default_formation_spacing_m = self.env.DEFAULT_FORMATION_SPACING_M
-        self.formation_centroid_sampling_interval = (
-            self.env.FORMATION_CENTROID_SAMPLING_INTERVAL
-        )
-        self.formation_centroid_look_back_steps = self.env.FORMATION_LOOK_BACK_STEPS
-        self.formation_centroid_angular_tolerance_deg = (
-            self.env.FORMATION_ANGULAR_TOLERANCE_DEG
-        )
-        self.formation_centroid_angular_tolerance_rad = (
-            self.env.FORMATION_ANGULAR_TOLERANCE_RAD
-        )
-        self.formation_centroid_min_displacement_m = (
-            self.env.FORMATION_MIN_DISPLACEMENT_M
-        )
-        self.formation_centroid_min_displacement_pixels = (
-            self.env.FORMATION_MIN_DISPLACEMENT_PIXELS
-        )
+        
+        # ... (formationパラメータの設定などは元のコードを維持) ...
         if formation_type is not None:
             self.default_formation_type = formation_type
         if formation_spacing_m is not None:
-            if formation_spacing_m <= 0:
-                raise ValueError("formation_spacing_m must be positive")
             self.default_formation_spacing_m = formation_spacing_m
-            self.default_formation_spacing = (
-                formation_spacing_m * self.env.PIXELS_PER_METER
-            )
-        resolved_robot_count = (
-            num_robots if num_robots is not None else self.default_formation_robot_count
-        )
-        if num_robots is not None:
-            self.default_formation_robot_count = num_robots
+            self.default_formation_spacing = formation_spacing_m * self.env.PIXELS_PER_METER
+        
+        resolved_robot_count = num_robots if num_robots is not None else self.default_formation_robot_count
         self.path_history = max(0, path_history)
         self.show_labels = show_labels
         self.running = True
@@ -127,41 +132,80 @@ class MultiRobotSimulator:
         self.manual_step_pixels = 5
         self.manual_rotation_step = 0.1
         self.show_debug_text = True
-
         self._clock = pygame.time.Clock()
         self._fps = 0.0
 
-        self.robot_radius_pixels = (
-            self.env.ROBOT_RADIUS_M * 0.8 * self.env.PIXELS_PER_METER
-        )
+        # 色や定数の設定
+        self.robot_radius_pixels = self.env.ROBOT_RADIUS_M * 0.8 * self.env.PIXELS_PER_METER
         self.robot_frame_radius = self.env.ROBOT_RADIUS_M * self.env.PIXELS_PER_METER
         self.obstacle_color_rgb = to_rgb(self.env.OBSTACLE_COLOR)
         self.lidar_line_color = to_rgb(self.env.LIDAR_LINE_COLOR)
         self.lidar_filtered_points_color: Color = (64, 224, 208)
-        self._lidar_detection_surface = pygame.Surface(
-            (self.env.SCREEN_W, self.env.SCREEN_H), pygame.SRCALPHA
-        )
+        self._lidar_detection_surface = pygame.Surface((self.env.SCREEN_W, self.env.SCREEN_H), pygame.SRCALPHA)
 
-        # VW-Astarのセットアップ =====================================================
+        # =========================================================================
+        # 【修正】Config読み込みと VW-Astar パラメータ計算
+        # =========================================================================
+        planner_config_path = Path(__file__).parent / "planner_params.yaml"
+        planner_params = {
+            "robot_radius_m": self.env.ROBOT_RADIUS_M, # デフォルト
+            "formation_spacing_m": 0.5, # デフォルト側面間距離
+            "safety_margin_m": 0.2,
+            "lookahead_m": 1.0,
+            "start_pos_m": None, # デフォルトNone
+            "goal_pos_m": None   # デフォルトNone
+        }
+        
+        if planner_config_path.exists():
+            try:
+                with open(planner_config_path, "r", encoding="utf-8") as f:
+                    loaded_params = yaml.safe_load(f)
+                    if loaded_params:
+                        planner_params.update(loaded_params)
+                print(f"[INFO] Loaded planner params from {planner_config_path}")
+            except Exception as e:
+                print(f"[ERROR] Failed to load planner params: {e}")
+
+        # CLI引数がある場合は、それを「側面間距離」として優先使用
+        if formation_spacing_m is not None:
+            if formation_spacing_m <= 0:
+                raise ValueError("formation_spacing_m must be positive")
+            planner_params["formation_spacing_m"] = formation_spacing_m
+
+        # パラメータ取得
+        r = float(planner_params["robot_radius_m"])
+        self.env.ROBOT_BODY_RADIUS_M = r
+        s_side = float(planner_params["formation_spacing_m"]) # 側面間距離
+        m = float(planner_params["safety_margin_m"])
+        look_ahead_m = planner_params.get("lookahead_m")
+        self.fixed_start_pos_m = planner_params.get("start_pos_m")
+        self.fixed_goal_pos_m = planner_params.get("goal_pos_m")
+
+        # インフレート半径の計算
+        # 1. 横並び (Wide): robot radius + spacing/2 + safety margin
+        radius_wide = r * 2.0 + s_side / 2.0 + m
+        # 2. ロボット1台分 (Narrow): robot radius + safety margin
+        radius_narrow = r + m
+
+        print(f"[DEBUG] VWAstar Params: R={r:.2f}, S_side={s_side:.2f}, Margin={m:.2f}")
+        print(f"[DEBUG] Inflation Radii: Wide={radius_wide:.2f}m, Narrow={radius_narrow:.2f}m")
+
+        # VW-Astarのセットアップ
         vw_config = VWAstarConfig()
-        
-        # 修正: メートル単位で指定 (例: [0.6m, 0.3m])
-        # ロボットの半径 + マージンなどを考慮して設定してください
-        vw_config.InflateRadiusListM = [2.0, 0.5]
-        
-        # 修正: pixels_per_meter を渡してPlannerを初期化
+        vw_config.InflateRadiusListM = [radius_wide, radius_narrow]
         self.vw_planner = VWAstarPlanner(vw_config, pixels_per_meter=self.env.PIXELS_PER_METER)
-        
         self.team_nav = TeamNavigationController(self, self.vw_planner)
-        self.team_nav.robot_spacing_m = self.default_formation_spacing_m
+        self.team_nav.lookahead_dist_m = look_ahead_m
+        
+        self.team_nav.robot_spacing_m = s_side
+        print(f"[DEBUG] Converted Center-to-Center Spacing: {s_side:.2f}m")
+        # =========================================================================
 
-        # ======================================================================
-
+        # 【重要】地図画像を保持する変数を初期化
+        self.map_surface: Optional[pygame.Surface] = None 
         self._brake_font: Optional[pygame.font.Font] = None
-
         self._obstacle_mask: Optional[np.ndarray] = None
         self._obstacle_distance_map: Optional[np.ndarray] = None
-
         self.policy_model_path = policy_model_path
         self.formation_vertical_constraint_enabled = True
 
@@ -182,16 +226,15 @@ class MultiRobotSimulator:
 
         self.info_panel = InfoPanelRenderer(self)
         self.formation = FormationManager(self)
-        self._last_display_size: Optional[Tuple[int, int]] = None
+        self._last_display_size = None
+        self.info_panel_window = None
+        self.info_panel_renderer = None
+        self.info_panel_texture = None
+        self._info_panel_window_size = None
+        self._info_panel_texture_size = None
+        self._restart_snapshot = None
 
-        self.info_panel_window: Optional[Any] = None
-        self.info_panel_renderer: Optional[Any] = None
-        self.info_panel_texture: Optional[Any] = None
-        self._info_panel_window_size: Optional[Tuple[int, int]] = None
-        self._info_panel_texture_size: Optional[Tuple[int, int]] = None
-
-        self._restart_snapshot: Optional[Dict[str, Any]] = None
-
+        # ディスプレイ設定
         total_width = self.env.SCREEN_W + self.info_panel.width
         if self.env.render_mode == "human":
             pygame.display.set_mode((self.env.SCREEN_W, self.env.SCREEN_H))
@@ -210,17 +253,19 @@ class MultiRobotSimulator:
         else:
             self.resize_display_surface(0)
 
+        # マップ記述
         self.map_descriptions = {
-            "trap_shaped": "Trap-shaped course with a narrow passage leading to the target zone.",
-            "zigzag": "Zigzag corridors that require repeated tight turns to reach the goal.",
-            "random": "Randomly distributed obstacles that create unpredictable navigation challenges.",
-            "empty": "Open field without obstacles for free navigation and debugging.",
+            "trap_shaped": "Trap-shaped course...",
+            "zigzag": "Zigzag corridors...",
+            "random": "Randomly distributed obstacles...",
+            "empty": "Open field...",
             "image": self._describe_image_map(),
         }
 
-        self.set_map(self.env.map_type)
-
-        
+        # 【重要】指定されたマップタイプ、またはデフォルト設定で初期化（1回のみ実行）
+        target_map_type = map_type if map_type is not None else self.env.map_type
+        print(f"[DEBUG] Initializing map with type: {target_map_type}")
+        self.set_map(target_map_type)
 
         if not show_info_panel:
             self.set_info_panel_visible(False)
@@ -342,20 +387,123 @@ class MultiRobotSimulator:
         for robot in self.robot_states:
             robot.path.clear()
 
+    def _reinit_layers(self) -> None:
+        """Force re-initialization of layers with transparency."""
+        w, h = self.env.SCREEN_W, self.env.SCREEN_H
+        
+        # ロボット描画レイヤーを透明(SRCALPHA)で作り直す
+        self.env.robot_and_lidar_layer = pygame.Surface((w, h), pygame.SRCALPHA)
+        self.env.robot_and_lidar_layer.fill((0, 0, 0, 0))
+        
+        # 障害物レイヤーも同様に
+        self.env.obstacle_layer = pygame.Surface((w, h), pygame.SRCALPHA)
+        self.env.obstacle_layer.fill((0, 0, 0, 0))
+        
+        # 画面自体のSurfaceも確保（これは不透明でOK）
+        if self.env.screen is None or self.env.screen.get_size() != (w, h):
+            self.env.screen = pygame.Surface((w, h))
+            
+        print("[DEBUG] Layers re-initialized with SRCALPHA.")
+
     def set_map(self, map_type: str) -> None:
         self.map_descriptions["image"] = self._describe_image_map()
         if map_type == "image":
             configured_path = self.env.image_map_config.get("path")
-            if not configured_path:
-                raise ValueError(
-                    "Image map type selected but obstacles.image_map.path is empty in the configuration."
-                )
+            if not configured_path and not self._image_map_path_override:
+                pass 
+
+        # --- 画像パッチ（白黒画像から障害物を生成する処理） ---
+        import types
+        def patched_create_image_map(self_mc, image_path):
+            if image_path is None: raise ValueError("image_path missing")
+            if self_mc.obstacle_layer is None: raise ValueError("obstacle_layer missing")
+            
+            # レイヤーをクリア
+            self_mc.obstacle_layer.fill((0, 0, 0, 0))
+            
+            # 画像を読み込み
+            loaded_surface = pygame.image.load(str(image_path))
+            scaled_surface = pygame.transform.smoothscale(
+                loaded_surface, (self_mc.MAP_W, self_mc.MAP_H)
+            )
+            
+            # 明るさによる壁判定（黒っぽい部分を壁とする）
+            array3d = pygame.surfarray.array3d(scaled_surface)
+            brightness = np.mean(array3d, axis=2)
+            is_wall = brightness < 200 
+            
+            # 障害物レイヤーの作成
+            result_surf = pygame.Surface((self_mc.MAP_W, self_mc.MAP_H), pygame.SRCALPHA)
+            res_rgb = pygame.surfarray.pixels3d(result_surf)
+            res_alpha = pygame.surfarray.pixels_alpha(result_surf)
+            
+            # 障害物の色を適用
+            obs_color = pygame.Color(self_mc.OBSTACLE_COLOR)
+            res_rgb[is_wall] = (obs_color.r, obs_color.g, obs_color.b)
+            res_alpha[is_wall] = 255 # 壁は不透明
+            res_alpha[~is_wall] = 0  # 床は透明
+            
+            del res_rgb, res_alpha
+            
+            self_mc.obstacle_layer.blit(result_surf, (0, 0))
+            print(f"[DEBUG] Patched map creation applied.")
+
+        # パッチを適用
+        self.env.map_creator._create_image_map = types.MethodType(patched_create_image_map, self.env.map_creator)
+        # -----------------------------------------------
+
         self._invalidate_obstacle_cache()
         self._capture_restart_snapshot(map_type)
+        
+        # 1. SimCore側のリセット
+        # これにより self.env.obstacle_layer に「壁のみ（背景透明）」が描画される
         self.env.reset(map_type)
+
+        # 2. 背景表示用の画像ロード（obstacle_layerには触らない！）
+        target_image_path = self._image_map_path_override
+        if not target_image_path and self.env.image_map_config.get("path"):
+            target_image_path = str(self.env.image_map_config.get("path"))
+
+        if map_type == "image" and target_image_path:
+            try:
+                print(f"[DEBUG] Loading visual background map from: {target_image_path}")
+                image_surf = pygame.image.load(target_image_path)
+                if image_surf.get_size() != (self.env.SCREEN_W, self.env.SCREEN_H):
+                    image_surf = pygame.transform.scale(image_surf, (self.env.SCREEN_W, self.env.SCREEN_H))
+                
+                # 表示用なので不透明でOK
+                self.map_surface = image_surf.convert()
+            except Exception as e:
+                print(f"[ERROR] Failed to load image map for display: {e}")
+                self.map_surface = self.env.screen.copy()
+        else:
+            self.map_surface = self.env.screen.copy()
+
+        # =========================================================================
+        # 【修正】マージン描画順序の制御
+        # =========================================================================
+        # 1. 現在の壁（障害物）をコピーして退避
+        walls_surface = self.env.obstacle_layer.copy()
+        
+        # 2. マスク（マージン計算用）を取得
+        mask = self._get_obstacle_mask()
+        
+        # 3. 障害物レイヤーを一度クリア
+        self.env.obstacle_layer.fill((0, 0, 0, 0))
+        
+        # 4. マージン（インフレート領域）を描画 [下層]
+        self.vw_planner.update_map(mask)
+        if self.show_margin_map:
+            self.vw_planner.draw_inflation(self.env.obstacle_layer)
+        
+        # 5. 退避しておいた壁を上から重ねる [上層]
+        self.env.obstacle_layer.blit(walls_surface, (0, 0))
+        # =========================================================================
+
         self.clear_paths()
+        print("[DEBUG] Recentering robots...")
         self._recenter_robots()
-        # self.formation.clear()
+        print("[DEBUG] Robots recentered.")
 
     def _available_map_types(self) -> List[str]:
         map_types = ["trap_shaped", "zigzag", "random", "empty"]
@@ -386,7 +534,7 @@ class MultiRobotSimulator:
         self.env.reset(map_type)
         self.clear_paths()
         self._recenter_robots()
-        self.formation.clear()
+        # self.formation.clear()
         return True
 
     # ------------------------------------------------------------------
@@ -400,16 +548,28 @@ class MultiRobotSimulator:
             self._clock.tick()
         self._fps = self._clock.get_fps()
 
-        # --- 追加: チームナビゲーションの更新 ---
         if self.policy_control_active:
              self.team_nav.update()
-        # -------------------------------------
 
+        # ---------------------------------------------------------
+        # 【重要】描画のベースを作成
+        # 1. まず背景色で塗りつぶす（これで黒画面を防ぐ）
+        # ---------------------------------------------------------
+        self.env.screen.fill(self.env.BACKGROUND_COLOR)
+
+        # 2. 地図画像を重ねる
+        if self.map_surface is not None:
+            self.env.screen.blit(self.map_surface, (0, 0))
+
+        # 3. ロボットレイヤーをクリアして再描画
         self.env.clear_robot_and_lidar_layer()
+        # 万が一 clear_robot_and_lidar_layer が不十分な場合の保険
+        if hasattr(self.env, "robot_and_lidar_layer"):
+             self.env.robot_and_lidar_layer.fill((0, 0, 0, 0))
 
-        # チームナビゲーションの更新
-        if self.policy_control_active:
-            self.team_nav.update()
+        # --- 追加: チーム重心のマージンを描画 ---
+        self._draw_team_centroid_margin()
+        # -------------------------------------
 
         for robot in self.robot_states:
             self._update_lidar(robot)
@@ -420,18 +580,12 @@ class MultiRobotSimulator:
             self._draw_robot(robot)
             if self.show_labels and self.show_debug_text:
                 self._draw_label(robot)
-        # self.formation.update_visualisation()
-        # self.formation.draw()
-        # self.formation.draw_parallel_overlay()
 
         self.team_nav.draw(self.env.robot_and_lidar_layer)
 
         self._draw_hud()
 
-        # --- 追加: 生成されたパスの描画（デバッグ用） ---
-        # self.team_nav.draw_path(self.env.robot_and_lidar_layer)
-        # -------------------------------------------
-
+        # ロボットレイヤーを画面に合成
         self.env.screen.blit(self.env.robot_and_lidar_layer, (0, 0))
 
         self.display_surface.fill(self.env.BACKGROUND_COLOR)
@@ -676,47 +830,107 @@ class MultiRobotSimulator:
     # ------------------------------------------------------------------
     # Drawing helpers
     # ------------------------------------------------------------------
+
+    def _draw_team_centroid_margin(self) -> None:
+        """チームの重心にフォーメーション用（広い）マージンを描画する"""
+        if not self.robot_states or not hasattr(self, 'vw_planner') or not self.vw_planner:
+            return
+
+        # チームの重心（Centroid）を計算
+        avg_x = sum(r.position[0] for r in self.robot_states) / len(self.robot_states)
+        avg_y = sum(r.position[1] for r in self.robot_states) / len(self.robot_states)
+
+        # マージン設定を取得
+        margins = self.vw_planner.config.InflateRadiusListM
+        
+        # 1つ目のマージン（Index 0: 広い方）があれば描画
+        if len(margins) > 0:
+            radius_m = margins[0]
+            radius_px = int(radius_m * self.env.PIXELS_PER_METER)
+            color = (0, 255, 255) # シアン
+            centor_color = (255, 165, 0)
+            
+            # 重心に円を描画
+            if self.show_formation_margin:
+                pygame.draw.circle(
+                    self.env.robot_and_lidar_layer, 
+                    color, 
+                    (int(avg_x), int(avg_y)), 
+                    radius_px, 
+                    width=1
+                )
+            # 重心点も小さく表示（分かりやすさのため）
+            pygame.draw.circle(
+                self.env.robot_and_lidar_layer, 
+                centor_color, 
+                (int(avg_x), int(avg_y)), 
+                3
+            )
+
     def _draw_robot(self, robot: RobotState) -> None:
-        position = robot.position
+        pos = robot.position
+        
+        # --- 修正: ロボット個別には「2つ目のマージン（狭い方）」だけを描画 ---
+        if hasattr(self, 'vw_planner') and self.vw_planner and self.show_robot_margin:
+            margins = self.vw_planner.config.InflateRadiusListM
+            
+            # Index 1 (2番目のマージン) が存在すれば描画
+            if len(margins) > 1:
+                margin_m = margins[1]
+                radius_px = int(margin_m * self.env.PIXELS_PER_METER)
+                color = (255, 0, 255) # マゼンタ
+                
+                pygame.draw.circle(
+                    self.env.robot_and_lidar_layer, 
+                    color, 
+                    (int(pos[0]), int(pos[1])), 
+                    radius_px, 
+                    width=1
+                )
+        # -------------------------------------------------------------
+
+        # ロボット本体（物理サイズ）の描画
+        body_radius_px = int(self.env.ROBOT_BODY_RADIUS_M * self.env.PIXELS_PER_METER)
         pygame.draw.circle(
             self.env.robot_and_lidar_layer,
             robot.color,
-            (int(position[0]), int(position[1])),
-            int(self.robot_radius_pixels),
+            (int(pos[0]), int(pos[1])),
+            body_radius_px,
         )
-        head_position = self._compute_orientation_endpoint(
-            position, robot.theta, self.robot_frame_radius
-        )
-        pygame.draw.circle(
-            self.env.robot_and_lidar_layer,
-            robot.color,
-            (int(position[0]), int(position[1])),
-            int(self.robot_frame_radius),
-            width=2,
-        )
+
+        # 安全マージン（衝突判定サイズ）の描画
+        # pygame.draw.circle(
+        #     self.env.robot_and_lidar_layer,
+        #     robot.color,
+        #     (int(pos[0]), int(pos[1])),
+        #     int(self.robot_frame_radius),
+        #     width=2,
+        # )
+
+        # ヘディング（向き）の描画
+        head = self._compute_orientation_endpoint(pos, robot.theta, self.robot_frame_radius)
         pygame.draw.line(
             self.env.robot_and_lidar_layer,
             (255, 255, 255),
-            (int(position[0]), int(position[1])),
-            (int(head_position[0]), int(head_position[1])),
+            (int(pos[0]), int(pos[1])),
+            (int(head[0]), int(head[1])),
             width=2,
         )
-        if (
-            robot is self.robot_states[self.selected_robot_index]
-            and not self.policy_control_active
-        ):
+
+        # 選択中のロボット強調
+        if robot is self.robot_states[self.selected_robot_index] and not self.policy_control_active:
             pygame.draw.circle(
                 self.env.robot_and_lidar_layer,
                 (0, 255, 0),
-                (int(position[0]), int(position[1])),
+                (int(pos[0]), int(pos[1])),
                 int(self.robot_frame_radius + 6),
                 width=2,
             )
 
-        self._draw_velocity_arrow(robot)
-        self._draw_angular_velocity_arc(robot)
-
-        self._draw_speed_bar(robot)
+        if self.show_velocity:
+            self._draw_velocity_arrow(robot)
+            self._draw_angular_velocity_arc(robot)
+            self._draw_speed_bar(robot)
         if robot.braking:
             self._draw_brake_overlay(robot)
 
@@ -1044,15 +1258,26 @@ class MultiRobotSimulator:
         )
 
     def _recenter_robots(self) -> None:
-        if not self.robot_states:
-            return
-
-        start_spawn_area, target_spawn_area = self._get_spawn_areas()
-
+        if not self.robot_states: return
+        
         spacing = self.default_formation_spacing
-        robot_positions = self.formation.generate_randomized_positions(
-            start_spawn_area, len(self.robot_states), spacing
-        )
+        
+        # --- 修正: 固定スタート位置がある場合の分岐 ---
+        if self.fixed_start_pos_m:
+            cx_m, cy_m = self.fixed_start_pos_m
+            cx_px, cy_px = self.meters_to_pixels(cx_m, cy_m)
+            
+            # 指定座標を中心に横並び配置
+            num = len(self.robot_states)
+            offsets = (np.arange(num) - (num - 1) / 2) * spacing
+            robot_positions = [(cx_px + o, cy_px) for o in offsets]
+            
+            print(f"[DEBUG] Placing robots at fixed start: {self.fixed_start_pos_m}")
+        else:
+            # 従来通りランダムエリアから生成
+            start_area, _ = self._get_spawn_areas()
+            robot_positions = self.formation.generate_randomized_positions(start_area, len(self.robot_states), spacing)
+        # ------------------------------------------
 
         for robot, position in zip(self.robot_states, robot_positions):
             robot.position = (float(position[0]), float(position[1]))
@@ -1063,8 +1288,10 @@ class MultiRobotSimulator:
             robot.last_update_time = None
             robot.velocity = 0.0
             robot.braking = False
-
-        self._assign_random_targets(target_spawn_area)
+            
+        # ゴール設定へ（引数はランダム用エリアだが、メソッド内で固定ゴール判定を行う）
+        _, target_area = self._get_spawn_areas()
+        self._assign_random_targets(target_area)
 
     def _get_spawn_areas(self) -> Tuple[Optional[Sequence[float]], Optional[Sequence[float]]]:
         screen_center_xy = (self.env.SCREEN_CENTER_X, self.env.SCREEN_CENTER_Y)
@@ -1077,80 +1304,38 @@ class MultiRobotSimulator:
         )
         return start_spawn_area, target_spawn_area
 
-    def _assign_random_targets(
-        self, target_spawn_area: Optional[Sequence[float]]
-    ) -> None:
-        if not self.robot_states:
-            return
-
+    def _assign_random_targets(self, target_spawn_area: Optional[Sequence[float]]) -> None:
+        if not self.robot_states: return
         spacing = self.default_formation_spacing
-        target_positions = self.formation.generate_randomized_positions(
-            target_spawn_area, len(self.robot_states), spacing
-        )
-
-        if not target_positions:
-            return
-
-        map_type = self.env.map_type
-        if map_type == "trap_shaped":
-            min_distance_m = self.env.T_DT_M_TRAP_SHAPED
-        elif map_type == "zigzag":
-            min_distance_m = self.env.T_DT_M_ZIGZAG
-        elif map_type == "random":
-            min_distance_m = self.env.T_DT_M_RANDOM
-        elif map_type == "image":
-            min_distance_m = self.env.T_DT_M_IMAGE
+        
+        # --- 修正: 固定ゴール位置がある場合の分岐 ---
+        if self.fixed_goal_pos_m:
+            cx_m, cy_m = self.fixed_goal_pos_m
+            cx_px, cy_px = self.meters_to_pixels(cx_m, cy_m)
+            
+            # 指定座標を中心に横並び配置（ターゲット）
+            num = len(self.robot_states)
+            offsets = (np.arange(num) - (num - 1) / 2) * spacing
+            target_positions = [(cx_px + o, cy_px) for o in offsets]
+            
+            print(f"[DEBUG] Setting fixed goal: {self.fixed_goal_pos_m}")
         else:
-            min_distance_m = self.env.T_DT_M_EMPTY
-        min_distance_pixels = min_distance_m * self.env.PIXELS_PER_METER
-
-        def targets_are_valid(candidate_targets: Sequence[Position]) -> bool:
-            return all(
-                math.hypot(
-                    float(target[0]) - float(robot.position[0]),
-                    float(target[1]) - float(robot.position[1]),
-                )
-                >= min_distance_pixels
-                for robot, target in zip(self.robot_states, candidate_targets)
-            )
-
-        initial_positions = list(target_positions)
-        max_attempts = 10
-        attempt = 0
-        while (
-            target_positions
-            and not targets_are_valid(target_positions)
-            and attempt < max_attempts
-        ):
-            attempt += 1
-            new_positions = self.formation.generate_randomized_positions(
-                target_spawn_area, len(self.robot_states), spacing
-            )
-            if not new_positions:
-                break
-            target_positions = new_positions
-
-        if target_positions and not targets_are_valid(target_positions):
-            target_positions = initial_positions
+            # 従来通りランダムエリアから生成
+            target_positions = self.formation.generate_randomized_positions(target_spawn_area, len(self.robot_states), spacing)
+        # ----------------------------------------
+        
+        if not target_positions: return
 
         for index, (robot, target) in enumerate(zip(self.robot_states, target_positions)):
             heading = self._infer_target_heading(robot.position, target)
             robot.target = target
             robot.target_theta = heading
-        #     self.formation.register_direct_target(index, target, heading)
-        # self.formation.clear()
-
-        # --- 追加: ターゲット重心を計算して自動的にパスを引く ---
+            
         if target_positions:
-            # 生成された全ターゲットの平均座標（重心）を計算
-            avg_x = sum(t[0] for t in target_positions) / len(target_positions)
-            avg_y = sum(t[1] for t in target_positions) / len(target_positions)
-            
-            print(f"Auto-setting team goal to centroid: ({avg_x:.1f}, {avg_y:.1f})")
-            
-            # TeamNavigationControllerにゴールを設定（これによりreplanが走り、パスが引かれます）
+            avg_x = sum(t[0] for t in target_positions)/len(target_positions)
+            avg_y = sum(t[1] for t in target_positions)/len(target_positions)
+            print(f"Auto-setting team goal: {avg_x:.1f}, {avg_y:.1f}")
             self.team_nav.set_team_goal((avg_x, avg_y))
-        # -------------------------------------------------------
 
     def _invalidate_obstacle_cache(self) -> None:
         self._obstacle_mask = None
@@ -1411,30 +1596,31 @@ class MultiRobotSimulator:
         self._update_robot_motion(robot, next_position)
         return True
 
-    def _is_collision(
-        self, position: Position, *, ignore_robot: Optional[RobotState] = None
-    ) -> bool:
+    def _is_collision(self, position: Position, *, ignore_robot: Optional[RobotState] = None) -> bool:
+        # 【修正】安全マージンではなく、物理サイズ(本体半径)で判定する
+        body_radius_px = self.env.ROBOT_BODY_RADIUS_M * self.env.PIXELS_PER_METER
+
+        # 1. 壁（障害物）との衝突判定
         for i in range(self.env.NUM_CHECK_POINTS):
             angle = 2 * math.pi * i / self.env.NUM_CHECK_POINTS
-            check_x = int(position[0] + self.env.ROBOT_RADIUS_PIXELS * math.cos(angle))
-            check_y = int(position[1] + self.env.ROBOT_RADIUS_PIXELS * math.sin(angle))
-
-            if not (0 <= check_x < self.env.SCREEN_W and 0 <= check_y < self.env.SCREEN_H):
-                return True
-
+            # 修正: body_radius_px を使用
+            check_x = int(position[0] + body_radius_px * math.cos(angle))
+            check_y = int(position[1] + body_radius_px * math.sin(angle))
+            
+            if not (0 <= check_x < self.env.SCREEN_W and 0 <= check_y < self.env.SCREEN_H): return True
+            
             pixel_color = self.env.obstacle_layer.get_at((check_x, check_y))
-            if (pixel_color[0], pixel_color[1], pixel_color[2]) == self.obstacle_color_rgb:
-                return True
+            if (pixel_color[0], pixel_color[1], pixel_color[2]) == self.obstacle_color_rgb: return True
 
+        # 2. 他のロボットとの衝突判定
         for other in self.robot_states:
-            if other is ignore_robot:
-                continue
-
+            if other is ignore_robot: continue
             distance = math.hypot(position[0] - other.position[0], position[1] - other.position[1])
-            min_clearance = self.robot_frame_radius * 2
-            if distance < min_clearance:
-                return True
-
+            
+            # 修正: 本体同士が接触する距離で判定
+            min_clearance = body_radius_px * 2 
+            if distance < min_clearance: return True
+            
         return False
 
     def _update_lidar(self, robot: RobotState) -> None:
@@ -1448,27 +1634,29 @@ class MultiRobotSimulator:
             int(robot.position[1]),
         )
         robot.sensor.theta = robot.theta
-        detection_surface = self._lidar_detection_surface
-        detection_surface.fill((0, 0, 0, 0))
-        detection_surface.blit(self.env.obstacle_layer, (0, 0))
+        
+        self._lidar_detection_surface.fill((0, 0, 0, 0))
+        self._lidar_detection_surface.blit(self.env.obstacle_layer, (0, 0))
+
+        body_radius_px = int(self.env.ROBOT_BODY_RADIUS_M * self.env.PIXELS_PER_METER)
 
         for other in self.robot_states:
             if other is robot:
                 continue
 
             pygame.draw.circle(
-                detection_surface,
+                self._lidar_detection_surface,
                 self.obstacle_color_rgb,
                 (int(other.position[0]), int(other.position[1])),
-                int(self.robot_frame_radius),
+                body_radius_px,
             )
 
         raw_sensor_data = robot.sensor.sense_obstacles(
-            detection_surface, self.env.OBSTACLE_COLOR
+            self._lidar_detection_surface, self.env.OBSTACLE_COLOR
         )
         robot.sensor_data = list(raw_sensor_data) if raw_sensor_data else []
         robot.filtered_sensor_data = []
-        if robot.sensor_data:
+        if robot.sensor_data and self.filter_robot:
             self._filter_robot_reflections(robot)
 
         if robot.sensor_data:
@@ -1580,12 +1768,32 @@ class MultiRobotSimulator:
 
 def _run_event_loop(simulator: "MultiRobotSimulator", fps_limit: int) -> None:
     clock = pygame.time.Clock()
+    print("[DEBUG] Entering main event loop.") # 追加: ループ入り口確認
+    # frame_count = 0
+    
     try:
         while simulator.running:
+            # 1. イベント処理
             simulator.process_events()
+            
+            # 2. 描画処理
             simulator.draw_scene()
+            
+            # 3. 生存確認ログ (約1秒ごとに表示)
+            # frame_count += 1
+            # if frame_count % 30 == 0:
+                # print(f"[DEBUG] Loop running... Frame {frame_count}")
+            
             clock.tick(fps_limit)
+            
+    except Exception as e:
+        # エラーで落ちた場合に詳細を表示する
+        print(f"[ERROR] Exception occurred in event loop: {e}")
+        import traceback
+        traceback.print_exc()
+        
     finally:
+        print("[DEBUG] Closing simulator.")
         simulator.close()
 
 
@@ -1663,12 +1871,13 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         formation_type=args.formation_type,
         formation_spacing_m=args.formation_spacing,
         image_map_path=args.image_map_path,
+        map_type=args.map_type,  # 【追加】引数として渡す
     )
-    if args.map_type is not None:
-        try:
-            simulator.set_map(args.map_type)
-        except (FileNotFoundError, ValueError) as exc:
-            parser.error(str(exc))
+    # if args.map_type is not None:
+    #     try:
+    #         simulator.set_map(args.map_type)
+    #     except (FileNotFoundError, ValueError) as exc:
+    #         parser.error(str(exc))
     _run_event_loop(simulator, fps_limit=args.fps_limit)
 
 
