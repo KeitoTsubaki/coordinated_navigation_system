@@ -133,74 +133,85 @@ class VWAstarPlanner:
 
     def smooth_path(self, nodes):
         """
-        Remove unnecessary curves from the path using line-of-sight checks.
-        Replicates SmoothPath from VWAstar.cpp.
-        Restrict smoothing to sections with the same formation index.
+        経路の不要なカーブを除去し、一定間隔で再サンプリングする。
         """
         if not nodes:
             return []
 
+        # 1. ウェイポイント（直線の継ぎ目）の抽出
         waypoints = [nodes[0]]
         current_idx = 0
         total_nodes = len(nodes)
 
         while current_idx < total_nodes - 1:
-            # デフォルトは隣接点（最低でも1歩は進む）
             valid_idx = current_idx + 1
             current_node = nodes[current_idx]
             current_fmt = current_node.formation_idx
             current_pt = current_node.point
 
-            # current_idx + 1 から順に見ていき、直線を引ける限界を探す
             for i in range(current_idx + 1, total_nodes):
                 target_node = nodes[i]
                 
-                # 1. フォーメーションが異なる場合は、そこでセグメントを切る
+                # フォーメーション変化時はセグメントを切る
                 if target_node.formation_idx != current_fmt:
-                    # 変更点の手前(i-1)までを採用
                     valid_idx = max(i - 1, current_idx + 1)
                     break
 
-                # 2. 衝突判定
+                # 衝突判定
                 if self.check_line_collision(current_pt, target_node.point, current_fmt):
-                    # 衝突した場合、衝突した点(i)は採用せず、一つ手前(i-1)を採用する
-                    # (ただし、もしiが隣接点(current_idx+1)だった場合は、
-                    #  進まないと無限ループになるため、やむを得ずiを採用して進む)
                     valid_idx = max(i - 1, current_idx + 1)
                     break
                 else:
-                    # 衝突しなければ、ここまでは直線化可能として候補を更新
                     valid_idx = i
             
             waypoints.append(nodes[valid_idx])
             current_idx = valid_idx
 
-        # ウェイポイント間を補間
-        smoothed_nodes = []
-        step = 20 # ピクセル単位の間引き間隔
-        
+        # 2. 密なパスの生成（全ピクセルを列挙）
+        dense_path = []
         for i in range(len(waypoints) - 1):
             start_node = waypoints[i]
             end_node = waypoints[i+1]
             
             segment_points = bresenham_points(start_node.point, end_node.point)
-            fmt_idx = start_node.formation_idx
+            
+            # セグメントの属性決定（始点と終点のうち、より狭い方を採用）
+            # これにより狭い場所への進入路は「狭い」扱いになる
+            fmt_idx = max(start_node.formation_idx, end_node.formation_idx)
             
             if i > 0:
                 segment_points.pop(0) # 重複削除
-                
+            
             for pt in segment_points:
-                smoothed_nodes.append(Node(pt, fmt_idx))
+                dense_path.append(Node(pt, fmt_idx))
 
-        # 間引き処理
-        spaced_nodes = []
-        for i in range(0, len(smoothed_nodes), step):
-            spaced_nodes.append(smoothed_nodes[i])
+        # 3. 一定間隔での再サンプリング (Resampling)
+        if not dense_path:
+            return []
+
+        resampled_nodes = []
+        resampled_nodes.append(dense_path[0])
         
-        if smoothed_nodes and (not spaced_nodes or spaced_nodes[-1].point != smoothed_nodes[-1].point):
-            spaced_nodes.append(smoothed_nodes[-1])
+        spacing_px = 5.0 # 再サンプリング間隔（ピクセル）。小さくすると滑らかになる。
+        accum_dist = 0.0
+        prev_pt = np.array(dense_path[0].point)
+        
+        for i in range(1, len(dense_path)):
+            curr_pt = np.array(dense_path[i].point)
+            dist = np.linalg.norm(curr_pt - prev_pt)
+            accum_dist += dist
+            prev_pt = curr_pt
+            
+            # 指定距離進むごとにノードを採用
+            if accum_dist >= spacing_px:
+                resampled_nodes.append(dense_path[i])
+                accum_dist = 0.0
+        
+        # 終点を確実に追加
+        if resampled_nodes[-1].point != dense_path[-1].point:
+            resampled_nodes.append(dense_path[-1])
 
-        return spaced_nodes
+        return resampled_nodes
 
     def plan(self, start_point, target_point):
         if not (0 <= start_point[0] < self.map_width and 0 <= start_point[1] < self.map_height):
@@ -258,7 +269,8 @@ class VWAstarPlanner:
                     heapq.heappush(open_list, new_node)
 
         raw_path = self._reconstruct_path(final_node)
-        return self.smooth_path(raw_path)
+        smoothed_path = self.smooth_path(raw_path)
+        return raw_path, smoothed_path
 
     def _reconstruct_path(self, node):
         path = []
@@ -282,6 +294,32 @@ class TeamNavigationController:
     def set_team_goal(self, goal_pos_pixels):
         self.team_goal = goal_pos_pixels
         self.replan()
+    
+    def _save_raw_path_image(self, raw_nodes):
+        if not self.sim.map_surface or not raw_nodes:
+            return
+        
+        # 描画用のSurfaceを作成（地図のコピー）
+        debug_surf = self.sim.map_surface.copy()
+        
+        # Raw Path を赤線で描画
+        if len(raw_nodes) > 1:
+            points = [(int(n.point[0]), int(n.point[1])) for n in raw_nodes]
+            pygame.draw.lines(debug_surf, (255, 0, 0), False, points, 2)
+            
+            # 始点（緑）と終点（青）
+            start = points[0]
+            end = points[-1]
+            pygame.draw.circle(debug_surf, (0, 255, 0), start, 5)
+            pygame.draw.circle(debug_surf, (0, 0, 255), end, 5)
+
+        # ファイル保存
+        try:
+            filename = "vwastar_raw_path.png"
+            pygame.image.save(debug_surf, filename)
+            print(f"[INFO] Saved VWAstar raw path image to: {filename}")
+        except Exception as e:
+            print(f"[ERROR] Failed to save raw path image: {e}")
 
     def replan(self):
         if not self.team_goal:
@@ -300,9 +338,10 @@ class TeamNavigationController:
         self.planner.update_map(mask)
         
         print(f"Planning from {start_pos} to {target_pos}...")
-        path_nodes = self.planner.plan(start_pos, target_pos)
+        raw_nodes, path_nodes = self.planner.plan(start_pos, target_pos)
         
-        if path_nodes:
+        if raw_nodes:
+            self._save_raw_path_image(raw_nodes)
             print(f"Path found! Length: {len(path_nodes)}")
             self.current_path_nodes = path_nodes 
             self.current_path_points = [n.point for n in self.current_path_nodes]
@@ -333,12 +372,8 @@ class TeamNavigationController:
         center_pos = np.array([cx, cy])
 
         path_points = np.array(self.current_path_points)
-        dists = np.linalg.norm(path_points - center_pos, axis=1)
-        min_idx = np.argmin(dists)
-
-        # ---------------------------------------------------------------------
-        # 1. 最近傍セグメントの探索（前回のロジック維持）
-        # ---------------------------------------------------------------------
+        
+        # 1. チーム中心に最も近い線分を探す (平滑化のため)
         dists_to_nodes = np.linalg.norm(path_points - center_pos, axis=1)
         min_node_idx = np.argmin(dists_to_nodes)
         
@@ -359,13 +394,12 @@ class TeamNavigationController:
                 best_proj = proj
                 best_seg_idx = i
 
-        # ---------------------------------------------------------------------
-        # 2. 参照点の計算
-        # ---------------------------------------------------------------------
+        # 2. 参照点(サブゴール)の計算
         target_dist_px = self.lookahead_dist_m * self.sim.env.PIXELS_PER_METER
-        
         current_lookahead = target_dist_px
+        
         ref_point = best_proj
+        # デフォルトは現在のセグメントだが、ループ内で必ず更新されることを期待
         ref_fmt_idx = self.current_path_nodes[best_seg_idx].formation_idx
         ref_idx = best_seg_idx
         tangent = np.array([1.0, 0.0])
@@ -376,8 +410,8 @@ class TeamNavigationController:
         while True:
             if curr_idx >= len(path_points) - 1:
                 ref_point = path_points[-1]
-                ref_fmt_idx = self.current_path_nodes[-1].formation_idx
                 ref_idx = len(path_points) - 1
+                ref_fmt_idx = self.current_path_nodes[-1].formation_idx
                 if len(path_points) > 1:
                     v = path_points[-1] - path_points[-2]
                     n = np.linalg.norm(v)
@@ -396,8 +430,12 @@ class TeamNavigationController:
                 else:
                     ref_point = curr_pt
                 
-                ref_fmt_idx = self.current_path_nodes[curr_idx].formation_idx
+                # 【重要】ここで「サブゴールがいる区間」のフォーメーションIDを取得
                 ref_idx = curr_idx
+                ref_fmt_idx = self.current_path_nodes[curr_idx].formation_idx
+                # f1 = self.current_path_nodes[curr_idx].formation_idx
+                # f2 = self.current_path_nodes[curr_idx+1].formation_idx
+                # ref_fmt_idx = max(f1, f2)
                 break
             else:
                 current_lookahead -= seg_len
@@ -408,63 +446,40 @@ class TeamNavigationController:
                                   (np.linalg.norm(ref_point - path_points[-1]) < 1.0)
 
         # ---------------------------------------------------------------------
-        # 3. サブゴール展開方向と向きの決定
+        # 3. フォーメーション展開
+        # ref_fmt_idx (サブゴールの区間) に基づいて決定する
         # ---------------------------------------------------------------------
         direction_vec = np.array([0.0, 0.0])
         spacing_factor = 1.0
-        
-        # 【追加】サブゴールの向き（接線ベクトル）を保持する変数
         path_direction = tangent 
 
         if ref_fmt_idx == 0:
-            # Wide
+            # Wide: 垂直展開
             direction_vec = np.array([-tangent[1], tangent[0]]) 
             spacing_factor = 1.0
         else:
             # Narrow
             if self.narrow_area_mode == "line":
                 direction_vec = tangent
-                spacing_factor = 1.0
+                spacing_factor = 0.8
             elif self.narrow_area_mode == "skip":
                 found_next_wide = False
                 for k in range(ref_idx + 1, len(self.current_path_nodes)):
                     if self.current_path_nodes[k].formation_idx == 0:
-                        p_curr = np.array(self.current_path_points[k])
-                        if k < len(self.current_path_points) - 1:
-                            p_next = np.array(self.current_path_points[k+1])
-                            vec = p_next - p_curr
-                        else:
-                            p_prev = np.array(self.current_path_points[k-1])
-                            vec = p_curr - p_prev
-                        
-                        norm = np.linalg.norm(vec)
-                        t_next = vec / norm if norm > 0 else np.array([1.0, 0.0])
-                        
-                        ref_point = p_curr
+                        # 省略: skipロジック (前回の通り)
+                        norm = np.linalg.norm(path_points[k+1] - path_points[k])
+                        t_next = (path_points[k+1] - path_points[k]) / norm if norm > 0 else np.array([1.0, 0.0])
+                        ref_point = path_points[k]
                         direction_vec = np.array([-t_next[1], t_next[0]])
-                        spacing_factor = 1.0
-                        
-                        # 【修正】スキップ先での進行方向をターゲットの向きとする
                         path_direction = t_next 
-                        
                         found_next_wide = True
                         break
-                
                 if not found_next_wide:
                     direction_vec = tangent
                     spacing_factor = 0.8
 
-        # 【追加】接線ベクトルから角度(rad)を計算
-        # Simulatorの座標系: Y軸が下向き、θ=0が上向き(0, -1)
-        # math.atan2(-x, -y) で変換可能 (simulator_v5.pyの_infer_target_headingと同様)
         target_theta_rad = math.atan2(-path_direction[0], -path_direction[1])
-
-        # ---------------------------------------------------------------------
-        # 4. 割り当てとターゲット設定
-        # ---------------------------------------------------------------------
-        # 経路の接線方向の角度 (Simulator座標系: 0=上, CW)
-        path_theta = math.atan2(-path_direction[0], -path_direction[1])
-
+        
         current_spacing_px = (self.robot_spacing_m * self.sim.env.PIXELS_PER_METER) * spacing_factor
         num_robots = len(robots)
         offsets = (np.arange(num_robots) - (num_robots - 1) / 2) * current_spacing_px
@@ -473,32 +488,32 @@ class TeamNavigationController:
         scores = []
         for i, robot in enumerate(robots):
             r_pos = np.array(robot.position)
+            # 現在の位置関係に基づいてソート (近い順/前順)
             score = np.dot(r_pos, direction_vec)
             scores.append(score)
         
         robot_indices = [x for _, x in sorted(zip(scores, robot_indices))]
+
+        path_theta = target_theta_rad
 
         for rank, robot_idx in enumerate(robot_indices):
             offset_val = offsets[rank]
             offset_vec = direction_vec * offset_val
             target_px = ref_point + offset_vec
             
-            # 【修正】向きを「経路接線」と「現在のロボットの向き」の中間に設定
             robot = self.sim.robot_states[robot_idx]
-            robot_theta = robot.theta
             
-            # 角度の平均を計算（ベクトル和の角度をとることで、0/360度の境界も正しく扱える）
-            sin_avg = math.sin(path_theta) + math.sin(robot_theta)
-            cos_avg = math.cos(path_theta) + math.cos(robot_theta)
+            # 中間角度の計算
+            sin_avg = math.sin(path_theta) + math.sin(robot.theta)
+            cos_avg = math.cos(path_theta) + math.cos(robot.theta)
             
-            # 正反対(180度差)でベクトル和がゼロになる場合は、経路方向を優先
             if abs(sin_avg) < 1e-6 and abs(cos_avg) < 1e-6:
                 goal_theta = path_theta
             else:
                 goal_theta = math.atan2(sin_avg, cos_avg)
-
-            goal_theta = path_theta ###########
             
+            goal_theta = path_theta
+
             self.sim.set_robot_target(
                 robot_idx, 
                 (target_px[0], target_px[1]), 

@@ -148,7 +148,7 @@ class PolicyController:
 
             if robot_index in self._completed_robots:
                 # 既に到達済みで、まだゴール付近にいるなら停止継続
-                if self._has_reached_target(robot) and is_final:
+                if self._has_reached_target(robot) :
                     self._stop_robot(robot, control_state)
                     continue
                 # ゴールから離れた、または新しいゴールが設定された（is_final=False）場合

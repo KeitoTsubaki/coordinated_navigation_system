@@ -32,6 +32,7 @@ from .formation_sidebyside_5 import FormationManager
 
 from .info_panel import InfoPanelRenderer
 # from .policy2 import PolicyController
+# from .policy2 import PolicyController
 from .policy2_newobs import PolicyController
 from .types import Color, FormationPlan, Position, RobotState
 from .utils import brighten_color, color_from_palette, to_rgb, with_alpha
@@ -48,11 +49,12 @@ class MultiRobotSimulator:
         *,
         render_mode: str = "human",
         config_path: Optional[str] = None,
-        path_history: int = 256,
+        path_history: int = 600,
         show_labels: bool = True,
         manual_control: bool = True,
         # policy_model_path: Optional[str] = "multi_robot/models/model_ep3700.zip",
         policy_model_path: Optional[str] = "multi_robot/models/model_ep16500.zip",
+        # policy_model_path: Optional[str] = "multi_robot/models/model_ep20800.zip",
         show_info_panel: bool = True,
         formation_type: Optional[str] = None,
         formation_spacing_m: Optional[float] = None,
@@ -180,6 +182,7 @@ class MultiRobotSimulator:
         look_ahead_m = planner_params.get("lookahead_m")
         self.fixed_start_pos_m = planner_params.get("start_pos_m")
         self.fixed_goal_pos_m = planner_params.get("goal_pos_m")
+        formation_costs = planner_params.get("formation_costs")
 
         # インフレート半径の計算
         # 1. 横並び (Wide): robot radius + spacing/2 + safety margin
@@ -189,10 +192,12 @@ class MultiRobotSimulator:
 
         print(f"[DEBUG] VWAstar Params: R={r:.2f}, S_side={s_side:.2f}, Margin={m:.2f}")
         print(f"[DEBUG] Inflation Radii: Wide={radius_wide:.2f}m, Narrow={radius_narrow:.2f}m")
+        print(f"[DEBUG] Formation Costs: {formation_costs}")
 
         # VW-Astarのセットアップ
         vw_config = VWAstarConfig()
         vw_config.InflateRadiusListM = [radius_wide, radius_narrow]
+        vw_config.FormationCosts = formation_costs
         self.vw_planner = VWAstarPlanner(vw_config, pixels_per_meter=self.env.PIXELS_PER_METER)
         self.team_nav = TeamNavigationController(self, self.vw_planner)
         self.team_nav.lookahead_dist_m = look_ahead_m
@@ -223,6 +228,8 @@ class MultiRobotSimulator:
                 )
             )
             self.robot_states[-1].sensor = self._create_sensor()
+            self.robot_states[-1].interval_positions = []
+            self.robot_states[-1].last_interval_record_time = None
 
         self.info_panel = InfoPanelRenderer(self)
         self.formation = FormationManager(self)
@@ -573,6 +580,7 @@ class MultiRobotSimulator:
 
         for robot in self.robot_states:
             self._update_lidar(robot)
+            self._update_interval_recording(robot)
             if robot.path and robot.path_enabled:
                 self._draw_path(robot)
             if robot.target is not None:
@@ -807,7 +815,48 @@ class MultiRobotSimulator:
             self._policy_controller.step()
             self.policy_control_active = self._policy_controller.active
 
+    def _draw_final_result(self) -> None:
+        """終了時のスナップショット用に、LiDARを除外してきれいに再描画する"""
+        
+        # 1. 背景のリセット
+        self.env.screen.fill(self.env.BACKGROUND_COLOR)
+        if self.map_surface is not None:
+            self.env.screen.blit(self.map_surface, (0, 0))
+            
+        # 2. 障害物レイヤーの描画 (マージン含む)
+        self.env.screen.blit(self.env.obstacle_layer, (0, 0))
+        
+        # 3. ロボットレイヤーのクリア
+        self.env.robot_and_lidar_layer.fill((0, 0, 0, 0))
+        
+        # 4. チームマージン
+        self._draw_team_centroid_margin()
+        
+        # 5. ロボット・パス・履歴の描画 (LiDAR更新は行わない)
+        for robot in self.robot_states:
+            if robot.path and robot.path_enabled: self._draw_path(robot)
+            if robot.target is not None: self._draw_target(robot)
+            self._draw_robot(robot) # ここでinterval_positionsも描画される
+            if self.show_labels and self.show_debug_text: self._draw_label(robot)
+            
+        # 6. VWAstarパス
+        self.team_nav.draw(self.env.robot_and_lidar_layer)
+        
+        # 7. 合成
+        self.env.screen.blit(self.env.robot_and_lidar_layer, (0, 0))
+        
+        # 8. 保存
+        try:
+            filename = "final_result.png"
+            pygame.image.save(self.env.screen, filename)
+            print(f"[INFO] Saved final simulation result to: {filename}")
+        except Exception as e:
+            print(f"[ERROR] Failed to save result image: {e}")
+
     def close(self) -> None:
+        if self.env.screen is not None:
+            self._draw_final_result()
+
         if self.info_panel_texture is not None and hasattr(
             self.info_panel_texture, "destroy"
         ):
@@ -926,6 +975,16 @@ class MultiRobotSimulator:
                 int(self.robot_frame_radius + 6),
                 width=2,
             )
+
+        # 【追加】ゴール後の位置履歴を描画 (オレンジ色)
+        if hasattr(robot, 'interval_positions') and robot.interval_positions:
+            for p in robot.interval_positions:
+                pygame.draw.circle(
+                    self.env.robot_and_lidar_layer, 
+                    (255, 165, 0), # Orange
+                    (int(p[0]), int(p[1])), 
+                    5
+                )
 
         if self.show_velocity:
             self._draw_velocity_arrow(robot)
@@ -1622,6 +1681,20 @@ class MultiRobotSimulator:
             if distance < min_clearance: return True
             
         return False
+
+    # 【追加】ゴール到達後の位置を5秒ごとに記録するメソッド
+    def _update_interval_recording(self, robot: RobotState) -> None:
+        current_time = (pygame.time.get_ticks() / 1000.0 if pygame.get_init() else None)
+        if current_time is None: return
+
+        # 初回記録
+        if robot.last_interval_record_time is None:
+            robot.last_interval_record_time = current_time
+            robot.interval_positions.append(robot.position)
+        # 5秒経過チェック
+        elif current_time - robot.last_interval_record_time >= 5.0:
+            robot.interval_positions.append(robot.position)
+            robot.last_interval_record_time = current_time
 
     def _update_lidar(self, robot: RobotState) -> None:
         if not robot.lidar_enabled or robot.sensor is None:

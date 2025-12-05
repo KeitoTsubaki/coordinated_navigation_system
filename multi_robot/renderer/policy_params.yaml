@@ -1,0 +1,10 @@
+V_MAX: 1.0
+OMEGA_MAX: 1.0
+A_MAX: 2.0
+ALPHA_MAX: 2.0
+
+# good parameters. Don't change !!!
+# V_MAX: 1.0
+# OMEGA_MAX: 1.0
+# A_MAX: 2.0
+# ALPHA_MAX: 2.0
