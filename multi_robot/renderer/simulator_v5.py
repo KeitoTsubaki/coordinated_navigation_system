@@ -60,6 +60,9 @@ class MultiRobotSimulator:
         formation_spacing_m: Optional[float] = None,
         image_map_path: Optional[str] = None,
         map_type: Optional[str] = None,  # 【追加】引数にmap_typeを追加
+        show_trail: bool = True,
+        trail_step_interval: int = 20, # steps
+        trail_color: Tuple[int, int, int] = (255, 165, 0)
     ) -> None:
         if config_path is None:
             import importlib.resources
@@ -80,14 +83,16 @@ class MultiRobotSimulator:
         self.show_robot_margin = False
         self.show_formation_margin = False
 
+        # 軌跡設定
+        self.show_trail = show_trail
+        self.trail_step_interval = trail_step_interval
+        self.trail_color = trail_color
 
         self.filter_robot = False
 
         # 画像パスの解決ロジック
         self._image_map_path_override: Optional[str] = None
         if image_map_path is not None:
-            from pathlib import Path
-            import os
             override_path = Path(image_map_path)
             final_path = None
             if override_path.is_absolute():
@@ -218,18 +223,19 @@ class MultiRobotSimulator:
         for i in range(resolved_robot_count):
             name = f"robot_{i}"
             color = color_from_palette(i)
-            self.robot_states.append(
-                RobotState(
-                    name=name,
-                    position=(self.env.SCREEN_CENTER_X, self.env.SCREEN_CENTER_Y),
-                    theta=0.0,
-                    color=color,
-                    path=deque(maxlen=self.path_history or None),
-                )
+            robot = RobotState(
+                name=name,
+                position=(self.env.SCREEN_CENTER_X, self.env.SCREEN_CENTER_Y),
+                theta=0.0,
+                color=color,
+                path=deque(maxlen=self.path_history or None),
             )
+            # 軌跡用の属性を初期化
+            robot.trail_points = []
+            robot.trail_step_counter = 0
+            
+            self.robot_states.append(robot)
             self.robot_states[-1].sensor = self._create_sensor()
-            self.robot_states[-1].interval_positions = []
-            self.robot_states[-1].last_interval_record_time = None
 
         self.info_panel = InfoPanelRenderer(self)
         self.formation = FormationManager(self)
@@ -340,6 +346,8 @@ class MultiRobotSimulator:
             theta=theta,
             path=deque(maxlen=self.path_history or None),
         )
+        robot.trail_points = []
+        robot.trail_step_counter = 0
         robot.sensor = self._create_sensor()
         self.robot_states.append(robot)
         return len(self.robot_states) - 1
@@ -393,6 +401,10 @@ class MultiRobotSimulator:
     def clear_paths(self) -> None:
         for robot in self.robot_states:
             robot.path.clear()
+            if hasattr(robot, 'trail_points'):
+                robot.trail_points.clear()
+            if hasattr(robot, 'trail_step_counter'):
+                robot.trail_step_counter = 0
 
     def _reinit_layers(self) -> None:
         """Force re-initialization of layers with transparency."""
@@ -580,11 +592,20 @@ class MultiRobotSimulator:
 
         for robot in self.robot_states:
             self._update_lidar(robot)
-            self._update_interval_recording(robot)
             if robot.path and robot.path_enabled:
                 self._draw_path(robot)
             if robot.target is not None:
                 self._draw_target(robot)
+
+            # 【変更】軌跡の描画 (リスト内の全点を描画)
+            if self.show_trail and hasattr(robot, 'trail_points'):
+                for pt in robot.trail_points:
+                    pygame.draw.circle(
+                        self.env.robot_and_lidar_layer, 
+                        self.trail_color, 
+                        (int(pt[0]), int(pt[1])), 
+                        4 # 点のサイズ
+                    )
             self._draw_robot(robot)
             if self.show_labels and self.show_debug_text:
                 self._draw_label(robot)
@@ -977,14 +998,14 @@ class MultiRobotSimulator:
             )
 
         # 【追加】ゴール後の位置履歴を描画 (オレンジ色)
-        if hasattr(robot, 'interval_positions') and robot.interval_positions:
-            for p in robot.interval_positions:
-                pygame.draw.circle(
-                    self.env.robot_and_lidar_layer, 
-                    (255, 165, 0), # Orange
-                    (int(p[0]), int(p[1])), 
-                    5
-                )
+        # if hasattr(robot, 'interval_positions') and robot.interval_positions:
+        #     for p in robot.interval_positions:
+        #         pygame.draw.circle(
+        #             self.env.robot_and_lidar_layer, 
+        #             self.trail_color, # Orange
+        #             (int(p[0]), int(p[1])), 
+        #             5
+        #         )
 
         if self.show_velocity:
             self._draw_velocity_arrow(robot)
@@ -1290,6 +1311,22 @@ class MultiRobotSimulator:
         current_time = (
             pygame.time.get_ticks() / 1000.0 if pygame.get_init() else None
         )
+
+        # 【変更】ステップ数ベースの軌跡記録
+        if self.show_trail:
+            # 属性の初期化 (念のため)
+            if not hasattr(robot, 'trail_step_counter'):
+                robot.trail_step_counter = 0
+
+            # 最初の1点を追加
+            if not robot.trail_points:
+                robot.trail_points.append(robot.position)
+                robot.trail_step_counter = 0
+            else:
+                robot.trail_step_counter += 1
+                if robot.trail_step_counter >= self.trail_step_interval:
+                    robot.trail_points.append(robot.position)
+                    robot.trail_step_counter = 0
 
         velocity = 0.0
         if (
@@ -1682,19 +1719,6 @@ class MultiRobotSimulator:
             
         return False
 
-    # 【追加】ゴール到達後の位置を5秒ごとに記録するメソッド
-    def _update_interval_recording(self, robot: RobotState) -> None:
-        current_time = (pygame.time.get_ticks() / 1000.0 if pygame.get_init() else None)
-        if current_time is None: return
-
-        # 初回記録
-        if robot.last_interval_record_time is None:
-            robot.last_interval_record_time = current_time
-            robot.interval_positions.append(robot.position)
-        # 5秒経過チェック
-        elif current_time - robot.last_interval_record_time >= 5.0:
-            robot.interval_positions.append(robot.position)
-            robot.last_interval_record_time = current_time
 
     def _update_lidar(self, robot: RobotState) -> None:
         if not robot.lidar_enabled or robot.sensor is None:
@@ -1928,6 +1952,13 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         default=30,
         help="Limit the draw loop to the specified frames per second (default: 30).",
     )
+    parser.add_argument(
+        "--trail-interval",
+        dest="trail_step_interval",
+        type=int,
+        default=20,
+        help="Trail dot interval in steps."
+    )
     args = parser.parse_args(argv)
 
     if args.robots is not None and args.robots <= 0:
@@ -1945,6 +1976,9 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         formation_spacing_m=args.formation_spacing,
         image_map_path=args.image_map_path,
         map_type=args.map_type,  # 【追加】引数として渡す
+        show_trail=True,
+        trail_step_interval=args.trail_step_interval,
+        trail_color=(255, 165, 0)
     )
     # if args.map_type is not None:
     #     try:

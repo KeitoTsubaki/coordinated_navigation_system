@@ -327,7 +327,7 @@ class PolicyController:
         co_distance, co_angle = robot.closest_obstacle
         if co_distance == float("inf"):
             co_distance = env.LIDAR_RANGE_M
-        
+        co_distance -= env.ROBOT_RADIUS_M
         co_dist_n = float(np.clip(co_distance / env.LIDAR_RANGE_M, 0.0, 1.0))
         co_angle_n = float(np.clip(co_angle / math.pi, -1.0, 1.0))
         obs_closest = np.array([co_dist_n, co_angle_n], dtype=np.float32)
@@ -383,11 +383,16 @@ class PolicyController:
         dy = -v_pixels_per_sec * math.cos(robot.theta) * self._dt
         next_position = (robot.position[0] + dx, robot.position[1] + dy)
         moved = False
+        
+        # 【修正】衝突判定を行い、結果をロボットの状態に記録する
         if not self.simulator._is_collision(next_position, ignore_robot=robot):
             self.simulator._update_robot_motion(robot, next_position)
             moved = True
+            robot.is_collided = False # 安全に移動できた
         else:
             robot.velocity = 0.0
+            robot.is_collided = True  # 衝突により移動が阻まれたフラグを立てる
+            
         robot.theta = (robot.theta + omega_e * self._dt + math.pi) % (2 * math.pi) - math.pi
         return moved
 

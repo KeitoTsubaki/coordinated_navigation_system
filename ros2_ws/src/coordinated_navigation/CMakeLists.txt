@@ -36,7 +36,8 @@ install(
 ament_python_install_package(${PROJECT_NAME} PACKAGE_DIR src)
 
 install(
-  PROGRAMS src/node.py
+  # PROGRAMS src/node.py
+  PROGRAMS src/node_2.py
   DESTINATION lib/${PROJECT_NAME}
   RENAME coordinated_navigation_node
 )

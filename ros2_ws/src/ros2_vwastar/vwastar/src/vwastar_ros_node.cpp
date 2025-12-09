@@ -4,12 +4,11 @@
  * @brief 
  * @version 0.1
  * @date 2024-10-11
- * 
- * @copyright Copyright (c) 2024
- * 
- */
+ * * @copyright Copyright (c) 2024
+ * */
 
 #include "VWAstar/vwastar_ros_node.hpp"
+#include <rclcpp/qos.hpp> // 【追加】
 
 using namespace pathplanning;
 
@@ -63,9 +62,15 @@ Node("vwastar_node")
     }
 
     //Subscribe map
+    // 【修正箇所】QoS設定を変更
+    rclcpp::QoS map_qos(10);
+    map_qos.transient_local();
+    map_qos.reliable();
+    map_qos.keep_last(1);
+
     map_sub = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
         "map", 
-        10, 
+        map_qos, 
         std::bind(&VWAstarROSNode::MapCallback, this, _1));
 
 
@@ -82,6 +87,8 @@ Node("vwastar_node")
 
 }
 
+// ... 以降のコードは変更なし ...
+// (createQuaternionFromYaw, getPathCallback, MapCallback などはそのまま)
 geometry_msgs::msg::Quaternion VWAstarROSNode::createQuaternionFromYaw(double yaw)
 {
     geometry_msgs::msg::Quaternion q;

@@ -12,8 +12,8 @@ import numpy as np
 from typing import Optional, Tuple
 
 from . import utils
-# from . import sensor
-from . import sensor2 as sensor # to be available to use in Gazebo
+from . import sensor
+# from . import sensor2 as sensor # to be available to use in Gazebo
 from . import map_creator as mc
 
 

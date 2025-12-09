@@ -36,6 +36,8 @@ class RobotState:
     executable_angular_velocity: float = 0.0
     output_velocity: float = 0.0
     output_angular_velocity: float = 0.0
+    trail_points = []
+    trail_step_counter = 0
 
 
 @dataclass
