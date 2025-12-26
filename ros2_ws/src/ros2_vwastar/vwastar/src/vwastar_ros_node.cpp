@@ -7,8 +7,11 @@
  * * @copyright Copyright (c) 2024
  * */
 
+#include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 #include "VWAstar/vwastar_ros_node.hpp"
-#include <rclcpp/qos.hpp> // 【追加】
+#include <rclcpp/qos.hpp>
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 using namespace pathplanning;
 
@@ -22,6 +25,7 @@ Node("vwastar_node")
     this->declare_parameter<int>("rate", -1);
     this->declare_parameter<std::vector<double>>("InflateRadiusList", std::vector<double>{1.5, 0.5});
     this->declare_parameter<std::vector<double>>("FormationCosts", std::vector<double>{0.0, 1.0});
+    this->declare_parameter<double>("formation_width", 1.0);
 
     config.Euclidean = this->get_parameter("Euclidean").as_bool();
     config.OccupyThresh = this->get_parameter("OccupyThresh").as_int();
@@ -61,6 +65,17 @@ Node("vwastar_node")
 
     }
 
+    rclcpp::QoS pose_qos(10);
+    pose_qos.reliable(); 
+
+    robot1_sub_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
+        "/whill1/pose", pose_qos, 
+        std::bind(&VWAstarROSNode::robot1PoseCallback, this, std::placeholders::_1));
+        
+    robot2_sub_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
+        "/whill2/pose", pose_qos, 
+        std::bind(&VWAstarROSNode::robot2PoseCallback, this, std::placeholders::_1));
+
     //Subscribe map
     // 【修正箇所】QoS設定を変更
     rclcpp::QoS map_qos(10);
@@ -77,6 +92,7 @@ Node("vwastar_node")
     //Publishers
     mask_pub = this->create_publisher<nav_msgs::msg::OccupancyGrid>("/vwastar/mask", 10);
     path_pub = this->create_publisher<nav_msgs::msg::Path>("/vwastar/nav_path", 10);
+    plan_marker_pub = this->create_publisher<visualization_msgs::msg::Marker>("/vwastar/plan_markers", 10);
     robot1_formation_target_pub = this->create_publisher<geometry_msgs::msg::PoseArray>("/vwastar/robot1_formation_target", 10);
     robot2_formation_target_pub = this->create_publisher<geometry_msgs::msg::PoseArray>("/vwastar/robot2_formation_target", 10);
 
@@ -85,6 +101,18 @@ Node("vwastar_node")
 
     RCLCPP_INFO(this->get_logger(), "VWAstar node successfully started!");
 
+}
+
+void VWAstarROSNode::robot1PoseCallback(const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg)
+{
+    robot1_pose_ = msg->pose.pose; // PoseWithCovarianceStamped は pose.pose に Pose が入っています
+    robot1_received_ = true;
+}
+
+void VWAstarROSNode::robot2PoseCallback(const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg)
+{
+    robot2_pose_ = msg->pose.pose;
+    robot2_received_ = true;
 }
 
 // ... 以降のコードは変更なし ...
@@ -106,7 +134,31 @@ void VWAstarROSNode::getPathCallback(const std::shared_ptr<path_msgs::srv::GetPa
     RCLCPP_INFO(this->get_logger(), "Getting path...");
 
     //response->success = true;
-    Point2d start_point = Point2d(request->init_pose.pose.position.x, request->init_pose.pose.position.y);
+    // Point2d start_point = Point2d(request->init_pose.pose.position.x, request->init_pose.pose.position.y);
+    // Point2d goal_point = Point2d(request->goal_pose.pose.position.x, request->goal_pose.pose.position.y);
+    // ▼▼▼ 変更: 中間地点の計算とスタート地点の上書き ▼▼▼
+    double start_x, start_y;
+    geometry_msgs::msg::Quaternion start_quat;
+
+    if (robot1_received_ && robot2_received_) {
+        // 2台の中間点を計算
+        start_x = (robot1_pose_.position.x + robot2_pose_.position.x) / 2.0;
+        start_y = (robot1_pose_.position.y + robot2_pose_.position.y) / 2.0;
+        
+        // 向きはリクエスト（現在のリーダーまたは指定）を使うか、2台の平均を使う
+        // ここではリクエストの向き（ゴールへ向かう意志）を優先しますが、必要なら平均化してください
+        start_quat = request->init_pose.pose.orientation;
+        
+        RCLCPP_INFO(this->get_logger(), "Planning from Group Center: (%f, %f)", start_x, start_y);
+    } else {
+        // ロボットの位置が未受信ならリクエストの値をそのまま使う（フォールバック）
+        start_x = request->init_pose.pose.position.x;
+        start_y = request->init_pose.pose.position.y;
+        start_quat = request->init_pose.pose.orientation;
+        RCLCPP_WARN(this->get_logger(), "Group center unknown, using request pose.");
+    }
+
+    Point2d start_point = Point2d(start_x, start_y);
     Point2d goal_point = Point2d(request->goal_pose.pose.position.x, request->goal_pose.pose.position.y);
     OccGridParam->Map2ImageTransform(start_point, startPoint);
     OccGridParam->Map2ImageTransform(goal_point, targetPoint);
@@ -264,7 +316,7 @@ void VWAstarROSNode::compute_path()
     {
         std::chrono::high_resolution_clock::time_point current_time = std::chrono::high_resolution_clock::now();
         // start planning path
-        std::vector<Point> PathList;
+        std::vector<PathPoint> PathList;
         vwastar->PathPlanning(startPoint, targetPoint, PathList);
         path.poses.clear();
         RCLCPP_INFO(this->get_logger(), "num of path points: %ld ", PathList.size());
@@ -275,19 +327,22 @@ void VWAstarROSNode::compute_path()
             path.header.frame_id = "map";
 
             // まず全ての点をワールド座標に変換してリスト化
-            std::vector<Point2d> world_points;
+            struct WorldPathPoint {
+                Point2d pos;
+                int fmt_idx;
+            };
+            std::vector<WorldPathPoint> world_points;
             for(auto pt : PathList) {
                 Point2d dst_point;
-                OccGridParam->Image2MapTransform(pt, dst_point);
-                world_points.push_back(dst_point);
+                OccGridParam->Image2MapTransform(pt.point, dst_point); // pt.pointにアクセス
+                world_points.push_back({dst_point, pt.formation_idx}); // fmt_idxを保存
             }
-            // Point2d dst_point;
-            // OccGridParam->Image2MapTransform(PathList[i], dst_point);
+
+            double formation_width = this->get_parameter("formation_width").as_double();
+            double offset_dist_m = formation_width / 2.0;
 
             robot1_msg.header = path.header;
             robot2_msg.header = path.header;
-
-            double offset_dist_m = 1.0;
 
             for (size_t i = 0; i < world_points.size(); i++)
             {
@@ -296,53 +351,126 @@ void VWAstarROSNode::compute_path()
                 pose_stamped.header.frame_id = "map";
 
                 // Position
-                pose_stamped.pose.position.x = world_points[i].x;
-                pose_stamped.pose.position.y = world_points[i].y;
-                pose_stamped.pose.position.z = 0;
+                // ▼▼▼ 修正: .pos を追加 ▼▼▼
+                pose_stamped.pose.position.x = world_points[i].pos.x;
+                pose_stamped.pose.position.y = world_points[i].pos.y;
+                pose_stamped.pose.position.z = static_cast<double>(world_points[i].fmt_idx);
                 
                 // Orientation
                 double yaw = 0.0;
-                if(i < world_points.size() - 1)
+                int tangent_lookahead_steps = 3;
+                if(i < world_points.size() - tangent_lookahead_steps)
                 {
-                    double dy = world_points[i+1].y - world_points[i].y;
-                    double dx = world_points[i+1].x - world_points[i].x;
+                    // ▼▼▼ 修正: .pos を追加 ▼▼▼
+                    double dy = world_points[i+tangent_lookahead_steps].pos.y - world_points[i].pos.y;
+                    double dx = world_points[i+tangent_lookahead_steps].pos.x - world_points[i].pos.x;
                     yaw = atan2(dy, dx);
 
                     pose_stamped.pose.orientation = createQuaternionFromYaw(yaw);
                 }
                 else
                 {
-                    double dy = world_points[i].y - world_points[i-1].y;
-                    double dx = world_points[i].x - world_points[i-1].x;
+                    // ▼▼▼ 修正: .pos を追加 ▼▼▼
+                    double dy = world_points[i].pos.y - world_points[i-1].pos.y;
+                    double dx = world_points[i].pos.x - world_points[i-1].pos.x;
                     yaw = atan2(dy, dx);
 
                     pose_stamped.pose.orientation = createQuaternionFromYaw(yaw);
-                    // pose_stamped.pose.orientation = target_orientation;
-
-                    // transform orientation to yaw
-                    // tf2::Quaternion q(target_orientation.x, target_orientation.y, target_orientation.z, target_orientation.w);
-                    // double roll, pitch;
-                    // tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);
                 }
 
                 path.poses.push_back(pose_stamped);
 
                 // Make formation targets
                 // x: forward, y: left
-                if(i > 0)
+                // ▼▼▼ フォーメーションごとのターゲット生成分岐 ▼▼▼
+                if(i > 0) 
                 {
-                    geometry_msgs::msg::Pose robot1_pose = pose_stamped.pose; // copy orientation
-                    robot1_pose.position.x = world_points[i].x - offset_dist_m * sin(yaw);
-                    robot1_pose.position.y = world_points[i].y + offset_dist_m * cos(yaw);
+                    geometry_msgs::msg::Pose robot1_pose = pose_stamped.pose; 
+                    geometry_msgs::msg::Pose robot2_pose = pose_stamped.pose;
+                    
+                    int current_fmt = world_points[i].fmt_idx;
+
+                    // 仮定: InflateRadiusList[0] が広い(Line), [1] が狭い(Column)
+                    if (current_fmt == 0) 
+                    {
+                        // === 横並び (Line Formation) ===
+                        // 既存のロジック: パスに対して左右に展開
+                        robot1_pose.position.x = world_points[i].pos.x - offset_dist_m * sin(yaw);
+                        robot1_pose.position.y = world_points[i].pos.y + offset_dist_m * cos(yaw);
+                        
+                        robot2_pose.position.x = world_points[i].pos.x + offset_dist_m * sin(yaw);
+                        robot2_pose.position.y = world_points[i].pos.y - offset_dist_m * cos(yaw);
+                    }
+                    else 
+                    {
+                        // === 縦並び (Column Formation) ===
+                        // 狭いので左右に広げず、センターライン上（または極小オフセット）にする
+                        // ここではシンプルに「2台ともパスの中心を狙う」設定にします
+                        // ※衝突回避はLocal Planner (RL) に任せるか、前後方向の遅延を入れる必要があります
+                        
+                        robot1_pose.position.x = world_points[i].pos.x;
+                        robot1_pose.position.y = world_points[i].pos.y;
+                        
+                        robot2_pose.position.x = world_points[i].pos.x;
+                        robot2_pose.position.y = world_points[i].pos.y;
+                        
+                        // オプション: 少しだけ前後にずらす場合
+                        // robot1_pose.position.x += 0.5 * cos(yaw); ...
+                    }
+
                     robot1_msg.poses.push_back(robot1_pose);
-    
-                    geometry_msgs::msg::Pose robot2_pose = pose_stamped.pose; // copy orientation
-                    robot2_pose.position.x = world_points[i].x + offset_dist_m * sin(yaw);
-                    robot2_pose.position.y = world_points[i].y - offset_dist_m * cos(yaw);
                     robot2_msg.poses.push_back(robot2_pose);
                 }
 
             }
+
+            // === ▼▼▼ ここから追加: マーカーによる可視化 ▼▼▼ ===
+            visualization_msgs::msg::Marker points_marker;
+            points_marker.header = path.header; // frame_id と time を合わせる
+            points_marker.ns = "formation_path";
+            points_marker.id = 0;
+            points_marker.type = visualization_msgs::msg::Marker::SPHERE_LIST;
+            points_marker.action = visualization_msgs::msg::Marker::ADD;
+            
+            // 点のサイズ (メートル)
+            points_marker.scale.x = 0.1; 
+            points_marker.scale.y = 0.1;
+            points_marker.scale.z = 0.1;
+
+            // 共通のアルファ値（不透明度）
+            points_marker.color.a = 1.0; 
+
+            // world_points は前回のコード修正案で使用した struct WorldPathPoint のリスト
+            for(const auto& wp : world_points)
+            {
+                geometry_msgs::msg::Point p;
+                p.x = wp.pos.x;
+                p.y = wp.pos.y;
+                p.z = 0.1; // 地図に埋もれないように少し浮かせる
+                points_marker.points.push_back(p);
+
+                std_msgs::msg::ColorRGBA c;
+                c.a = 1.0;
+                
+                // 隊形IDに応じた色分け
+                if(wp.fmt_idx == 0) {
+                    // ID 0 (Line/Wide): 青
+                    c.r = 0.0; c.g = 0.0; c.b = 1.0; 
+                }
+                else if (wp.fmt_idx == 1) {
+                    // ID 1 (Column/Narrow): 赤
+                    c.r = 1.0; c.g = 0.0; c.b = 0.0;
+                }
+                else {
+                    // その他: 緑
+                    c.r = 0.0; c.g = 1.0; c.b = 0.0;
+                }
+                points_marker.colors.push_back(c);
+            }
+            
+            plan_marker_pub->publish(points_marker);
+            // === ▲▲▲ 追加ここまで ▲▲▲ ===
+
             std::chrono::high_resolution_clock::time_point last_time = std::chrono::high_resolution_clock::now();
             double dt = std::chrono::duration_cast<std::chrono::milliseconds>(last_time - current_time).count();
             RCLCPP_INFO(this->get_logger(), "Find a valid path successfully! Use %f [ms]", dt);

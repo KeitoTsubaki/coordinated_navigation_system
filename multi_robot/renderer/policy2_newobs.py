@@ -53,6 +53,12 @@ class PolicyController:
         self._lidar_history_len = 1
         self._n_l = 0
         self._n_e = 0
+
+        # --- 【追加】サブゴール待機用の変数を追加 ---
+        self._waiting_at_subgoal: Dict[int, bool] = {} # ロボット毎の待機フラグ
+        self.subgoal_stop_threshold = 0.1   # この距離(m)以内に入ったら停止
+        self.subgoal_resume_threshold = 0.3 # この距離(m)以上離れたら再開
+        # ----------------------------------------
         
         self.params = {
             "V_MAX": 1.0,
@@ -158,6 +164,33 @@ class PolicyController:
                 self._completed_robots.add(robot_index)
                 self._stop_robot(robot, control_state)
                 continue
+            # =================================================================
+
+            # =================================================================
+            # 【追加】サブゴール(is_final=False)での一時停止ロジック
+            # =================================================================
+            # if not is_final:
+            #     # ターゲット(サブゴール)までの距離を計算
+            #     dist_m, _ = self._compute_goal_info(robot)
+
+            #     # 初回アクセスの初期化
+            #     if robot_index not in self._waiting_at_subgoal:
+            #         self._waiting_at_subgoal[robot_index] = False
+                
+            #     # 状態遷移判定 (ヒステリシス)
+            #     if self._waiting_at_subgoal[robot_index]:
+            #         # 待機中: 目標が十分離れたら(resume_threshold超え)、移動再開
+            #         if dist_m > self.subgoal_resume_threshold:
+            #             self._waiting_at_subgoal[robot_index] = False
+            #     else:
+            #         # 移動中: 目標に十分近づいたら(stop_threshold未満)、一時停止
+            #         if dist_m < self.subgoal_stop_threshold:
+            #             self._waiting_at_subgoal[robot_index] = True
+                
+            #     # 待機状態なら強制停止して次のロボットへ (推論をスキップ)
+            #     if self._waiting_at_subgoal[robot_index]:
+            #         self._stop_robot(robot, control_state)
+            #         continue
             # =================================================================
 
             if not lidar_preupdated:
@@ -409,7 +442,7 @@ class PolicyController:
             dy_pixels = other.position[1] - robot.position[1]
             distance = math.hypot(dx_pixels, dy_pixels)
             
-            if distance <= other_radius + 1.5 * robot_radius:
+            if distance <= other_radius + robot_radius + 0.3 * self.simulator.env.PIXELS_PER_METER:   # brake 0.5m
                 dy_global = -dy_pixels
                 global_angle = math.atan2(dy_global, dx_pixels)
                 robot_global_angle = robot.theta + math.pi / 2
@@ -417,9 +450,8 @@ class PolicyController:
                     (global_angle - robot_global_angle + math.pi) % (2 * math.pi)
                     - math.pi
                 )
-                if abs(angle_diff) <= math.radians(20.0):
+                if abs(angle_diff) <= math.radians(45.0):   # angle 20
                     return True
-
         return False
         
     def _compute_goal_info(self, robot: RobotState) -> Tuple[float, float]:

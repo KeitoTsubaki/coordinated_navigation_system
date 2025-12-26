@@ -27,7 +27,7 @@ _POLICY_LIDAR_POINTS = 629
 _POLICY_LIDAR_EXTENSION_POINTS = 11
 
 # 学習環境と合わせるためのロボット半径設定
-_DEFAULT_ROBOT_RADIUS_M = 0.45 
+_DEFAULT_ROBOT_RADIUS_M = 0.5
 
 
 try:  # pragma: no cover - optional dependency path
@@ -120,8 +120,8 @@ class PolicyVelocityController:
         self._n_l = _POLICY_LIDAR_POINTS
         self._n_e = _POLICY_LIDAR_EXTENSION_POINTS
         self._lidar_range_m = 10.0
-        self._v_max = 1.0
-        self._omega_max = 1.0
+        self._v_max = 0.5
+        self._omega_max = 0.3
         self._a_max = 1.0
         self._alpha_max = 1.0
         self._robot_radius_m = _DEFAULT_ROBOT_RADIUS_M
@@ -181,7 +181,8 @@ class PolicyVelocityController:
 
         twist = Twist()
         twist.linear.x = v_e
-        twist.angular.z = omega_e
+        # twist.angular.z = omega_e
+        twist.angular.z = -omega_e
 
         self._state.current_v = v_e
         self._state.current_omega = omega_e
@@ -318,8 +319,11 @@ class PolicyVelocityController:
         
         robot_heading = quaternion_to_yaw(pose_source.orientation)
         target_heading = math.atan2(dy, dx)
+        # angle_to_target = wrap_to_pi(target_heading - robot_heading)
+        # goal_angle_n = float(np.clip(angle_to_target / math.pi, -1.0, 1.0))
+        # ROS(CCW) -> Gym(CW) へ変換するため、符号を反転 (-) します
         angle_to_target = wrap_to_pi(target_heading - robot_heading)
-        goal_angle_n = float(np.clip(angle_to_target / math.pi, -1.0, 1.0))
+        goal_angle_n = float(np.clip(-angle_to_target / math.pi, -1.0, 1.0)) # 修正: マイナス付与
         
         target_yaw = quaternion_to_yaw(target_pose.pose.orientation)
         orientation_diff = wrap_to_pi(target_yaw - robot_heading)
@@ -354,7 +358,8 @@ class PolicyVelocityController:
             self._state.current_omega = float(odometry.twist.twist.angular.z)
         
         v_n = float(np.clip((self._state.current_v) / self._v_max, 0.0, 1.0))
-        omega_n = float(np.clip((self._state.current_omega) / self._omega_max, -1.0, 1.0))
+        # omega_n = float(np.clip((self._state.current_omega) / self._omega_max, -1.0, 1.0))
+        omega_n = float(np.clip((-self._state.current_omega) / self._omega_max, -1.0, 1.0))
         obs_velocity = np.array([v_n, omega_n], dtype=np.float32)
 
         # --- Closest Obstacle ---
@@ -385,12 +390,12 @@ class PolicyVelocityController:
         obs_goal = np.array([distance_to_target, goal_angle_n, orientation_diff_n], dtype=np.float32)
         
         # Debug Log
-        if self._logger:
-            self._logger.info(
-                f"OBS: Goal[{distance_to_target:.1f}m, {goal_angle_n:.2f}pi] "
-                f"Obst[{dist_surface:.1f}m, {co_angle_n:.2f}pi] "
-                f"Vel[{v_n:.2f}, {omega_n:.2f}]"
-            )
+        # if self._logger:
+        #     self._logger.info(
+        #         f"OBS: Goal[{distance_to_target:.1f}m, {goal_angle_n:.2f}pi] "
+        #         f"Obst[{dist_surface:.1f}m, {co_angle_n:.2f}pi] "
+        #         f"Vel[{v_n:.2f}, {omega_n:.2f}]"
+        #     )
 
         return {
             "lidar": obs_lidar,

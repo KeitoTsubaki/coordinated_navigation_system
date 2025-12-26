@@ -38,6 +38,8 @@ class RobotState:
     output_angular_velocity: float = 0.0
     trail_points = []
     trail_step_counter = 0
+    trail_color = (255, 165, 0)
+    trail_width = 5
 
 
 @dataclass

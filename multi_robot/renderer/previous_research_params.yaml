@@ -1,0 +1,63 @@
+robot_radius_m: 0.5
+
+# Straight
+# start_pos_m: [-8.0, 6.0, -1.57] # TO
+# start_pos_m: [-8.0, 3.0, -1.57] # C
+start_pos_m: [-8.0, 0.0, -1.57] # S
+# start_pos_m: [-8.0, -3.0, -1.57]  # C
+# start_pos_m: [-8.0, -6.0, -1.57]  # TO
+# start_pos_m: [-7.0, 6.0, -1.57] # C
+# start_pos_m: [-7.0, 3.0, -1.57] # C
+# start_pos_m: [-7.0, 0.0, -1.57] # S
+# start_pos_m: [-7.0, -3.0, -1.57] # C
+# start_pos_m: [-7.0, -6.0, -1.57]  # C
+
+# Curve
+# start_pos_m: [-8.0, 4.0, -1.57] # C
+# start_pos_m: [-8.0, 5.0, -1.57] # C
+# start_pos_m: [-8.0, 6.0, -1.57] # C
+# start_pos_m: [-8.0, 7.0, -1.57] # C
+# start_pos_m: [-8.0, 8.0, -1.57] # C close
+# start_pos_m: [-6.0, 4.0, -1.57] # C
+# start_pos_m: [-6.0, 5.0, -1.57] # C
+# start_pos_m: [-6.0, 6.0, -1.57] # C
+# start_pos_m: [-6.0, 7.0, -1.57] # C
+# start_pos_m: [-6.0, 8.0, -1.57] # C close
+
+# Shortcut
+# start_pos_m: [-8.0, 4.0, -1.57] # TO
+# start_pos_m: [-8.0, 5.0, -1.57] # S
+# start_pos_m: [-8.0, 6.0, -1.57] # S
+# start_pos_m: [-8.0, 7.0, -1.57] # S
+# start_pos_m: [-8.0, 8.0, -1.57] # S
+# start_pos_m: [-6.0, 4.0, -1.57] # C
+# start_pos_m: [-6.0, 5.0, -1.57] # C close
+# start_pos_m: [-6.0, 6.0, -1.57] # C too late
+# start_pos_m: [-6.0, 7.0, -1.57] # C
+# start_pos_m: [-6.0, 8.0, -1.57] # C
+
+
+goal_pos_m: [7.5, 0.0, -1.57]
+
+auto_start: true
+
+centroid_look_back_steps: 10
+omega_f: 0.5
+# optimizer_weights: [2.0 , 1.0, 1.0, 0.5, 0.5]
+optimizer_weights: [1.0 , 1.0, 1.0, 1.0, 1.0]
+
+visualization:
+  show_info_panel: true    # 右側の情報パネル (Falseで非表示)
+  show_velocity: false      # ロボットの速度矢印・バー
+  show_global_path: true   # VWA*の探索パス・マージン
+  show_trail: true         # 軌跡 (点)
+  show_lidar: false        # LiDARの点群
+  show_debug_text: false
+  show_margin_map: false
+  show_robot_margin: false
+  show_formation_margin: false
+  
+  # "full": パラメータ領域込みで録画
+  # "simulation_only": シミュレーション画面のみ切り抜いて録画
+  recording_mode: "simulation_only"
+  recording_fps: 10

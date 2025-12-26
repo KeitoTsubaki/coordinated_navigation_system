@@ -16,7 +16,8 @@ speed_adjustment:
   eta_theta: 0.5
   eta_d: 2.0
   k_d: 30
-  omega_fixed: 1.2566370614 # 0.4 * pi rad/s
+  # omega_fixed: 1.2566370614 # 0.4 * pi rad/s
+  omega_fixed: 0.5
   T_df: 0.6
 robot:
   radius_m: 0.6          # ロボットの安全半径（m）
@@ -63,7 +64,7 @@ lidar:
   points_color: "#04C4CD"  # スキャン点の色
 
 window:
-  window_title: "2D LiDAR Simulation"
+  window_title: "2D Simulation"
   size: 800 # マップのサイズ（ピクセル）
   background_color: "#FFFFFF"
 

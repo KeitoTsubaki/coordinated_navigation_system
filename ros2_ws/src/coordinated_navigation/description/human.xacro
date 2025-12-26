@@ -1,0 +1,231 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+    <xacro:property name="human_mass" value="0.1" />
+    <xacro:property name="torso_width" value="0.3" />
+    <xacro:property name="torso_depth" value="0.2" />
+    <xacro:property name="torso_height" value="0.5" />
+    <xacro:property name="head_radius" value="0.1" />
+
+    <xacro:arg name='head_yaw' default='0.0' />
+
+    <xacro:property name="eye_radius" value="0.015" />
+    <xacro:property name="eye_offset_x" value="${head_radius}" /> 
+    <xacro:property name="eye_offset_y" value="0.035" />
+    <xacro:property name="eye_offset_z" value="0.02" />
+    
+    <xacro:property name="mouth_length" value="0.06" />
+    <xacro:property name="mouth_radius" value="0.005" />
+    <xacro:property name="mouth_offset_z" value="-0.03" />
+
+    <joint name="$(arg prefix)human_joint" type="fixed">
+        <parent link="$(arg prefix)seat" />
+        <child link="$(arg prefix)human_base_link" />
+        <origin xyz="-0.1 0 0.25" rpy="0 0 0"/>
+    </joint>
+
+    <link name="$(arg prefix)human_base_link">
+        <visual>
+            <geometry>
+                <box size="${torso_depth} ${torso_width} ${torso_height}"/>
+            </geometry>
+            <origin xyz="0 0 ${torso_height/2}" rpy="0 0 0"/>
+            <material name="human_color">
+                <color rgba="0.2 0.2 0.8 1.0"/>
+            </material>
+        </visual>
+        <collision>
+            <geometry>
+                <box size="${torso_depth} ${torso_width} ${torso_height}"/>
+            </geometry>
+            <origin xyz="0 0 ${torso_height/2}" rpy="0 0 0"/>
+        </collision>
+        <xacro:inertial_box mass="${human_mass}" x="${torso_depth}" y="${torso_width}" z="${torso_height}">
+            <origin xyz="0 0 ${torso_height/2}" rpy="0 0 0"/>
+        </xacro:inertial_box>
+    </link>
+    
+
+    <joint name="$(arg prefix)human_head_joint" type="fixed">
+        <parent link="$(arg prefix)human_base_link" />
+        <child link="$(arg prefix)human_head_link" />
+        <origin xyz="0 0 ${torso_height}" rpy="0 0 $(arg head_yaw)"/>
+    </joint>
+
+    <link name="$(arg prefix)human_head_link">
+        <visual>
+            <geometry>
+                <sphere radius="${head_radius}"/>
+            </geometry>
+            <origin xyz="0 0 ${head_radius}" rpy="0 0 0"/>
+            <material name="skin_color">
+                <color rgba="0.9 0.8 0.7 1.0"/>
+            </material>
+        </visual>
+        <collision>
+            <geometry>
+                <sphere radius="${head_radius}"/>
+            </geometry>
+            <origin xyz="0 0 ${head_radius}" rpy="0 0 0"/>
+        </collision>
+        <xacro:inertial_sphere mass="0.0" radius="${head_radius}">
+            <origin xyz="0 0 ${head_radius}" rpy="0 0 0"/>
+        </xacro:inertial_sphere>
+    </link>
+
+    <joint name="$(arg prefix)human_leg_joint" type="fixed">
+        <parent link="$(arg prefix)human_base_link" />
+        <child link="$(arg prefix)human_leg_link" />
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+
+    <link name="$(arg prefix)human_leg_link">
+        <visual>
+            <geometry>
+                <box size="0.5 ${torso_width} 0.1"/>
+            </geometry>
+            <origin xyz="${0.25-torso_depth/2} 0 0" rpy="0 0 0"/>
+            <material name="human_color">
+                <color rgba="0.2 0.2 0.8 1.0"/>
+            </material>
+        </visual>
+        <collision>
+            <geometry>
+                <box size="0.5 ${torso_width} 0.1"/>
+            </geometry>
+            <origin xyz="${0.25-torso_depth/2} 0 0" rpy="0 0 0"/>
+        </collision>
+    </link>
+
+    <joint name="$(arg prefix)human_leg2_joint" type="fixed">
+        <parent link="$(arg prefix)human_leg_link" />
+        <child link="$(arg prefix)human_leg2_link" />
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+
+    <link name="$(arg prefix)human_leg2_link">
+        <visual>
+            <geometry>
+                <box size="0.1 ${torso_width} 0.5"/>
+            </geometry>
+            <origin xyz="0.4 0 -0.2" rpy="0 0 0"/>
+            <material name="human_color">
+                <color rgba="0.2 0.2 0.8 1.0"/>
+            </material>
+        </visual>
+        <collision>
+            <geometry>
+                <box size="0.1 ${torso_width} 0.5"/>
+            </geometry>
+            <origin xyz="0.4 0 -0.2" rpy="0 0 0"/>
+        </collision>
+    </link>
+
+    <joint name="$(arg prefix)human_right_arm_joint" type="fixed">
+        <parent link="$(arg prefix)human_base_link" />
+        <child link="$(arg prefix)human_right_arm_link" />
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+
+    <link name="$(arg prefix)human_right_arm_link">
+        <visual>
+            <geometry>
+                <box size="0.5 0.1 0.1"/>
+            </geometry>
+            <origin xyz="0.15 ${-torso_width/2} 0.25" rpy="0 0.8 0.1"/>
+            <material name="human_color">
+                <color rgba="0.2 0.2 0.8 1.0"/>
+            </material>
+        </visual>
+        <collision>
+            <geometry>
+                <box size="0.5 0.1 0.1"/>
+            </geometry>
+            <origin xyz="0.15 ${-torso_width/2} 0.25" rpy="0 0.8 0.1"/>
+        </collision>
+    </link>
+
+    <joint name="$(arg prefix)human_left_arm_joint" type="fixed">
+        <parent link="$(arg prefix)human_base_link" />
+        <child link="$(arg prefix)human_left_arm_link" />
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+
+    <link name="$(arg prefix)human_left_arm_link">
+        <visual>
+            <geometry>
+                <box size="0.5 0.1 0.1"/>
+            </geometry>
+            <origin xyz="0.15 ${torso_width/2} 0.25" rpy="0 0.8 -0.1"/>
+            <material name="human_color">
+                <color rgba="0.2 0.2 0.8 1.0"/>
+            </material>
+        </visual>
+        <collision>
+            <geometry>
+                <box size="0.1 ${torso_width} 0.5"/>
+            </geometry>
+            <origin xyz="0.4 0 -0.2" rpy="0 0 0"/>
+        </collision>
+    </link>
+
+    <xacro:macro name="face_part" params="name geometry_type color xyz rpy *geometry_tag">
+        <joint name="$(arg prefix)human_${name}_joint" type="fixed">
+            <parent link="$(arg prefix)human_head_link" />
+            <child link="$(arg prefix)human_${name}_link" />
+            <origin xyz="${xyz}" rpy="${rpy}"/>
+        </joint>
+        <link name="$(arg prefix)human_${name}_link">
+            <visual>
+                <xacro:insert_block name="geometry_tag"/>
+                <material name="human_color">
+                    <color rgba="0.0 0.0 0.0 1.0"/>
+                </material>
+            </visual>
+            </link>
+        <gazebo reference="$(arg prefix)human_${name}_link">
+            <material>Gazebo/${color}</material>
+        </gazebo>
+    </xacro:macro>
+
+    <xacro:face_part name="left_eye" geometry_type="sphere" color="Black" 
+                     xyz="${eye_offset_x} ${eye_offset_y} ${head_radius + eye_offset_z}" rpy="0 0 0">
+        <geometry>
+            <sphere radius="${eye_radius}"/>
+        </geometry>
+    </xacro:face_part>
+
+    <xacro:face_part name="right_eye" geometry_type="sphere" color="Black" 
+                     xyz="${eye_offset_x} -${eye_offset_y} ${head_radius + eye_offset_z}" rpy="0 0 0">
+        <geometry>
+            <sphere radius="${eye_radius}"/>
+        </geometry>
+    </xacro:face_part>
+    
+    <xacro:face_part name="mouth" geometry_type="cylinder" color="Red" 
+                     xyz="${eye_offset_x} 0 ${head_radius + mouth_offset_z}" rpy="1.57 1.57 0">
+        <geometry>
+            <cylinder radius="${mouth_radius}" length="${mouth_length}"/>
+        </geometry>
+    </xacro:face_part>
+
+    <gazebo reference="$(arg prefix)human_base_link">
+        <material>Gazebo/Blue</material>
+    </gazebo>
+    <gazebo reference="$(arg prefix)human_head_link">
+        <material>Gazebo/Orange</material>
+    </gazebo>
+    <gazebo reference="$(arg prefix)human_leg_link">
+        <material>Gazebo/Blue</material>
+    </gazebo>
+    <gazebo reference="$(arg prefix)human_leg2_link">
+        <material>Gazebo/Blue</material>
+    </gazebo>
+    <gazebo reference="$(arg prefix)human_right_arm_link">
+        <material>Gazebo/Blue</material>
+    </gazebo>
+    <gazebo reference="$(arg prefix)human_left_arm_link">
+        <material>Gazebo/Blue</material>
+    </gazebo>
+
+</robot>

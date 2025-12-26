@@ -25,6 +25,11 @@ using namespace cv;
 
 namespace pathplanning{
 
+struct PathPoint {
+    cv::Point point;
+    int formation_idx; // 0: Wide (Line), 1: Narrow (Column) etc.
+};
+
 enum NodeType{
     obstacle = 0,
     free,
@@ -73,7 +78,7 @@ public:
     void InitVWAstar(Mat& _Map, VWAstarConfig _config = VWAstarConfig());
     // void InitVWAstar(Mat& _Map, Mat& Mask, VWAstarConfig _config = VWAstarConfig());
     void InitVWAstar(Mat& _Map, vector<Mat>& Masks, VWAstarConfig _config = VWAstarConfig());
-    void PathPlanning(Point _startPoint, Point _targetPoint, vector<Point>& path);
+    void PathPlanning(Point _startPoint, Point _targetPoint, vector<PathPoint>& path);
     void DrawPath(Mat& _Map, vector<Point>& path, InputArray Mask = noArray(), Scalar color = Scalar(0, 0, 255),
             int thickness = 1, Scalar maskcolor = Scalar(255, 255, 255));
 
@@ -88,9 +93,9 @@ private:
     // void MapProcess(Mat& Mask);
     void MapProcess(vector<Mat>& Masks);
     Node* FindPath();
-    void GetPath(Node* TailNode, vector<Point>& path);
+    void GetPath(Node* TailNode, vector<PathPoint>& path);
 
-    vector<Point> SmoothPath(const vector<Node*>& nodes);
+    vector<PathPoint> SmoothPath(const vector<Node*>& nodes);
     bool CheckLineCollision(Point p1, Point p2, int formation_idx);
 
 private:

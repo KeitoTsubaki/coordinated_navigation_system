@@ -62,7 +62,6 @@ class MultiRobotSimulator:
         map_type: Optional[str] = None,  # 【追加】引数にmap_typeを追加
         show_trail: bool = True,
         trail_step_interval: int = 20, # steps
-        trail_color: Tuple[int, int, int] = (255, 165, 0)
     ) -> None:
         if config_path is None:
             import importlib.resources
@@ -83,10 +82,12 @@ class MultiRobotSimulator:
         self.show_robot_margin = False
         self.show_formation_margin = False
 
+        self.show_lidar_visualization = False
+
         # 軌跡設定
         self.show_trail = show_trail
         self.trail_step_interval = trail_step_interval
-        self.trail_color = trail_color
+        self.trail_width = 10
 
         self.filter_robot = False
 
@@ -185,7 +186,9 @@ class MultiRobotSimulator:
         s_side = float(planner_params["formation_spacing_m"]) # 側面間距離
         m = float(planner_params["safety_margin_m"])
         look_ahead_m = planner_params.get("lookahead_m")
-        self.fixed_start_pos_m = planner_params.get("start_pos_m")
+        self.raw_start = planner_params.get("start_pos_m")
+        self.fixed_start_pos_m = (float(self.raw_start[0]), float(self.raw_start[1]))
+        self.fixed_start_theta = float(self.raw_start[2])
         self.fixed_goal_pos_m = planner_params.get("goal_pos_m")
         formation_costs = planner_params.get("formation_costs")
 
@@ -233,6 +236,8 @@ class MultiRobotSimulator:
             # 軌跡用の属性を初期化
             robot.trail_points = []
             robot.trail_step_counter = 0
+            robot.trail_color = color
+            robot.trail_width = self.trail_width
             
             self.robot_states.append(robot)
             self.robot_states[-1].sensor = self._create_sensor()
@@ -348,6 +353,8 @@ class MultiRobotSimulator:
         )
         robot.trail_points = []
         robot.trail_step_counter = 0
+        robot.trail_color = color
+        robot.trail_width = self.trail_width
         robot.sensor = self._create_sensor()
         self.robot_states.append(robot)
         return len(self.robot_states) - 1
@@ -602,9 +609,9 @@ class MultiRobotSimulator:
                 for pt in robot.trail_points:
                     pygame.draw.circle(
                         self.env.robot_and_lidar_layer, 
-                        self.trail_color, 
+                        robot.trail_color, 
                         (int(pt[0]), int(pt[1])), 
-                        4 # 点のサイズ
+                        robot.trail_width # 点のサイズ
                     )
             self._draw_robot(robot)
             if self.show_labels and self.show_debug_text:
@@ -792,8 +799,9 @@ class MultiRobotSimulator:
                 elif event.key == pygame.K_d:
                     self.show_debug_text = not self.show_debug_text
                 elif event.key == pygame.K_l:
-                    robot = self.robot_states[self.selected_robot_index]
-                    robot.lidar_enabled = not robot.lidar_enabled
+                    self.show_lidar_visualization = not self.show_lidar_visualization
+                    # robot = self.robot_states[self.selected_robot_index]
+                    # robot.lidar_enabled = not robot.lidar_enabled
                 elif event.key == pygame.K_p:
                     robot = self.robot_states[self.selected_robot_index]
                     robot.path_enabled = not robot.path_enabled
@@ -878,21 +886,25 @@ class MultiRobotSimulator:
         if self.env.screen is not None:
             self._draw_final_result()
 
-        if self.info_panel_texture is not None and hasattr(
-            self.info_panel_texture, "destroy"
-        ):
-            self.info_panel_texture.destroy()
-            self.info_panel_texture = None
-        if self.info_panel_renderer is not None and hasattr(
-            self.info_panel_renderer, "destroy"
-        ):
-            self.info_panel_renderer.destroy()
-            self.info_panel_renderer = None
-        if self.info_panel_window is not None and hasattr(
-            self.info_panel_window, "destroy"
-        ):
-            self.info_panel_window.destroy()
-            self.info_panel_window = None
+        # 安全に破棄するよう try-except または None チェックを強化
+        try:
+            if self.info_panel_texture is not None and hasattr(self.info_panel_texture, "destroy"):
+                self.info_panel_texture.destroy()
+        except Exception: pass
+        self.info_panel_texture = None
+
+        try:
+            if self.info_panel_renderer is not None and hasattr(self.info_panel_renderer, "destroy"):
+                self.info_panel_renderer.destroy()
+        except Exception: pass
+        self.info_panel_renderer = None
+
+        try:
+            if self.info_panel_window is not None and hasattr(self.info_panel_window, "destroy"):
+                self.info_panel_window.destroy()
+        except Exception: pass
+        self.info_panel_window = None
+
         self._info_panel_window_size = None
         self._info_panel_texture_size = None
         pygame.quit()
@@ -997,15 +1009,6 @@ class MultiRobotSimulator:
                 width=2,
             )
 
-        # 【追加】ゴール後の位置履歴を描画 (オレンジ色)
-        # if hasattr(robot, 'interval_positions') and robot.interval_positions:
-        #     for p in robot.interval_positions:
-        #         pygame.draw.circle(
-        #             self.env.robot_and_lidar_layer, 
-        #             self.trail_color, # Orange
-        #             (int(p[0]), int(p[1])), 
-        #             5
-        #         )
 
         if self.show_velocity:
             self._draw_velocity_arrow(robot)
@@ -1312,21 +1315,6 @@ class MultiRobotSimulator:
             pygame.time.get_ticks() / 1000.0 if pygame.get_init() else None
         )
 
-        # 【変更】ステップ数ベースの軌跡記録
-        if self.show_trail:
-            # 属性の初期化 (念のため)
-            if not hasattr(robot, 'trail_step_counter'):
-                robot.trail_step_counter = 0
-
-            # 最初の1点を追加
-            if not robot.trail_points:
-                robot.trail_points.append(robot.position)
-                robot.trail_step_counter = 0
-            else:
-                robot.trail_step_counter += 1
-                if robot.trail_step_counter >= self.trail_step_interval:
-                    robot.trail_points.append(robot.position)
-                    robot.trail_step_counter = 0
 
         velocity = 0.0
         if (
@@ -1342,6 +1330,22 @@ class MultiRobotSimulator:
         robot.velocity = velocity
         robot.last_update_time = current_time
         robot.position = (float(new_position[0]), float(new_position[1]))
+
+        # 【変更】ステップ数ベースの軌跡記録
+        if self.show_trail:
+            # 属性の初期化 (念のため)
+            if not hasattr(robot, 'trail_step_counter'):
+                robot.trail_step_counter = 0
+
+            # 最初の1点を追加
+            if not robot.trail_points:
+                robot.trail_points.append(robot.position)
+                robot.trail_step_counter = 0
+            else:
+                robot.trail_step_counter += 1
+                if robot.trail_step_counter >= self.trail_step_interval:
+                    robot.trail_points.append(robot.position)
+                    robot.trail_step_counter = 0
 
     def _create_sensor(self) -> LiDARSensor:
         return LiDARSensor(
@@ -1379,6 +1383,10 @@ class MultiRobotSimulator:
             robot.position = (float(position[0]), float(position[1]))
             robot.theta = 0.0
             robot.path.clear()
+            if self.show_trail:
+                robot.trail_points = [robot.position] # リセット
+                robot.trail_step_counter = 0
+
             robot.sensor_data = []
             robot.closest_obstacle = (float("inf"), 0.0)
             robot.last_update_time = None
@@ -1757,32 +1765,33 @@ class MultiRobotSimulator:
             self._filter_robot_reflections(robot)
 
         if robot.sensor_data:
-            filtered_counts: Dict[float, int] = {}
-            if robot.filtered_sensor_data:
-                for _distance, relative_angle in robot.filtered_sensor_data:
-                    filtered_counts[relative_angle] = (
-                        filtered_counts.get(relative_angle, 0) + 1
+            if self.show_lidar_visualization:
+                filtered_counts: Dict[float, int] = {}
+                if robot.filtered_sensor_data:
+                    for _distance, relative_angle in robot.filtered_sensor_data:
+                        filtered_counts[relative_angle] = (
+                            filtered_counts.get(relative_angle, 0) + 1
+                        )
+
+                for distance, relative_angle in robot.sensor_data:
+                    color = robot.color
+                    if filtered_counts.get(relative_angle):
+                        filtered_counts[relative_angle] -= 1
+                        color = self.lidar_filtered_points_color
+
+                    obstacle_angle = robot.theta - math.pi / 2 - relative_angle
+                    point = utils_module.AD2pos(
+                        distance,
+                        obstacle_angle,
+                        robot.position,
+                        self.env.PIXELS_PER_METER,
                     )
-
-            for distance, relative_angle in robot.sensor_data:
-                color = robot.color
-                if filtered_counts.get(relative_angle):
-                    filtered_counts[relative_angle] -= 1
-                    color = self.lidar_filtered_points_color
-
-                obstacle_angle = robot.theta - math.pi / 2 - relative_angle
-                point = utils_module.AD2pos(
-                    distance,
-                    obstacle_angle,
-                    robot.position,
-                    self.env.PIXELS_PER_METER,
-                )
-                pygame.draw.circle(
-                    self.env.robot_and_lidar_layer,
-                    color,
-                    (int(point[0]), int(point[1])),
-                    2,
-                )
+                    pygame.draw.circle(
+                        self.env.robot_and_lidar_layer,
+                        color,
+                        (int(point[0]), int(point[1])),
+                        2,
+                    )
             robot.closest_obstacle = robot.sensor.get_closest_obstacle_info(
                 robot.sensor_data
             )
@@ -1978,7 +1987,6 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         map_type=args.map_type,  # 【追加】引数として渡す
         show_trail=True,
         trail_step_interval=args.trail_step_interval,
-        trail_color=(255, 165, 0)
     )
     # if args.map_type is not None:
     #     try:

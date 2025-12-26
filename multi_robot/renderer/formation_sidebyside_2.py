@@ -35,7 +35,7 @@ class _RobotPlanCandidate:
 class FormationManager:
     """Encapsulates formation optimisation and related rendering."""
 
-    def __init__(self, simulator: "MultiRobotSimulator") -> None:
+    def __init__(self, simulator: "MultiRobotSimulator",lookback=10) -> None:
         self.simulator = simulator
         self.current_plan: Optional[FormationPlan] = None
         self.plan_candidates: Dict[int, FormationPlan] = {}
@@ -52,7 +52,7 @@ class FormationManager:
             0.0, float(getattr(simulator, "formation_centroid_sampling_interval", 0.0))
         )
         self._centroid_look_back_steps = max(
-            0, int(getattr(simulator, "formation_centroid_look_back_steps", 0))
+            0, lookback
         )
         self._centroid_min_displacement_pixels = max(
             0.0,
@@ -79,6 +79,8 @@ class FormationManager:
         self._last_centroid_sample_time: Optional[float] = None
         self._last_centroid_progress: Optional[Tuple[float, float, float]] = None
 
+        self.weights = [2.0 , 0.5, 0.5, 0.5, 1.0]
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -100,23 +102,21 @@ class FormationManager:
         if not math.isfinite(center[0]) or not math.isfinite(center[1]):
             return
 
-        now = pygame.time.get_ticks() / 1000.0
-        interval = self._centroid_sampling_interval
-        last_time = self._last_centroid_sample_time
+        # --- 重複登録防止ロジック ---
+        # 履歴が空でなければ、前回記録した位置との距離を確認する
+        if self._centroid_history:
+            _, last_pos = self._centroid_history[-1]
+            dx = center[0] - last_pos[0]
+            dy = center[1] - last_pos[1]
+            
+            # 前回からほとんど動いていない場合（=同じステップ内での重複呼び出しなど）は記録しない
+            # 1e-6 は非常に小さな値（約0.001mm相当）
+            if dx*dx + dy*dy < 1e-6:
+                return
+        # ------------------------
 
-        should_record = False
-        if interval <= 0.0:
-            should_record = True
-        elif last_time is None:
-            should_record = True
-        elif now - last_time >= interval:
-            should_record = True
-
-        if not should_record:
-            return
-
-        self._centroid_history.append((now, (float(center[0]), float(center[1]))))
-        self._last_centroid_sample_time = now
+        # 時間依存を排除した記録（時刻はダミーでOK）
+        self._centroid_history.append((0.0, (float(center[0]), float(center[1]))))
 
     def _centroid_progress_vector(self) -> Optional[Tuple[float, float, float]]:
         steps = self._centroid_look_back_steps
@@ -338,7 +338,7 @@ class FormationManager:
         if spacing is None:
             spacing = simulator.default_formation_spacing
 
-        weights = weights or (1.0 , 0.8, 0.5, 0.3, 0.5)
+        weights = weights or self.weights
         ego_index = ego_index if ego_index is not None else simulator.selected_robot_index
         if ego_index is not None and not (0 <= ego_index < len(simulator.robot_states)):
             raise IndexError("ego_index is out of range")
@@ -1199,7 +1199,9 @@ class FormationManager:
                     if simulator._robot_line_blocked(robot, target):
                         continue
 
+                # distance_to_obstacle = clearance - self.simulator.robot_radius_m
                 distance_to_obstacle = clearance
+                # print(distance_to_obstacle)
                 dx = target[0] - robot.position[0]
                 dy = target[1] - robot.position[1]
                 distance_pixels = math.hypot(dx, dy)

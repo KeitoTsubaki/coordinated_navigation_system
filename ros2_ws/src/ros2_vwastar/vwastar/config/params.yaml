@@ -2,7 +2,7 @@ vwastar_node:
   ros__parameters:
     Euclidean: true
     OccupyThresh: -1
-    InflateRadiusList: [1.5, 0.5]
+    InflateRadiusList: [2.0, 0.5]
     FormationCosts: [0.0, 5.0]
     rate: 10 #Hz - Active if ros_service = false
     ros_service: false #If false, subscribers are selected

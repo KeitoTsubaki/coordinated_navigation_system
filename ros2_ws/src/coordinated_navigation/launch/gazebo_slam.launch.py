@@ -33,7 +33,11 @@ def generate_launch_description():
 
     # World
     # world_file_path = os.path.join(pkg_coordination, 'worlds', 'test.world')
-    world_file_path = os.path.join(pkg_coordination, 'worlds', 'empty_with_obstacles.world')
+    # world_file_path = os.path.join(pkg_coordination, 'worlds', 'empty_with_obstacles.world')
+    world_file_path = os.path.join(pkg_coordination, 'worlds', 'empty.world')
+    # room_sdf = os.path.join(pkg_coordination, 'worlds', 'room2', 'model.sdf')
+    # room_sdf = os.path.join(pkg_coordination, 'worlds', 'room3', 'model.sdf')
+    room_sdf = os.path.join(pkg_coordination, 'worlds', 'room4', 'model.sdf')
 
     rviz_config_file = os.path.join(pkg_coordination, 'rviz', 'slam_toolbox.rviz')
 
@@ -113,7 +117,7 @@ def generate_launch_description():
         }.items()
     )
 
-    room_sdf = os.path.join(pkg_coordination, 'worlds', 'room1', 'model.sdf')
+    
     spawn_room = Node(
         package='gazebo_ros',
         executable='spawn_entity.py',

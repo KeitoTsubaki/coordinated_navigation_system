@@ -1,25 +1,79 @@
 # VW-Astar & Formation Planning Parameters
 
 # ロボットの半径 (m)
-# robot_radius: 0.35 # 例: WHILL Model CRの概算
 robot_radius_m: 0.5
 
-# フォーメーション間距離 (m) - ロボットの側面間の距離 (side-to-side)
-formation_spacing_m: 1.0
+# フォーメーション間距離 (m)
+formation_spacing_m: 0.5 #1.0
 
-# 安全マージン (m) - 障害物との余白
+# 安全マージン (m)
 safety_margin_m: 0.5
 
-lookahead_m: 0.5
+lookahead_m: 0.75  # good: 0.5
 
-# スタート位置 (メートル) [x, y]
-# コメントアウトするとランダム配置になります
-# start_pos_m: [-5.0, -6.0] # room1
-start_pos_m: [-6.0, -7.0] # complex
+# スタート位置 (メートル) [x, y, theta(rad)]
+# theta: 0=上(北), 1.57=左(西), 3.14=下(南), -1.57=右(東)
+# start_pos_m: [-8.0, 5.0, -1.57] # if None: Random spwan
+# start_pos_m: [-8.0, 0.0, -1.57]
+
+# Straight
+# start_pos_m: [-8.0, 6.0, -1.57] # S experiment
+# start_pos_m: [-8.0, 3.0, -1.57] # C
+# start_pos_m: [-8.0, 0.0, -1.57] # S
+# start_pos_m: [-8.0, -3.0, -1.57]  # S
+# start_pos_m: [-8.0, -6.0, -1.57]  # S
+# start_pos_m: [-7.0, 6.0, -1.57] # s but C
+# start_pos_m: [-7.0, 3.0, -1.57] # s but C
+# start_pos_m: [-7.0, 0.0, -1.57] # S
+# start_pos_m: [-7.0, -3.0, -1.57] # S
+# start_pos_m: [-7.0, -6.0, -1.57]  # S
+
+# Curve
+# start_pos_m: [-8.0, 4.0, -1.57] # S
+# start_pos_m: [-8.0, 5.0, -1.57] # S experiment
+# start_pos_m: [-8.0, 6.0, -1.57] # C
+# start_pos_m: [-8.0, 7.0, -1.57] # S
+# start_pos_m: [-8.0, 8.0, -1.57] # S
+# start_pos_m: [-6.0, 4.0, -1.57] # S
+# start_pos_m: [-6.0, 5.0, -1.57] # S
+# start_pos_m: [-6.0, 6.0, -1.57] # S
+# start_pos_m: [-6.0, 7.0, -1.57] # S
+# start_pos_m: [-6.0, 8.0, -1.57] # S
+
+# Shortcut
+# start_pos_m: [-8.0, 4.0, -1.57] # S
+# start_pos_m: [-8.0, 5.0, -1.57] # S
+# start_pos_m: [-8.0, 6.0, -1.57] # S
+start_pos_m: [-8.0, 7.0, -1.57] # S
+# start_pos_m: [-8.0, 8.0, -1.57] # S
+# start_pos_m: [-6.0, 4.0, -1.57] # S
+# start_pos_m: [-6.0, 5.0, -1.57] # S
+# start_pos_m: [-6.0, 6.0, -1.57] # S
+# start_pos_m: [-6.0, 7.0, -1.57] # S
+# start_pos_m: [-6.0, 8.0, -1.57] # S
 
 # ゴール位置 (メートル) [x, y]
-# コメントアウトするとランダム配置になります
-# goal_pos_m: [-5.0, 6.0] # room1
-goal_pos_m: [-6.0, 7.0] # complex
+goal_pos_m: [7.5, 0.0]
+# goal_pos_m: [8.0, 0.0]
+
 
 formation_costs: [0.0, 1.0]
+
+auto_start: true
+
+# --- 【追加】可視化設定 ---
+visualization:
+  show_info_panel: true    # 右側の情報パネル (Falseで非表示)
+  show_velocity: false      # ロボットの速度矢印・バー
+  show_global_path: true   # VWA*の探索パス・マージン
+  show_trail: true         # 軌跡 (点)
+  show_lidar: false        # LiDARの点群
+  show_debug_text: false
+  show_margin_map: false
+  show_robot_margin: false
+  show_formation_margin: false
+  
+  # "full": パラメータ領域込みで録画
+  # "simulation_only": シミュレーション画面のみ切り抜いて録画
+  recording_mode: "simulation_only"
+  recording_fps: 10

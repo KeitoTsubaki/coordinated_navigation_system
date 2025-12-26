@@ -16,6 +16,7 @@
 #include <cmath>
 #include <memory>
 #include "rclcpp/rclcpp.hpp"
+#include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <nav_msgs/msg/path.hpp>
@@ -32,6 +33,7 @@
 #include "VWAstar.h"
 #include "OccMapTransform.h"
 
+#include <visualization_msgs/msg/marker.hpp>
 
 using namespace cv;
 using namespace std;
@@ -74,6 +76,10 @@ private:
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub;
   rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr startPoint_sub;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr targetPoint_sub;
+  rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr robot1_sub_;
+  rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr robot2_sub_;
+  
+
 
   //Publishers
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr mask_pub;
@@ -82,12 +88,20 @@ private:
   rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr robot2_formation_target_pub;
   rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr startPoint_pub;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr targetPoint_pub;
+  rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr plan_marker_pub;
 
   //Services
   rclcpp::CallbackGroup::SharedPtr service_cb_group_;
   rclcpp::Service<path_msgs::srv::GetPath>::SharedPtr get_path_srv;
 
   geometry_msgs::msg::Quaternion createQuaternionFromYaw(double yaw);
+
+  // ▼▼▼ 追加: ロボットの位置と受信フラグを保持する変数 ▼▼▼
+  geometry_msgs::msg::Pose robot1_pose_;
+  geometry_msgs::msg::Pose robot2_pose_;
+  bool robot1_received_ = false;
+  bool robot2_received_ = false;
+  // ▲▲▲ 追加ここまで ▲▲▲
 
   // Service callbacks
   void getPathCallback(const std::shared_ptr<path_msgs::srv::GetPath::Request> request,
@@ -107,6 +121,8 @@ public:
   VWAstarROSNode();
   ~VWAstarROSNode(){}
 
+  void robot1PoseCallback(const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg);
+  void robot2PoseCallback(const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg);
 
 
 };

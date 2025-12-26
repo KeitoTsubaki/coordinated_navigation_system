@@ -15,14 +15,20 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
   nav2_msgs
   path_msgs
   tf2
+  tf2_geometry_msgs
   OpenCV
+  visualization_msgs
 )
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
+find_package(visualization_msgs REQUIRED)
 foreach(Dependency IN ITEMS ${THIS_PACKAGE_INCLUDE_DEPENDS})
   find_package(${Dependency} REQUIRED)
 endforeach()
+
+# find_package(tf2 REQUIRED)
+# find_package(tf2_geometry_msgs REQUIRED)
 
 include_directories(include
   $(rclcpp_INCLUDE_DIRS)

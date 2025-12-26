@@ -9,4 +9,6 @@
     <xacro:include filename="gazebo_imu.xacro"/>
     <xacro:include filename="gazebo_camera.xacro"/>
 
+    <xacro:include filename="human.xacro"/>
+
 </robot>

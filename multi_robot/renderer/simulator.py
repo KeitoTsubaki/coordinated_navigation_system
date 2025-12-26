@@ -23,9 +23,9 @@ from .env import LiDARSensor, SimCoreEnvironment, utils_module
 # from .formation import FormationManager
 # from .formation_previous_research import FormationManager
 # from .formation_sidebyside_1 import FormationManager
-# from .formation_sidebyside_2 import FormationManager
+from .formation_sidebyside_2 import FormationManager
 # from .formation_sidebyside_3 import FormationManager
-from .formation_sidebyside_4 import FormationManager
+# from .formation_sidebyside_4 import FormationManager
 # from .formation_sidebyside_5 import FormationManager
 # from .formation_sidebyside_6 import FormationManager
 # from .formation_sidebyside_7 import FormationManager
@@ -118,6 +118,8 @@ class MultiRobotSimulator:
         self.robot_radius_pixels = (
             self.env.ROBOT_RADIUS_M * 0.8 * self.env.PIXELS_PER_METER
         )
+        self.robot_radius_m = self.env.ROBOT_RADIUS_M
+        self.pixels_per_meter = self.env.PIXELS_PER_METER
         self.robot_frame_radius = self.env.ROBOT_RADIUS_M * self.env.PIXELS_PER_METER
         self.obstacle_color_rgb = to_rgb(self.env.OBSTACLE_COLOR)
         self.lidar_line_color = to_rgb(self.env.LIDAR_LINE_COLOR)
@@ -1181,11 +1183,12 @@ class MultiRobotSimulator:
     def _robot_clearance(self, robot: RobotState, point: Position) -> float:
         """Estimate free space beyond *point* using only *robot* observations."""
 
-        query_distance = self._robot_query_distance(robot, point)
-        observed_distance = self._robot_observed_distance(robot, point, default=0.0)
-        if observed_distance <= query_distance:
-            return 0.0
-        return observed_distance - query_distance
+        # query_distance = self._robot_query_distance(robot, point)
+        # observed_distance = self._robot_observed_distance(robot, point, default=0.0)
+        # if observed_distance <= query_distance:
+        #     return 0.0
+        # return observed_distance - query_distance
+        return self._distance_to_nearest_obstacle_map(point)
 
     def _robot_line_blocked(self, robot: RobotState, point: Position) -> bool:
         """Return ``True`` if *robot* perceives an obstacle before *point*.

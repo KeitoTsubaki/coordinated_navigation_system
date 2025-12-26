@@ -14,11 +14,33 @@ def generate_launch_description():
     ld = LaunchDescription()
 
     # Names and poses of the robots
+    # Room1
+    # robots = [
+    #     {'name': 'whill1', 'x_pose': '-6.0', 'y_pose': '3.0', 'z_pose': '0.1'},
+    #     {'name': 'whill2', 'x_pose': '-6.0', 'y_pose': '2.0', 'z_pose': '0.1'},
+    #     # ...
+    # ]
+    # Room2
+    # robots = [
+    #     {'name': 'whill1', 'x_pose': '-0.75', 'y_pose': '-7.0', 'z_pose': '0.1', 'head_yaw': '-1.4'},
+    #     {'name': 'whill2', 'x_pose': '0.75', 'y_pose': '-7.0', 'z_pose': '0.1', 'head_yaw': '1.4'},
+    #     # ...
+    # ]
+    # whill_yaw = '1.5708'
+    # robots = [
+    #     {'name': 'whill1', 'x_pose': '-7.0', 'y_pose': '-5.0', 'z_pose': '0.1', 'head_yaw': '-1.4'},
+    #     {'name': 'whill2', 'x_pose': '-7.0', 'y_pose': '-6.0', 'z_pose': '0.1', 'head_yaw': '1.4'},
+    #     # ...
+    # ]
+    # whill_yaw = '0.0'
+
+    # Room3
     robots = [
-        {'name': 'whill1', 'x_pose': '-5.0', 'y_pose': '-5.0', 'z_pose': '0.0'},
-        {'name': 'whill2', 'x_pose': '-5.0', 'y_pose': '-4.0', 'z_pose': '0.0'},
+        {'name': 'whill1', 'x_pose': '6.0', 'y_pose': '-13.0', 'z_pose': '0.1', 'head_yaw': '-1.4'},
+        {'name': 'whill2', 'x_pose': '7.5', 'y_pose': '-13.0', 'z_pose': '0.1', 'head_yaw': '1.4'},
         # ...
     ]
+    whill_yaw = '1.5708'
 
     # Get package directories
     pkg_gazebo = get_package_share_directory('gazebo_ros')
@@ -31,9 +53,13 @@ def generate_launch_description():
 
     # World
     # world_file_path = os.path.join(pkg_coordination, 'worlds', 'test.world')
-    world_file_path = os.path.join(pkg_coordination, 'worlds', 'empty_with_obstacles.world')
+    # world_file_path = os.path.join(pkg_coordination, 'worlds', 'empty_with_obstacles.world')
+    world_file_path = os.path.join(pkg_coordination, 'worlds', 'empty.world')
 
-    room_sdf = os.path.join(pkg_coordination,'worlds','room1','model.sdf')
+    # room_sdf = os.path.join(pkg_coordination,'worlds','room1','model.sdf')
+    # room_sdf = os.path.join(pkg_coordination,'worlds','room2','model.sdf')
+    # room_sdf = os.path.join(pkg_coordination,'worlds','room3','model.sdf')
+    room_sdf = os.path.join(pkg_coordination,'worlds','room4','model.sdf')
 
     # Launch Arguments
     use_sim_time = LaunchConfiguration('use_sim_time', default='true')
@@ -63,8 +89,14 @@ def generate_launch_description():
         default=os.path.join(
             pkg_coordination,
             'worlds',
-            'room1_map',
-            'room1_map.yaml',
+            # 'room1_map',
+            # 'room1_map.yaml',
+            # 'room2_map',
+            # 'room2_map.yaml',
+            # 'room3_map',
+            # 'room3_map.yaml',
+            'room4_map',
+            'room4_map.yaml',
         )
     )
     declare_map_file = DeclareLaunchArgument(
@@ -78,8 +110,14 @@ def generate_launch_description():
         default=os.path.join(
             pkg_coordination,
             'worlds',
-            'room1_localization',
-            'room1'
+            # 'room1_localization',
+            # 'room1'
+            # 'room2_localization',
+            # 'room2'
+            # 'room3_localization',
+            # 'room3'
+            'room4_localization',
+            'room4'
         ),
     )
     declare_map_dir = DeclareLaunchArgument(
@@ -148,7 +186,7 @@ def generate_launch_description():
         arguments=[
             '-file', room_sdf,
             '-entity', 'room',
-            '-x', '0.0', '-y', '0.0', '-z', '0.0'
+            '-x', '0.0', '-y', '0.0', '-z', '0.0',
         ],
     )
 
@@ -193,13 +231,13 @@ def generate_launch_description():
         output='screen',
         parameters=[{
             'use_sim_time': use_sim_time,
-            'InflateRadiusList': [1.5, 0.5], # ロボットサイズに合わせて調整
+            'InflateRadiusList': [2.0, 1.0], # ロボットサイズに合わせて調整
+            'FormationCosts': [0.0, 10.0],
             'rate': 10,
             'ros_service': True
         }]
     )
     ld.add_action(vwastar_node)
-
 
     last_action = None
     # ===== Spawn Robots =====
@@ -211,6 +249,7 @@ def generate_launch_description():
             xacro_file,
             mappings={
                 'prefix': prefix,
+                'head_yaw': robot.get('head_yaw', '0.0')
             }
         )
 
@@ -235,6 +274,7 @@ def generate_launch_description():
                 '-entity', robot['name'],
                 '-robot_namespace', namespace,
                 '-x', robot['x_pose'], '-y', robot['y_pose'], '-z', robot['z_pose'],
+                '-Y', whill_yaw,
                 '-unpause',
             ],
             output='screen',
@@ -246,7 +286,7 @@ def generate_launch_description():
                 slam_param_fle,
                 {'use_sim_time': use_sim_time},
                 {'map_file_name': map_dir},
-                {'map_start_pose': [float(robot['x_pose']), float(robot['y_pose']), float(robot['z_pose'])]},
+                {'map_start_pose': [float(robot['x_pose']), float(robot['y_pose']), float(whill_yaw)]},
                 {'odom_frame': robot['name'] + '/odom'},
                 {'base_frame': robot['name'] + '/base_footprint'}
             ],
@@ -281,6 +321,8 @@ def generate_launch_description():
     for robot in robots:
         namespace =  '/' + robot['name'] 
 
+        rid = robot['name'].replace('whill', '')
+
         namespaced_rviz_config = ReplaceString(
             source_file=rviz_config,
             replacements={'<robot_namespace>': namespace}
@@ -306,6 +348,9 @@ def generate_launch_description():
         )
 
         # Coordinated navigation node (Updated to use VWAstar service)
+        my_role = 'leader' if rid == '1' else 'follower'
+        my_partner = 'whill2' if rid == '1' else 'whill1'
+        
         coordinated_nav = Node(
             package='coordinated_navigation',
             executable='coordinated_navigation_node',
@@ -317,11 +362,20 @@ def generate_launch_description():
                     'use_sim_time': use_sim_time,
                     'robot_namespace': namespace,
                     'policy.model_path': policy_model_path,
+                    'robot_id': rid,                # これで左右が分かれます
+                    'formation.width': 1.5,         # ロボット間の距離 (m)
+                    'formation.offset_mode': 'auto',
+                    'navigation.lookahead_distance': 1.0,
+                    'role': my_role,
+                    'partner_name': my_partner,
                 }
             ],
         )
 
         ld.add_action(start_rviz)
         ld.add_action(coordinated_nav)
+
+    
+
 
     return ld

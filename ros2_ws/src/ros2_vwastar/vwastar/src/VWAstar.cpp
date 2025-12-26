@@ -36,7 +36,7 @@ void VWAstar::InitVWAstar(Mat& _Map, vector<Mat>& Masks, VWAstarConfig _config)
     MapProcess(Masks);
 }
 
-void VWAstar::PathPlanning(Point _startPoint, Point _targetPoint, vector<Point>& path)
+void VWAstar::PathPlanning(Point _startPoint, Point _targetPoint, vector<PathPoint>& path)
 {
     // Get variables
     startPoint = _startPoint;
@@ -301,10 +301,10 @@ bool VWAstar::CheckLineCollision(Point p1, Point p2, int formation_idx) {
     return false; // 衝突なし(通れる)
 }
 
-vector<Point> VWAstar::SmoothPath(const vector<Node*>& nodes) {
+vector<PathPoint> VWAstar::SmoothPath(const vector<Node*>& nodes) {
     if (nodes.empty()) return {};
     
-    vector<Point> smoothed_path;
+    vector<PathPoint> smoothed_path;
     vector<Node*> waypoints;
     
     // スタート地点を登録
@@ -320,10 +320,23 @@ vector<Point> VWAstar::SmoothPath(const vector<Node*>& nodes) {
         
         // current_idx + 1 から順に見ていき、直線を引ける限界を探す
         for(int i = current_idx + 1; i < (int)nodes.size(); ++i) {
+            
+            // ▼▼▼ 追加: フォーメーションIDが変化したら、そこで直線を打ち切る ▼▼▼
+            if (nodes[i]->formation_idx != current_fmt) {
+                // 変化点の直前(i-1)までを採用する。
+                // ただし、いきなり隣(current_idx+1)で変化している場合はそこを採用。
+                if (i == current_idx + 1) {
+                    valid_idx = i;
+                } else {
+                    valid_idx = i - 1;
+                }
+                break;
+            }
+            // ▲▲▲ 追加ここまで ▲▲▲
             // 現在の地点(current)から候補地点(nodes[i])への直線チェック
             // ※形態は「出発点(current)」のものを使用して判定します
             bool is_collision = CheckLineCollision(current_pt, nodes[i]->point, current_fmt);
-            
+
             if(is_collision) {
                 // 衝突した場合、その一つ手前(i-1)までが有効だった直線の限界
                 // ただし、iがcurrentのすぐ隣(current+1)で衝突した場合は
@@ -353,31 +366,36 @@ vector<Point> VWAstar::SmoothPath(const vector<Node*>& nodes) {
     for(size_t i = 0; i < waypoints.size() - 1; ++i) {
         Point p1 = waypoints[i]->point;
         Point p2 = waypoints[i+1]->point;
+        int fmt_idx = waypoints[i]->formation_idx; // この区間のフォーメーション
         
-        // 直線上の座標を一定間隔(ピクセル単位)で取得
         LineIterator it(Map, p1, p2, 8);
         for(int k = 0; k < it.count; k++, ++it) {
-            // セグメントのつなぎ目で重複する点を避ける
             if(i > 0 && k == 0) continue; 
-            smoothed_path.push_back(it.pos());
+            
+            // 座標とフォーメーションIDをセットで保存
+            smoothed_path.push_back({it.pos(), fmt_idx});
         }
     }
 
-    vector<Point> spaced_smoothed_path;
-    int step = 20;
-    for(size_t i=0; i<smoothed_path.size(); i+=step)
-    {
-        spaced_smoothed_path.push_back(smoothed_path[i]);
-    }
-    if (spaced_smoothed_path.back() != smoothed_path.back())
-    {
-        spaced_smoothed_path.push_back(smoothed_path.back());
-    }
-    return spaced_smoothed_path;
-    // return smoothed_path;
+    // vector<PathPoint> spaced_smoothed_path;
+    // int step = 20;
+    // for(size_t i=0; i<smoothed_path.size(); i+=step)
+    // {
+    //     spaced_smoothed_path.push_back(smoothed_path[i]);
+    // }
+    // // 最後の点を確実に追加
+    // if (spaced_smoothed_path.empty() || spaced_smoothed_path.back().point != smoothed_path.back().point)
+    // {
+    //     spaced_smoothed_path.push_back(smoothed_path.back());
+    // }
+    
+    // return spaced_smoothed_path;
+
+    // ▼▼▼ 修正: 間引き処理を削除し、全ての点を返す ▼▼▼
+    return smoothed_path;
 }
 
-void VWAstar::GetPath(Node* TailNode, vector<Point>& path)
+void VWAstar::GetPath(Node* TailNode, vector<PathPoint>& path)
 {
     PathList.clear();
     path.clear();
@@ -392,15 +410,9 @@ void VWAstar::GetPath(Node* TailNode, vector<Point>& path)
 
     std::reverse(PathList.begin(), PathList.end());
 
+    // SmoothPathは既に vector<PathPoint> を返すように修正済みなので、
+    // ここで型が一致するようになります。
     path = SmoothPath(PathList);
-
-    // Save path to vector<Point>
-    // int length = PathList.size();
-    // for(int i = 0;i < length;i++)
-    // {
-    //     path.push_back(PathList.back()->point);
-    //     PathList.pop_back();
-    // }
 
     // Release memory
     for(Node* node : allocated_nodes)
