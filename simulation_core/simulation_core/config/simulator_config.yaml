@@ -16,7 +16,8 @@ speed_adjustment:
   eta_theta: 0.5
   eta_d: 2.0
   k_d: 30
-  omega_fixed: 1.2566370614 # 0.4 * pi rad/s
+  # omega_fixed: 1.2566370614 # 0.4 * pi rad/s
+  omega_fixed: 0.5
   T_df: 0.6
 robot:
   radius_m: 0.6          # ロボットの安全半径（m）
@@ -30,10 +31,16 @@ robot:
   T_dt_m_random: 10 # The threshold distance between the start and end position (
   T_dt_m_empty: 20
   T_dt_m_image: 15
-  v_max: 1.2            # 最大線速度（m/s）
-  omega_max: 4.71        # 最大角速度（rad/s） 1.5 * pi
-  a_max: 2            # 最大線加速度（m/ss）
-  alpha_max: 12.61        # 最大角加速度（rad/ss） 4 * pi
+  # v_max: 1.2            # 最大線速度（m/s）
+  # omega_max: 4.71        # 最大角速度（rad/s） 1.5 * pi
+  # a_max: 2            # 最大線加速度（m/ss）
+  # alpha_max: 12.61        # 最大角加速度（rad/ss） 4 * pi
+  
+  v_max: 0.6
+  omega_max: 1.0
+  a_max: 0.3
+  alpha_max: 1.0
+  
   max_d: 0.12          # 1ステップで進む最大距離（m）
   max_theta: 0.47    # 1ステップで回転する最大角度（rad）0.15 * pi
   num_check_points: 16  # ロボット周囲の障害物チェックポイントの数
@@ -43,7 +50,7 @@ formation:
   default_type: "line"  # 既定の隊形タイプ
   spacing_m: 1.5          # ロボット間隔（m）
   centroid_sampling_interval: 0.5  # C3: サンプリング周期（秒）
-  look_back_steps: 2                # C3: 参照する過去サンプル数
+  look_back_steps: 10                # C3: 参照する過去サンプル数
   angular_tolerance: 5.0          # C3: 直交角度の許容誤差（度）
   min_displacement: 0.1            # C3: 判定に必要な最小移動量（m）
 
@@ -57,12 +64,12 @@ lidar:
   points_color: "#04C4CD"  # スキャン点の色
 
 window:
-  window_title: "2D LiDAR Simulation"
+  window_title: "2D Simulation"
   size: 800 # マップのサイズ（ピクセル）
   background_color: "#FFFFFF"
 
 obstacles:
-  default_map_type: "image"  # "trap_shaped", "zigzag", "random", "empty", "image"
+  default_map_type: "random"  # "trap_shaped", "zigzag", "random", "empty", "image"
   count: 6            # ランダム障害物の数
   min_size_m: 20
   max_size_m: 80
@@ -70,6 +77,6 @@ obstacles:
   color: "#C2C4D0"  # 障害物の色（黒）
   l_passage: 0 # length of the passage in the zigzag-shaped map (meters)
   image_map:
-    path: "maps/room1_map.png"  # Set to the bitmap you want to use, e.g., ../ros2_ws/src/maps/map1/map1.png
+    path: ""  # Set to the bitmap you want to use, e.g., ../ros2_ws/src/maps/map1/map1.png
     start_spawn_area: [0.05, 0.25, 0.65, 0.9]
     target_spawn_area: [0.7, 0.95, 0.1, 0.35]
