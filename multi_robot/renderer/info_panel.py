@@ -10,7 +10,7 @@ import pygame
 from .types import Color
 
 if False:  # pragma: no cover - type checking helper
-    from .simulator import MultiRobotSimulator
+    from .simulator_v5 import MultiRobotSimulator
 
 
 class InfoPanelRenderer:

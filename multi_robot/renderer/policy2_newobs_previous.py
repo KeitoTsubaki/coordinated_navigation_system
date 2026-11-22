@@ -27,7 +27,7 @@ from .types import RobotState
 from .utils import ensure_repo_root_on_path
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    from .simulator import MultiRobotSimulator
+    from .simulator_v5 import MultiRobotSimulator
 
 
 @dataclass

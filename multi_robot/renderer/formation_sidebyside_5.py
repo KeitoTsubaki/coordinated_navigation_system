@@ -15,7 +15,7 @@ from .types import FormationPlan, Position
 from .utils import brighten_color, with_alpha
 
 if False:  # pragma: no cover - type checking helper
-    from .simulator import MultiRobotSimulator
+    from .simulator_v5 import MultiRobotSimulator
 
 
 @dataclass(frozen=True)
