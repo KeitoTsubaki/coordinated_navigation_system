@@ -34,7 +34,7 @@ class FormationManager(SideBySide4Manager):
     """Formation manager that follows the side-by-side V5 specification.
 
     The implementation keeps the rendering and policy integration offered by
-    :class:`~multi_robot.renderer.formation_sidebyside_4.FormationManager` but
+    :class:`~multi_robot.navigation.formation_sidebyside_4.FormationManager` but
     swaps out the optimisation pipeline so that it follows the algorithm
     described in the accompanying research memo.  The main changes are:
 

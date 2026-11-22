@@ -14,7 +14,7 @@ import datetime
 from tqdm import tqdm
 
 # simulator_v5.py と同じ階層、またはパスが通った場所に配置してください
-from multi_robot.renderer.simulator_v5 import MultiRobotSimulator
+from multi_robot.navigation.simulator_v5 import MultiRobotSimulator
 
 # TeamNavigationControllerの代わりに何もしないダミークラス
 class DummyTeamNav:

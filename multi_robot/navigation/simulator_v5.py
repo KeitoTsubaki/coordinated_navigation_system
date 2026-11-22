@@ -9,14 +9,10 @@ from collections import deque
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 import yaml
 from pathlib import Path
-import datetime
-import os
-import csv
 
 import numpy as np
 import pygame
 from scipy import ndimage
-import imageio
 
 try:  # pragma: no cover - optional dependency
     from pygame._sdl2.video import Renderer as SDLRenderer, Texture as SDLTexture, Window as SDLWindow
@@ -80,7 +76,11 @@ class MultiRobotSimulator:
 
         self.env = SimCoreEnvironment(render_mode=render_mode, config_path=config_path)
 
-        
+        # Draw properties
+        self.show_margin_map = False
+        self.show_velocity = False
+        self.show_robot_margin = False
+        self.show_formation_margin = False
 
         self.show_lidar_visualization = False
 
@@ -90,12 +90,6 @@ class MultiRobotSimulator:
         self.trail_width = 10
 
         self.filter_robot = False
-
-        # --- 【追加】録画用変数 ---
-        self.is_recording = False
-        self.frames = []
-        self.current_recording_path: Optional[str] = None # 保存先パスの一時保持用
-        # ----------------------
 
         # 画像パスの解決ロジック
         self._image_map_path_override: Optional[str] = None
@@ -160,7 +154,7 @@ class MultiRobotSimulator:
         # =========================================================================
         # 【修正】Config読み込みと VW-Astar パラメータ計算
         # =========================================================================
-        planner_config_path = Path(__file__).parent / "planner_params.yaml"
+        planner_config_path = Path(__file__).resolve().parents[1] / "config" / "planner_params.yaml"
         planner_params = {
             "robot_radius_m": self.env.ROBOT_RADIUS_M, # デフォルト
             "formation_spacing_m": 0.5, # デフォルト側面間距離
@@ -180,39 +174,6 @@ class MultiRobotSimulator:
             except Exception as e:
                 print(f"[ERROR] Failed to load planner params: {e}")
 
-        
-
-        # === 【追加】可視化設定の適用 ===
-        viz_params = planner_params.get("visualization", {})
-        
-        # デフォルト値は既存の変数の状態(CLI引数など)を維持しつつ、YAMLにあれば上書き
-        if "show_velocity" in viz_params:
-            self.show_velocity = viz_params["show_velocity"]
-            
-        if "show_lidar" in viz_params:
-            self.show_lidar_visualization = viz_params["show_lidar"]
-
-        if "show_trail" in viz_params:
-            self.show_trail = viz_params["show_trail"]
-
-        # 新規フラグ: VWA*パス表示用 (デフォルトTrue)
-        self.show_global_path = viz_params.get("show_global_path", True)
-
-        self.show_margin_map = viz_params.get("show_margin_map", True)
-        self.show_robot_margin = viz_params.get("show_robot_margin", True)
-        self.show_formation_margin = viz_params.get("show_formation_margin", True)
-
-        # InfoPanelの制御用変数 (後でInfoPanel初期化後に適用するため変数に入れておく)
-        self.show_info_panel = viz_params.get("show_info_panel", show_info_panel)
-
-        self.show_debug_text = viz_params["show_debug_text"]
-
-        self.recording_mode = viz_params.get("recording_mode", "full")
-        print(f"[INFO] Recording mode: {self.recording_mode}")
-        self.recording_fps = viz_params.get("recording_fps", 10)
-        self.video_dir = "."
-        # ==============================
-
         # CLI引数がある場合は、それを「側面間距離」として優先使用
         if formation_spacing_m is not None:
             if formation_spacing_m <= 0:
@@ -220,40 +181,31 @@ class MultiRobotSimulator:
             planner_params["formation_spacing_m"] = formation_spacing_m
 
         # パラメータ取得
-        self.robot_radius_m = float(planner_params["robot_radius_m"])
-        self.env.ROBOT_BODY_RADIUS_M = self.robot_radius_m
-        self.formation_spacing_side = float(planner_params["formation_spacing_m"]) # 側面間距離
-        s_side = self.formation_spacing_side + self.robot_radius_m * 2
+        r = float(planner_params["robot_radius_m"])
+        self.env.ROBOT_BODY_RADIUS_M = r
+        s_side = float(planner_params["formation_spacing_m"]) # 側面間距離
         m = float(planner_params["safety_margin_m"])
         look_ahead_m = planner_params.get("lookahead_m")
         self.raw_start = planner_params.get("start_pos_m")
         self.fixed_start_pos_m = (float(self.raw_start[0]), float(self.raw_start[1]))
         self.fixed_start_theta = float(self.raw_start[2])
         self.fixed_goal_pos_m = planner_params.get("goal_pos_m")
-        self.formation_costs = planner_params.get("formation_costs")
-
-        if s_side is not None:
-            self.default_formation_spacing_m = s_side
-            self.default_formation_spacing = s_side * self.env.PIXELS_PER_METER
-
-        auto_start = planner_params.get("auto_start")
-        if auto_start:
-            self.start_policy_control()
+        formation_costs = planner_params.get("formation_costs")
 
         # インフレート半径の計算
         # 1. 横並び (Wide): robot radius + spacing/2 + safety margin
-        radius_wide = self.robot_radius_m * 2.0 + self.formation_spacing_side + m
+        radius_wide = r * 2.0 + s_side / 2.0 + m
         # 2. ロボット1台分 (Narrow): robot radius + safety margin
-        radius_narrow = self.robot_radius_m + m
+        radius_narrow = r + m
 
-        print(f"[DEBUG] VWAstar Params: R={self.robot_radius_m:.2f}, Formation Space={self.formation_spacing_side:.2f}, Margin={m:.2f}")
+        print(f"[DEBUG] VWAstar Params: R={r:.2f}, S_side={s_side:.2f}, Margin={m:.2f}")
         print(f"[DEBUG] Inflation Radii: Wide={radius_wide:.2f}m, Narrow={radius_narrow:.2f}m")
-        print(f"[DEBUG] Formation Costs: {self.formation_costs}")
+        print(f"[DEBUG] Formation Costs: {formation_costs}")
 
         # VW-Astarのセットアップ
         vw_config = VWAstarConfig()
         vw_config.InflateRadiusListM = [radius_wide, radius_narrow]
-        vw_config.FormationCosts = self.formation_costs
+        vw_config.FormationCosts = formation_costs
         self.vw_planner = VWAstarPlanner(vw_config, pixels_per_meter=self.env.PIXELS_PER_METER)
         self.team_nav = TeamNavigationController(self, self.vw_planner)
         self.team_nav.lookahead_dist_m = look_ahead_m
@@ -277,7 +229,7 @@ class MultiRobotSimulator:
             robot = RobotState(
                 name=name,
                 position=(self.env.SCREEN_CENTER_X, self.env.SCREEN_CENTER_Y),
-                theta=self.fixed_start_theta,
+                theta=0.0,
                 color=color,
                 path=deque(maxlen=self.path_history or None),
             )
@@ -290,23 +242,20 @@ class MultiRobotSimulator:
             self.robot_states.append(robot)
             self.robot_states[-1].sensor = self._create_sensor()
 
+        self.info_panel = InfoPanelRenderer(self)
         self.formation = FormationManager(self)
         self._last_display_size = None
+        self.info_panel_window = None
+        self.info_panel_renderer = None
+        self.info_panel_texture = None
+        self._info_panel_window_size = None
+        self._info_panel_texture_size = None
         self._restart_snapshot = None
 
-        # --- サイドバー設定 ---
-        self.sidebar_width = 300
-        self.sidebar_surface = pygame.Surface((self.sidebar_width, self.env.SCREEN_H))
-        self.sidebar_font = pygame.font.SysFont("consolas", 16, bold=True)
-        # -------------------
-
         # ディスプレイ設定
-        if self.show_info_panel:
-            total_width = self.env.SCREEN_W + self.sidebar_width
-        else:
-            total_width = self.env.SCREEN_W
+        total_width = self.env.SCREEN_W + self.info_panel.width
         if self.env.render_mode == "human":
-            pygame.display.set_mode((total_width, self.env.SCREEN_H))
+            pygame.display.set_mode((self.env.SCREEN_W, self.env.SCREEN_H))
             self.display_surface = pygame.display.get_surface()
             self._last_display_size = self.display_surface.get_size()
             self.env.screen = pygame.Surface((self.env.SCREEN_W, self.env.SCREEN_H))
@@ -317,6 +266,10 @@ class MultiRobotSimulator:
             self._last_display_size = self.display_surface.get_size()
         self.simulation_surface = self.env.screen
 
+        if self.info_panel.visible:
+            self.resize_display_surface(self.info_panel.width)
+        else:
+            self.resize_display_surface(0)
 
         # マップ記述
         self.map_descriptions = {
@@ -332,102 +285,8 @@ class MultiRobotSimulator:
         print(f"[DEBUG] Initializing map with type: {target_map_type}")
         self.set_map(target_map_type)
 
-        # --- 【追加】評価指標計算用の変数 ---
-        self.metrics_enabled = True
-        self.metrics_epsilon = 0.1  # 許容誤差 (m)
-        self.test_epsilons = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.5, 1.0]
-        self.metrics_data = {
-            "total_steps": 0,
-            "success": False,
-            "success_time": 0.0,
-            "fmr_maintain_steps": 0,    # FMR用カウンタ
-            "fmr_valid_steps": 0,       # FMR計算対象ステップ数
-            "frt_events": [],           # FRT (復帰時間) のリスト
-            "is_broken": False,         # 現在隊形が崩れているか
-            "break_start_time": 0.0,    # 崩壊開始時刻
-            "prev_centroid_m": None,    # 1ステップ前の重心位置
-            "step_errors": [],           # 毎ステップの最大誤差ログ
-            "fps_sum": 0.0,
-            "fps_count": 0
-        }
-        # -------------------------------
-
-
-
-    # --- 【追加】録画制御メソッド ---
-    def start_recording(self, filepath: Optional[str] = None) -> None:
-        self.is_recording = True
-        self.frames = []
-        self.current_recording_path = filepath
-        print(f"[INFO] Video recording started. (Filepath: {filepath})")
-
-    def stop_recording(self, status) -> None:
-        self.is_recording = False
-        print(f"[INFO] Recording stopped. Saving {len(self.frames)} frames...")
-        if not self.frames:
-            return
-
-        try:
-            if self.current_recording_path:
-                filename = self.current_recording_path
-            else:
-                # 指定がなければ自動生成
-                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                base_dir = self.video_dir.rstrip("/")
-                filename = f"{base_dir}/sim_{timestamp}_{status}.mp4"
-
-            # ディレクトリがなければ作成
-            os.makedirs(os.path.dirname(os.path.abspath(filename)), exist_ok=True)
-
-            # MP4保存 (fps=30)
-            imageio.mimsave(filename, self.frames, fps=self.recording_fps)
-            print(f"[INFO] Video saved to {filename}")
-        except ImportError:
-            print("[ERROR] 'imageio' not found. Please install it (pip install imageio[ffmpeg]) to save videos.")
-        except Exception as e:
-            print(f"[ERROR] Failed to save video: {e}")
-        
-        self.frames = [] # メモリ解放
-        self.current_recording_path = None
-    # ---------------------------
-    
-    def start_policy_control(self):
-        controller = self._policy_controller
-        if controller is None and self.policy_model_path:
-            controller = PolicyController(self, self.policy_model_path)
-            self._policy_controller = controller
-
-        if controller is not None:
-            previous_state = controller.active
-            new_state = controller.toggle()
-            if new_state != previous_state:
-                self.policy_control_active = new_state
-                if new_state:
-                    self.manual_control = False
-                    self.start_recording()
-                    # --- 【追加】計測データのリセット ---
-                    print("[INFO] Resetting metrics for new episode.")
-                    self.metrics_data = {
-                        "total_steps": 0,
-                        "success": False,
-                        "success_time": 0.0,
-                        "fmr_maintain_steps": 0,
-                        "fmr_valid_steps": 0,
-                        "frt_events": [],
-                        "is_broken": False,
-                        "break_start_time": 0.0,
-                        "prev_centroid_m": None,
-                        "step_errors": [],
-                        "fps_sum": 0.0,
-                        "fps_count": 0
-                    }
-                    # --------------------------------
-                else:
-                    self.manual_control = self._manual_control_enabled
-        else:
-            print(
-                "Policy control is unavailable. Call load_policy_model() to configure a model."
-            )
+        if not show_info_panel:
+            self.set_info_panel_visible(False)
 
     def _describe_image_map(self) -> str:
         """Return a human-friendly description for the image map configuration."""
@@ -489,7 +348,7 @@ class MultiRobotSimulator:
             name=name,
             color=color,
             position=position,
-            theta=self.fixed_start_theta,
+            theta=theta,
             path=deque(maxlen=self.path_history or None),
         )
         robot.trail_points = []
@@ -703,60 +562,6 @@ class MultiRobotSimulator:
         self._recenter_robots()
         # self.formation.clear()
         return True
-    
-    # --- Sidebar Drawing ---
-    def _draw_sidebar(self) -> None:
-        self.sidebar_surface.fill((20, 20, 20)) # Dark gray background
-
-        lookahead = self.team_nav.lookahead_dist_m if hasattr(self.team_nav, "lookahead_dist_m") else "?"
-        spacing = self.team_nav.robot_spacing_m if hasattr(self.team_nav, "robot_spacing_m") else "?"
-        margins = self.vw_planner.config.InflateRadiusListM if hasattr(self, "vw_planner") else []
-        margin_val = margins[0] if margins else "?"
-        
-        # Policy Params (dummy for now)
-        brake_dist = 1.5 
-        brake_angle = 45 
-
-        avg_fps = 0.0
-        if self.metrics_data.get("fps_count", 0) > 0:
-            avg_fps = self.metrics_data["fps_sum"] / self.metrics_data["fps_count"]
-
-        texts = [
-            f"=== Simulation Status ===",
-            f"Sim Time: {pygame.time.get_ticks()/1000:.1f} s",
-            f"Sim FPS:  {self.fps:.1f}",
-            f"Avg FPS:  {avg_fps:.1f}",
-            f"",
-            f"=== Params ===",
-            f"Start Pos:      {self.raw_start[:-1]}",
-            f"Goal Pos:       {self.fixed_goal_pos_m}",
-            f"Lookahead Dist: {lookahead} m",
-            f"Form. Spacing:  {self.formation_spacing_side} m",
-            f"Form. Costs:    {self.formation_costs}",
-            f"Safety Margin:  {margin_val} m",
-            f"Brake Dist:     {brake_dist} m",
-            f"Brake Angle:    {brake_angle} deg",
-            f"",
-            f"=== Recording ===",
-            f"State:    {'[REC]' if self.is_recording else 'STOP'}",
-            f"Mode:     {self.recording_mode}",
-            f"FPS:      {self.recording_fps}",
-            f"Frames:   {len(self.frames)}"
-        ]
-
-        padding_x = 10
-        padding_y = 10
-        line_height = 25
-
-        for i, text in enumerate(texts):
-            color = (200, 200, 200)
-            if "[REC]" in text: color = (255, 50, 50)
-            if "Mode:" in text: color = (100, 200, 255)
-            
-            surface = self.sidebar_font.render(text, True, color)
-            self.sidebar_surface.blit(surface, (padding_x, padding_y + i * line_height))
-        
-        pygame.draw.line(self.sidebar_surface, (100, 100, 100), (0, 0), (0, self.env.SCREEN_H), 2)
 
     # ------------------------------------------------------------------
     # Rendering utilities
@@ -768,11 +573,6 @@ class MultiRobotSimulator:
         else:
             self._clock.tick()
         self._fps = self._clock.get_fps()
-
-        if self.policy_control_active and self.metrics_enabled:
-            # 最初の数フレームは0になることがあるため除外してもよいが、単純な平均をとる
-            self.metrics_data["fps_sum"] += self._fps
-            self.metrics_data["fps_count"] += 1
 
         if self.policy_control_active:
              self.team_nav.update()
@@ -817,12 +617,7 @@ class MultiRobotSimulator:
             if self.show_labels and self.show_debug_text:
                 self._draw_label(robot)
 
-        # --- 【修正】VWA*パスの描画制御 ---
-        if self.show_global_path:
-            self.team_nav.draw(self.env.robot_and_lidar_layer)
-        elif self.team_nav.team_goal:
-            pygame.draw.circle(self.env.robot_and_lidar_layer, (255, 0, 0), (int(self.team_nav.team_goal[0]), int(self.team_nav.team_goal[1])), 8)
-        # -------------------------------
+        self.team_nav.draw(self.env.robot_and_lidar_layer)
 
         self._draw_hud()
 
@@ -830,34 +625,14 @@ class MultiRobotSimulator:
         self.env.screen.blit(self.env.robot_and_lidar_layer, (0, 0))
 
         self.display_surface.fill(self.env.BACKGROUND_COLOR)
-        # Left: Simulation
         self.display_surface.blit(self.simulation_surface, (0, 0))
-        # Right: Sidebar
-        if self.show_info_panel:
-            self._draw_sidebar()
-            self.display_surface.blit(self.sidebar_surface, (self.env.SCREEN_W, 0))
-
+        if self.info_panel.visible:
+            self.info_panel.draw()
+        else:
+            self.present_info_panel_surface(None, 0, self.env.SCREEN_H)
 
         if self.env.render_mode == "human":
             pygame.display.flip()
-
-        # --- 【追加】録画中のフレーム保存 ---
-        if self.is_recording:
-            # display_surface(表示されている画面そのまま)をキャプチャ
-            # pygameは (width, height, 3) で返すので、(height, width, 3) に変換
-            try:
-                target_surface = self.display_surface
-                if self.recording_mode == "simulation_only":
-                    # シミュレーション部分のみのSurfaceを使用
-                    target_surface = self.simulation_surface
-
-                # array化して保存
-                array = pygame.surfarray.array3d(target_surface)
-                array = np.transpose(array, (1, 0, 2))
-                self.frames.append(array)
-            except Exception:
-                pass # 失敗しても止めない
-        # ---------------------------------
 
         return self.display_surface
 
@@ -867,6 +642,122 @@ class MultiRobotSimulator:
         surface = self.draw_scene()
         array = pygame.surfarray.array3d(surface)
         return np.transpose(array, (1, 0, 2))
+
+    # ------------------------------------------------------------------
+    # Info panel window management
+    # ------------------------------------------------------------------
+    def present_info_panel_surface(
+        self,
+        surface: Optional[pygame.Surface],
+        scroll_offset: int,
+        view_height: int,
+    ) -> None:
+        if self.env.render_mode == "human":
+            if surface is None or self.info_panel.width <= 0:
+                self._hide_info_panel_window()
+                return
+
+            self._ensure_info_panel_window()
+            if self.info_panel_renderer is None:
+                return
+
+            width, height = surface.get_size()
+            if width == 0 or height == 0:
+                self.info_panel_renderer.clear()
+                self.info_panel_renderer.present()
+                return
+
+            if (
+                self.info_panel_texture is None
+                or self._info_panel_texture_size != (width, height)
+            ):
+                if self.info_panel_texture is not None and hasattr(
+                    self.info_panel_texture, "destroy"
+                ):
+                    self.info_panel_texture.destroy()
+                if SDLTexture is None:
+                    raise RuntimeError(
+                        "pygame._sdl2.video.Texture is required for multi-window rendering"
+                    )
+                self.info_panel_texture = SDLTexture.from_surface(
+                    self.info_panel_renderer, surface
+                )
+                self._info_panel_texture_size = (width, height)
+            else:
+                assert self.info_panel_texture is not None
+                self.info_panel_texture.update(surface)
+
+            self.info_panel_renderer.clear()
+            src_rect = pygame.Rect(0, scroll_offset, width, view_height)
+            dst_rect = pygame.Rect(0, 0, width, view_height)
+            # ``Renderer.copy`` is not universally available across pygame versions,
+            # whereas ``Renderer.blit`` is. Use ``blit`` with an explicit destination
+            # rectangle so the info panel contents are cropped and positioned
+            # correctly even when the window is taller than the view.
+            self.info_panel_renderer.blit(
+                self.info_panel_texture, dest=dst_rect, area=src_rect
+            )
+            self.info_panel_renderer.present()
+
+            if self.info_panel_window is not None and hasattr(
+                self.info_panel_window, "show"
+            ):
+                self.info_panel_window.show()
+        else:
+            if surface is None or self.info_panel.width <= 0:
+                return
+            dest_rect = pygame.Rect(
+                self.env.SCREEN_W, 0, surface.get_width(), view_height
+            )
+            src_rect = pygame.Rect(0, scroll_offset, surface.get_width(), view_height)
+            self.display_surface.blit(surface, dest_rect, src_rect)
+
+    def _ensure_info_panel_window(self) -> None:
+        if self.info_panel_window is None:
+            if SDLWindow is None or SDLRenderer is None:
+                raise RuntimeError(
+                    "pygame._sdl2.video multi-window support is required but unavailable"
+                )
+            window_size = (
+                max(1, self.info_panel.width or self.info_panel.min_width),
+                self.env.SCREEN_H,
+            )
+            self.info_panel_window = SDLWindow("Simulation Info", size=window_size)
+            self.info_panel_renderer = SDLRenderer(
+                self.info_panel_window, accelerated=1, vsync=0
+            )
+            self._info_panel_window_size = window_size
+            if hasattr(self.info_panel_renderer, "logical_size"):
+                self.info_panel_renderer.logical_size = window_size
+
+        self._resize_info_panel_window()
+
+    def _resize_info_panel_window(self) -> None:
+        if self.info_panel_window is None:
+            return
+        target_size = (max(1, self.info_panel.width), self.env.SCREEN_H)
+        if self._info_panel_window_size != target_size:
+            self.info_panel_window.size = target_size
+            self._info_panel_window_size = target_size
+            if self.info_panel_renderer is not None and hasattr(
+                self.info_panel_renderer, "logical_size"
+            ):
+                self.info_panel_renderer.logical_size = target_size
+            if self.info_panel_texture is not None and hasattr(
+                self.info_panel_texture, "destroy"
+            ):
+                self.info_panel_texture.destroy()
+                self.info_panel_texture = None
+                self._info_panel_texture_size = None
+
+    def _hide_info_panel_window(self) -> None:
+        if self.info_panel_window is None:
+            return
+        if hasattr(self.info_panel_window, "hide"):
+            self.info_panel_window.hide()
+        if self.info_panel_renderer is not None:
+            self.info_panel_renderer.clear()
+            self.info_panel_renderer.present()
 
 
     def process_events(self) -> None:
@@ -914,256 +805,44 @@ class MultiRobotSimulator:
                 elif event.key == pygame.K_p:
                     robot = self.robot_states[self.selected_robot_index]
                     robot.path_enabled = not robot.path_enabled
+                elif event.key == pygame.K_i:
+                    self.toggle_info_panel()
                 elif event.key == pygame.K_m:
-                    self.start_policy_control()
+                    controller = self._policy_controller
+                    if controller is None and self.policy_model_path:
+                        controller = PolicyController(self, self.policy_model_path)
+                        self._policy_controller = controller
+
+                    if controller is not None:
+                        previous_state = controller.active
+                        new_state = controller.toggle()
+                        if new_state != previous_state:
+                            self.policy_control_active = new_state
+                            if new_state:
+                                self.manual_control = False
+                            else:
+                                self.manual_control = self._manual_control_enabled
+                    else:
+                        print(
+                            "Policy control is unavailable. Call load_policy_model() to configure a model."
+                        )
+            elif event.type == pygame.MOUSEWHEEL:
+                mouse_x, _ = pygame.mouse.get_pos()
+                if mouse_x >= self.env.SCREEN_W:
+                    self.info_panel.scroll_panel(-event.y * self.info_panel.scroll_speed)
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button in (4, 5):
+                    direction = -1 if event.button == 4 else 1
+                    mouse_x, _ = pygame.mouse.get_pos()
+                    if mouse_x >= self.env.SCREEN_W:
+                        self.info_panel.scroll_panel(direction * self.info_panel.scroll_speed)
 
         if self.manual_control and self.robot_states:
             self._operate_moving()
 
         if self._policy_controller is not None:
-            was_active = self.policy_control_active # ステップ前の状態
             self._policy_controller.step()
             self.policy_control_active = self._policy_controller.active
-
-            # --- 【追加】Metrics Update ---
-            if self.policy_control_active:
-                self._update_metrics()
-            # ---------------------------
-
-            # Active -> Inactive に切り替わった場合 (=ゴール到達完了)
-            if was_active and not self.policy_control_active:
-                if self.is_recording:
-                    self.stop_recording("goal")
-
-                # --- 【追加】成功判定と保存 ---
-                # 簡易的にチームゴールから1m以内なら成功とみなす
-                if self.team_nav.team_goal:
-                    positions_m = np.array([self.pixels_to_meters(*r.position) for r in self.robot_states])
-                    centroid_m = np.mean(positions_m, axis=0)
-                    goal_m = np.array(self.pixels_to_meters(*self.team_nav.team_goal))
-                    dist = np.linalg.norm(centroid_m - goal_m)
-                    if dist < 1.0:
-                        self.metrics_data["success"] = True
-                
-                self._save_metrics()
-                # -----------------------------
-            # ------------------------------------
-
-    # --- 【追加】Metrics Update Logic ---
-    def _update_metrics(self) -> None:
-        """毎ステップ呼び出され、サブゴールの配置からモード(横/縦)を判定し、誤差を記録する"""
-        if not self.policy_control_active or not self.metrics_enabled:
-            return
-        
-        # 1. 現在のロボット位置 (メートル)
-        positions_m = np.array([self.pixels_to_meters(*r.position) for r in self.robot_states])
-        curr_centroid_m = np.mean(positions_m, axis=0)
-        
-        # 2. 現在のサブゴール(ターゲット)位置の重心と配列を取得
-        targets_m = []
-        for r in self.robot_states:
-            if r.target is not None:
-                targets_m.append(np.array(self.pixels_to_meters(*r.target)))
-            else:
-                targets_m.append(np.array(self.pixels_to_meters(*r.position)))
-        targets_m = np.array(targets_m)
-        target_centroid_m = np.mean(targets_m, axis=0)
-
-        self.metrics_data["total_steps"] += 1
-        
-        # 記録用データ初期化
-        step_record = {
-            "error": np.nan,
-            "mode": "UNKNOWN" # 'SIDE' or 'COL'
-        }
-
-        # 重心の移動ベクトル (現在地 -> サブゴール重心) を進行方向とする
-        move_vec = target_centroid_m - curr_centroid_m
-        dist_to_subgoal = np.linalg.norm(move_vec)
-
-        # ある程度サブゴールまで距離がある場合のみ計算
-        if dist_to_subgoal > 0.001:
-            unit_v = move_vec / dist_to_subgoal # 進行方向単位ベクトル
-            
-            # --- モード判定ロジック (サブゴールの並び方を見る) ---
-            if len(targets_m) >= 2:
-                # ロボット0番のターゲットから最後のロボットのターゲットへのベクトル
-                formation_vec = targets_m[-1] - targets_m[0]
-                dist_formation = np.linalg.norm(formation_vec)
-                
-                if dist_formation > 0.001:
-                    form_v_norm = formation_vec / dist_formation
-                    
-                    # 進行方向と隊形ベクトルの内積をとる (0に近い=垂直=横並び, 1に近い=平行=縦列)
-                    dot_val = abs(np.dot(unit_v, form_v_norm))
-                    
-                    if dot_val < 0.5: # 45度未満なら横並び
-                        step_record["mode"] = "SIDE"
-                    else:
-                        step_record["mode"] = "COL"
-                else:
-                    # サブゴールが重なっている等の例外時はとりあえずSIDE
-                    step_record["mode"] = "SIDE"
-            else:
-                step_record["mode"] = "SIDE"
-
-            # --- 判定されたモードに基づいて理想位置との誤差を計算 ---
-            
-            # 理想位置計算用のベクトル準備
-            if step_record["mode"] == "SIDE":
-                # 横並び: 進行方向に対して垂直(右)
-                calc_vec = np.array([unit_v[1], -unit_v[0]])
-            else: 
-                # 縦列: 進行方向と同じ向き
-                calc_vec = unit_v
-
-            # オフセット計算 (ロボット間の距離に基づき展開)
-            num = len(self.robot_states)
-            spacing = self.formation_spacing_side + self.robot_radius_m * 2
-            offsets = (np.arange(num) - (num - 1) / 2) * spacing
-            
-            # 1. 各ロボットの「軸上の位置」を計算
-            projections = [np.dot(pos - curr_centroid_m, calc_vec) for pos in positions_m]
-            
-            # 2. 軸上の位置でロボットを並び替え
-            sorted_indices = np.argsort(projections)
-            sorted_positions = positions_m[sorted_indices]
-
-            errors = []
-            for i, r_pos in enumerate(positions_m):
-                # 重心基準で理想位置を展開
-                ideal_pos = curr_centroid_m + offsets[i] * calc_vec
-                errors.append(np.linalg.norm(sorted_positions[i] - ideal_pos))
-            
-            step_record["error"] = max(errors)
-        
-        # データをリストに追加
-        if "step_records" not in self.metrics_data:
-            self.metrics_data["step_records"] = []
-        self.metrics_data["step_records"].append(step_record)
-
-        self.metrics_data["prev_centroid_m"] = curr_centroid_m
-
-    def _save_metrics(self) -> None:
-        """実験終了時に、モード別FMRとFRT(ステップ数)を計算し、1行にまとめて追記保存する"""
-        md = self.metrics_data
-        records = md.get("step_records", [])
-        
-        if not records:
-            print("[WARN] No metrics data to save.")
-            return
-
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        # 固定ファイル名（追記用）
-        filename = "experiment_results_multi.csv"
-        
-        # 基本情報
-        total_duration = md["total_steps"] * (1.0/10.0)
-        avg_fps = 0.0
-        if md.get("fps_count", 0) > 0:
-            avg_fps = md["fps_sum"] / md["fps_count"]
-
-        # ヘッダーとデータ行の初期化
-        header = [
-            "Timestamp", "Result", "Duration_sec", "Avg_FPS", 
-            "Spacing_m", "Map_Type"
-        ]
-        row = [
-            timestamp,
-            "Success" if md["success"] else "Failed",
-            f"{total_duration:.2f}",
-            f"{avg_fps:.1f}",
-            self.formation_spacing_side,
-            self.env.map_type
-        ]
-
-        # 各イプシロンごとに指標を計算して横に追加
-        for eps in self.test_epsilons:
-            # --- 集計用変数 ---
-            count_total = 0
-            maintain_total = 0
-            
-            count_side = 0
-            maintain_side = 0
-            
-            count_col = 0
-            maintain_col = 0
-            
-            # FRT計算用 (ステップ数)
-            frt_events_steps = []
-            is_broken = False
-            break_start_idx = 0
-            
-            # --- 全ステップを走査 ---
-            for i, rec in enumerate(records):
-                err = rec["error"]
-                mode = rec["mode"]
-                
-                if np.isnan(err): continue
-                
-                # 判定
-                in_formation = (err < eps)
-                
-                # 1. 全体(Total)
-                count_total += 1
-                if in_formation: maintain_total += 1
-                
-                # 2. 横並び(Side)のみ
-                if mode == "SIDE":
-                    count_side += 1
-                    if in_formation: maintain_side += 1
-                    
-                # 3. 縦列(Col)のみ
-                if mode == "COL":
-                    count_col += 1
-                    if in_formation: maintain_col += 1
-                    
-                # FRT計算 (ステップ数)
-                if not is_broken and err > eps:
-                    # 崩壊開始
-                    is_broken = True
-                    break_start_idx = i
-                elif is_broken and err <= eps:
-                    # 復帰完了
-                    is_broken = False
-                    steps_needed = (i - break_start_idx)
-                    frt_events_steps.append(steps_needed)
-
-            # --- 率の計算 ---
-            fmr_total = maintain_total / count_total if count_total > 0 else 0.0
-            fmr_side  = maintain_side / count_side if count_side > 0 else 0.0
-            fmr_col   = maintain_col / count_col if count_col > 0 else 0.0
-            
-            # FRT平均 (ステップ数)
-            frt_avg_steps = np.mean(frt_events_steps) if frt_events_steps else 0.0
-            
-            # ヘッダー拡張
-            header.extend([
-                f"FMR_Tot_e{eps}", f"FMR_Side_e{eps}", f"FMR_Col_e{eps}",
-                f"FRT_e{eps}", f"Rec_Cnt_e{eps}"
-            ])
-            # データ行拡張
-            row.extend([
-                f"{fmr_total:.4f}", f"{fmr_side:.4f}", f"{fmr_col:.4f}",
-                f"{frt_avg_steps:.1f}", len(frt_events_steps)
-            ])
-
-        try:
-            file_exists = os.path.isfile(filename)
-            # 追記モード 'a' で開く
-            with open(filename, "a", newline="") as f:
-                writer = csv.writer(f)
-                
-                # 新規作成時のみヘッダー書き込み
-                if not file_exists:
-                    writer.writerow(header)
-                
-                writer.writerow(row)
-                    
-            print(f"\n[INFO] Metrics appended to {os.path.abspath(filename)}")
-            
-        except Exception as e:
-            print(f"[ERROR] Failed to save CSV: {e}")
 
     def _draw_final_result(self) -> None:
         """終了時のスナップショット用に、LiDARを除外してきれいに再描画する"""
@@ -1207,10 +886,27 @@ class MultiRobotSimulator:
         if self.env.screen is not None:
             self._draw_final_result()
 
-        # 終了時にもし録画中なら保存する
-        if self.is_recording:
-            self.stop_recording("abort")
+        # 安全に破棄するよう try-except または None チェックを強化
+        try:
+            if self.info_panel_texture is not None and hasattr(self.info_panel_texture, "destroy"):
+                self.info_panel_texture.destroy()
+        except Exception: pass
+        self.info_panel_texture = None
 
+        try:
+            if self.info_panel_renderer is not None and hasattr(self.info_panel_renderer, "destroy"):
+                self.info_panel_renderer.destroy()
+        except Exception: pass
+        self.info_panel_renderer = None
+
+        try:
+            if self.info_panel_window is not None and hasattr(self.info_panel_window, "destroy"):
+                self.info_panel_window.destroy()
+        except Exception: pass
+        self.info_panel_window = None
+
+        self._info_panel_window_size = None
+        self._info_panel_texture_size = None
         pygame.quit()
 
     # ------------------------------------------------------------------
@@ -1304,14 +1000,14 @@ class MultiRobotSimulator:
         )
 
         # 選択中のロボット強調
-        # if robot is self.robot_states[self.selected_robot_index] and not self.policy_control_active:
-        #     pygame.draw.circle(
-        #         self.env.robot_and_lidar_layer,
-        #         (0, 255, 0),
-        #         (int(pos[0]), int(pos[1])),
-        #         int(self.robot_frame_radius + 6),
-        #         width=2,
-        #     )
+        if robot is self.robot_states[self.selected_robot_index] and not self.policy_control_active:
+            pygame.draw.circle(
+                self.env.robot_and_lidar_layer,
+                (0, 255, 0),
+                (int(pos[0]), int(pos[1])),
+                int(self.robot_frame_radius + 6),
+                width=2,
+            )
 
 
         if self.show_velocity:
@@ -1571,7 +1267,40 @@ class MultiRobotSimulator:
     def _draw_hud(self) -> None:
         return
 
+    def toggle_info_panel(self) -> None:
+        self.info_panel.toggle()
 
+    def set_info_panel_visible(self, visible: bool) -> None:
+        self.info_panel.set_visible(visible)
+
+    def resize_display_surface(self, new_info_panel_width: int) -> None:
+        self.info_panel.update_width(new_info_panel_width)
+        if self.env.render_mode == "human":
+            if self.info_panel.visible and self.info_panel.width > 0:
+                self._ensure_info_panel_window()
+                self._resize_info_panel_window()
+            else:
+                self._hide_info_panel_window()
+            self._last_display_size = (
+                self.env.SCREEN_W,
+                self.env.SCREEN_H,
+            )
+            return
+
+        total_width = self.env.SCREEN_W + self.info_panel.width
+        new_size = (total_width, self.env.SCREEN_H)
+
+        needs_new_surface = (
+            self._last_display_size != new_size
+            or self.display_surface.get_size() != new_size
+        )
+        if needs_new_surface:
+            self.display_surface = pygame.Surface(new_size)
+
+        self._last_display_size = new_size
+
+        self.display_surface.fill(self.env.BACKGROUND_COLOR)
+        self.display_surface.blit(self.simulation_surface, (0, 0))
 
     # ------------------------------------------------------------------
     # Utility helpers
@@ -1636,30 +1365,14 @@ class MultiRobotSimulator:
         # --- 修正: 固定スタート位置がある場合の分岐 ---
         if self.fixed_start_pos_m:
             cx_m, cy_m = self.fixed_start_pos_m
-            start_theta = self.fixed_start_theta
             cx_px, cy_px = self.meters_to_pixels(cx_m, cy_m)
             
             # 指定座標を中心に横並び配置
             num = len(self.robot_states)
             offsets = (np.arange(num) - (num - 1) / 2) * spacing
+            robot_positions = [(cx_px + o, cy_px) for o in offsets]
             
-            # 回転計算
-            # Pygame座標系: 0=Up(North), 正=CCW(Left)と仮定
-            # Side-by-sideのラインは進行方向に対して垂直(右方向)
-            # Heading vector: (-sin(th), -cos(th)) ※draw_robot参照
-            # Right vector (Headingから-90度): (cos(th), -sin(th))
-            
-            ux = math.cos(start_theta)
-            uy = -math.sin(start_theta) # Y軸反転のためマイナス
-            
-            robot_positions = []
-            for o in offsets:
-                # 重心 + (右方向ベクトル * オフセット)
-                px = cx_px + o * ux
-                py = cy_px + o * uy
-                robot_positions.append((px, py))
-            
-            print(f"[DEBUG] Placing robots at fixed start: {self.fixed_start_pos_m}, theta: {start_theta:.2f}")
+            print(f"[DEBUG] Placing robots at fixed start: {self.fixed_start_pos_m}")
         else:
             # 従来通りランダムエリアから生成
             start_area, _ = self._get_spawn_areas()
@@ -1668,7 +1381,7 @@ class MultiRobotSimulator:
 
         for robot, position in zip(self.robot_states, robot_positions):
             robot.position = (float(position[0]), float(position[1]))
-            robot.theta = self.fixed_start_theta
+            robot.theta = 0.0
             robot.path.clear()
             if self.show_trail:
                 robot.trail_points = [robot.position] # リセット
@@ -2255,12 +1968,6 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         default=20,
         help="Trail dot interval in steps."
     )
-    parser.add_argument(
-        "--video-dir",
-        dest="video_dir",
-        default=".",
-        help="Override the video dir"
-    )
     args = parser.parse_args(argv)
 
     if args.robots is not None and args.robots <= 0:
@@ -2281,7 +1988,6 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         show_trail=True,
         trail_step_interval=args.trail_step_interval,
     )
-    simulator.video_dir = args.video_dir
     # if args.map_type is not None:
     #     try:
     #         simulator.set_map(args.map_type)

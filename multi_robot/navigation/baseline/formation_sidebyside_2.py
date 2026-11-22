@@ -15,11 +15,11 @@ import numpy as np
 import pygame
 from scipy.optimize import linear_sum_assignment, minimize_scalar
 
-from .types import Color, FormationPlan, Position
-from .utils import brighten_color, with_alpha
+from ..types import Color, FormationPlan, Position
+from ..utils import brighten_color, with_alpha
 
 if False:  # pragma: no cover - type checking helper
-    from .simulator_v5 import MultiRobotSimulator
+    from .simulator_v5_previous import MultiRobotSimulator
 
 
 @dataclass(frozen=True)

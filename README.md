@@ -89,7 +89,7 @@ uv pip install -e .
 ### Velocity Adjustment Module
 
 The renderer applies a formation-aware velocity adjustment helper
-(`multi_robot/renderer/speed_adjustment.py`). The helper implements the
+(`multi_robot/navigation/speed_adjustment.py`). The helper implements the
 following attenuation scheme:
 
 * `l_theta = ((-cos(theta_f) + 1) / 2) ^ eta_theta` reflects the formation

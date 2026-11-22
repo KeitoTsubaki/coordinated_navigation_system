@@ -19,7 +19,7 @@ from tqdm import tqdm
 import random
 
 # simulator_v5.py と同じ階層に配置してください
-from multi_robot.renderer.simulator_v5 import MultiRobotSimulator
+from multi_robot.navigation.simulator_v5 import MultiRobotSimulator
 
 # TeamNavigationControllerの代わりに何もしないダミークラス（フォーメーション制御無効化用）
 class DummyTeamNav:

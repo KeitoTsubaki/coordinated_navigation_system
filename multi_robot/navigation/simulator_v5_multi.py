@@ -10,8 +10,8 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 import yaml
 from pathlib import Path
 import datetime
-import csv  # 【追加】
-import os   # (あればそのままでOK)
+import os
+import csv
 
 import numpy as np
 import pygame
@@ -29,19 +29,19 @@ from .env import LiDARSensor, SimCoreEnvironment, utils_module
 # from .formation import FormationManager
 # from .formation_previous_research import FormationManager
 # from .formation_sidebyside_1 import FormationManager
-from .formation_sidebyside_2 import FormationManager
+# from .formation_sidebyside_2 import FormationManager
 # from .formation_sidebyside_3 import FormationManager
 # from .formation_sidebyside_4 import FormationManager
-# from .formation_sidebyside_5 import FormationManager
+from .formation_sidebyside_5 import FormationManager
 
 from .info_panel import InfoPanelRenderer
 # from .policy2 import PolicyController
 # from .policy2 import PolicyController
-from .policy2_newobs_previous import PolicyController
+from .policy2_newobs import PolicyController
 from .types import Color, FormationPlan, Position, RobotState
 from .utils import brighten_color, color_from_palette, to_rgb, with_alpha
-from .vwastar_planner import VWAstarPlanner, VWAstarConfig
-# from .vwastar_planner import VWAstarPlanner, VWAstarConfig, TeamNavigationController
+
+from .vwastar_planner import VWAstarPlanner, VWAstarConfig, TeamNavigationController
 
 
 class MultiRobotSimulator:
@@ -89,11 +89,12 @@ class MultiRobotSimulator:
         self.trail_step_interval = trail_step_interval
         self.trail_width = 10
 
-        self.filter_robot = True
+        self.filter_robot = False
 
         # --- 【追加】録画用変数 ---
         self.is_recording = False
         self.frames = []
+        self.current_recording_path: Optional[str] = None # 保存先パスの一時保持用
         # ----------------------
 
         # 画像パスの解決ロジック
@@ -122,14 +123,7 @@ class MultiRobotSimulator:
             else:
                 print(f"\n[ERROR] Image map file NOT found: {image_map_path}")
 
-        
-        self.formation_centroid_sampling_interval = self.env.FORMATION_CENTROID_SAMPLING_INTERVAL
-        self.formation_centroid_look_back_steps = self.env.FORMATION_LOOK_BACK_STEPS
-        self.formation_centroid_angular_tolerance_deg = self.env.FORMATION_ANGULAR_TOLERANCE_DEG
-        self.formation_centroid_angular_tolerance_rad = self.env.FORMATION_ANGULAR_TOLERANCE_RAD
-        self.formation_centroid_min_displacement_m = self.env.FORMATION_MIN_DISPLACEMENT_M
-        self.formation_centroid_min_displacement_pixels = self.env.FORMATION_MIN_DISPLACEMENT_PIXELS
-
+        # ... (中略: formationなどの設定はそのまま) ...
         self.default_formation_robot_count = self.env.DEFAULT_FORMATION_ROBOT_COUNT
         self.default_formation_type = self.env.DEFAULT_FORMATION_TYPE
         self.default_formation_spacing = self.env.DEFAULT_FORMATION_SPACING_PIXELS
@@ -163,60 +157,33 @@ class MultiRobotSimulator:
         self.lidar_filtered_points_color: Color = (64, 224, 208)
         self._lidar_detection_surface = pygame.Surface((self.env.SCREEN_W, self.env.SCREEN_H), pygame.SRCALPHA)
 
-        # === 【追加】VWA* Planner（コストマップ計算用）の初期化 ===
-        # FRT/FMR計測のために「広い領域」と「狭い領域」を判定するマップを作成する
-        vw_config = VWAstarConfig()
-        # 必要に応じてインフレート半径を調整してください（例: [Wide用, Narrow用]）
-        m = 0.5 # safety margin
-        formation_spacing_side = 0.5
-        robot_radius_m = 0.5
-        radius_wide = robot_radius_m * 2.0 + formation_spacing_side + m
-        # 2. ロボット1台分 (Narrow): robot radius + safety margin
-        radius_narrow = robot_radius_m + m
-        vw_config.InflateRadiusListM = [radius_wide, radius_narrow] 
-        self.vw_planner = VWAstarPlanner(vw_config, pixels_per_meter=self.env.PIXELS_PER_METER)
-        # ========================================================
-        
-        self.metrics_enabled = True
-        self.test_epsilons = [0.1, 0.2, 0.25, 0.3, 0.5, 1.0]
-        self.metrics_data = {
-            "total_steps": 0,
-            "success": False,
-            "saved": False,
-            "wide_area_steps": 0,
-            "maintained_steps": {eps: 0 for eps in self.test_epsilons},
-            "frt_events": {eps: [] for eps in self.test_epsilons},
-            "current_frt_start": {eps: None for eps in self.test_epsilons},
-            "is_in_wide_area": False,
-            "prev_centroid_m": None,
-            "fps_sum": 0.0,
-            "fps_count": 0
-        }
-
         # =========================================================================
         # 【修正】Config読み込みと VW-Astar パラメータ計算
         # =========================================================================
-        previous_research_config_path = Path(__file__).parent / "previous_research_params.yaml"
-        previous_research_params = {
+        planner_config_path = Path(__file__).resolve().parents[1] / "config" / "planner_params.yaml"
+        planner_params = {
             "robot_radius_m": self.env.ROBOT_RADIUS_M, # デフォルト
+            "formation_spacing_m": 0.5, # デフォルト側面間距離
+            "safety_margin_m": 0.2,
+            "lookahead_m": 1.0,
             "start_pos_m": None, # デフォルトNone
             "goal_pos_m": None   # デフォルトNone
         }
         
-        if previous_research_config_path.exists():
+        if planner_config_path.exists():
             try:
-                with open(previous_research_config_path, "r", encoding="utf-8") as f:
+                with open(planner_config_path, "r", encoding="utf-8") as f:
                     loaded_params = yaml.safe_load(f)
                     if loaded_params:
-                        previous_research_params.update(loaded_params)
-                print(f"[INFO] Loaded planner params from {previous_research_config_path}")
+                        planner_params.update(loaded_params)
+                print(f"[INFO] Loaded planner params from {planner_config_path}")
             except Exception as e:
                 print(f"[ERROR] Failed to load planner params: {e}")
 
         
 
         # === 【追加】可視化設定の適用 ===
-        viz_params = previous_research_params.get("visualization", {})
+        viz_params = planner_params.get("visualization", {})
         
         # デフォルト値は既存の変数の状態(CLI引数など)を維持しつつ、YAMLにあれば上書き
         if "show_velocity" in viz_params:
@@ -250,26 +217,50 @@ class MultiRobotSimulator:
         if formation_spacing_m is not None:
             if formation_spacing_m <= 0:
                 raise ValueError("formation_spacing_m must be positive")
-            previous_research_params["formation_spacing_m"] = formation_spacing_m
+            planner_params["formation_spacing_m"] = formation_spacing_m
 
         # パラメータ取得
-        self.robot_radius_m = float(previous_research_params["robot_radius_m"])
+        self.robot_radius_m = float(planner_params["robot_radius_m"])
         self.env.ROBOT_BODY_RADIUS_M = self.robot_radius_m
-        self.raw_start = previous_research_params.get("start_pos_m")
-        self.raw_goal = previous_research_params.get("goal_pos_m")
+        self.formation_spacing_side = float(planner_params["formation_spacing_m"]) # 側面間距離
+        s_side = self.formation_spacing_side + self.robot_radius_m * 2
+        m = float(planner_params["safety_margin_m"])
+        look_ahead_m = planner_params.get("lookahead_m")
+        self.raw_start = planner_params.get("start_pos_m")
         self.fixed_start_pos_m = (float(self.raw_start[0]), float(self.raw_start[1]))
         self.fixed_start_theta = float(self.raw_start[2])
-        self.fixed_goal_pos_m = (float(self.raw_goal[0]), float(self.raw_goal[1]))
-        self.fixed_goal_theta = float(self.raw_goal[2])
+        self.fixed_goal_pos_m = planner_params.get("goal_pos_m")
+        self.formation_costs = planner_params.get("formation_costs")
 
-        # if s_side is not None:
-        #     self.default_formation_spacing_m = s_side
-        #     self.default_formation_spacing = s_side * self.env.PIXELS_PER_METER
+        if s_side is not None:
+            self.default_formation_spacing_m = s_side
+            self.default_formation_spacing = s_side * self.env.PIXELS_PER_METER
 
-        auto_start = previous_research_params.get("auto_start")
+        auto_start = planner_params.get("auto_start")
         if auto_start:
             self.start_policy_control()
 
+        # インフレート半径の計算
+        # 1. 横並び (Wide): robot radius + spacing/2 + safety margin
+        radius_wide = self.robot_radius_m * 2.0 + self.formation_spacing_side + m
+        # 2. ロボット1台分 (Narrow): robot radius + safety margin
+        radius_narrow = self.robot_radius_m + m
+
+        print(f"[DEBUG] VWAstar Params: R={self.robot_radius_m:.2f}, Formation Space={self.formation_spacing_side:.2f}, Margin={m:.2f}")
+        print(f"[DEBUG] Inflation Radii: Wide={radius_wide:.2f}m, Narrow={radius_narrow:.2f}m")
+        print(f"[DEBUG] Formation Costs: {self.formation_costs}")
+
+        # VW-Astarのセットアップ
+        vw_config = VWAstarConfig()
+        vw_config.InflateRadiusListM = [radius_wide, radius_narrow]
+        vw_config.FormationCosts = self.formation_costs
+        self.vw_planner = VWAstarPlanner(vw_config, pixels_per_meter=self.env.PIXELS_PER_METER)
+        self.team_nav = TeamNavigationController(self, self.vw_planner)
+        self.team_nav.lookahead_dist_m = look_ahead_m
+        
+        self.team_nav.robot_spacing_m = s_side
+        print(f"[DEBUG] Converted Center-to-Center Spacing: {s_side:.2f}m")
+        # =========================================================================
 
         # 【重要】地図画像を保持する変数を初期化
         self.map_surface: Optional[pygame.Surface] = None 
@@ -299,17 +290,7 @@ class MultiRobotSimulator:
             self.robot_states.append(robot)
             self.robot_states[-1].sensor = self._create_sensor()
 
-        self.formation = FormationManager(
-            self,
-            lookback=previous_research_params.get("centroid_look_back_steps")
-        )
-
-        self.formation.follow_formation_targets = True
-        self.formation.weights = previous_research_params.get("optimizer_weights")
-        self.omega_f = previous_research_params.get("omega_f")
-        self.policy_controller.params["OMEGA_FIXED"] = self.omega_f
-        
-
+        self.formation = FormationManager(self)
         self._last_display_size = None
         self._restart_snapshot = None
 
@@ -351,14 +332,34 @@ class MultiRobotSimulator:
         print(f"[DEBUG] Initializing map with type: {target_map_type}")
         self.set_map(target_map_type)
 
-        
+        # --- 【追加】評価指標計算用の変数 ---
+        self.metrics_enabled = True
+        self.metrics_epsilon = 0.1  # 許容誤差 (m)
+        self.test_epsilons = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.5, 1.0]
+        self.metrics_data = {
+            "total_steps": 0,
+            "success": False,
+            "success_time": 0.0,
+            "fmr_maintain_steps": 0,    # FMR用カウンタ
+            "fmr_valid_steps": 0,       # FMR計算対象ステップ数
+            "frt_events": [],           # FRT (復帰時間) のリスト
+            "is_broken": False,         # 現在隊形が崩れているか
+            "break_start_time": 0.0,    # 崩壊開始時刻
+            "prev_centroid_m": None,    # 1ステップ前の重心位置
+            "step_errors": [],           # 毎ステップの最大誤差ログ
+            "fps_sum": 0.0,
+            "fps_count": 0
+        }
+        # -------------------------------
+
 
 
     # --- 【追加】録画制御メソッド ---
-    def start_recording(self) -> None:
+    def start_recording(self, filepath: Optional[str] = None) -> None:
         self.is_recording = True
         self.frames = []
-        print("[INFO] Video recording started.")
+        self.current_recording_path = filepath
+        print(f"[INFO] Video recording started. (Filepath: {filepath})")
 
     def stop_recording(self, status) -> None:
         self.is_recording = False
@@ -367,11 +368,17 @@ class MultiRobotSimulator:
             return
 
         try:
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            if self.video_dir[-1] != "/":
-                self.video_dir + "/"
-            filename = f"{self.video_dir}/sim_{timestamp}_{status}.mp4"
-            print(filename)
+            if self.current_recording_path:
+                filename = self.current_recording_path
+            else:
+                # 指定がなければ自動生成
+                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                base_dir = self.video_dir.rstrip("/")
+                filename = f"{base_dir}/sim_{timestamp}_{status}.mp4"
+
+            # ディレクトリがなければ作成
+            os.makedirs(os.path.dirname(os.path.abspath(filename)), exist_ok=True)
+
             # MP4保存 (fps=30)
             imageio.mimsave(filename, self.frames, fps=self.recording_fps)
             print(f"[INFO] Video saved to {filename}")
@@ -381,6 +388,7 @@ class MultiRobotSimulator:
             print(f"[ERROR] Failed to save video: {e}")
         
         self.frames = [] # メモリ解放
+        self.current_recording_path = None
     # ---------------------------
     
     def start_policy_control(self):
@@ -397,22 +405,22 @@ class MultiRobotSimulator:
                 if new_state:
                     self.manual_control = False
                     self.start_recording()
-
-                    # --- 【修正】計測データのリセット ---
+                    # --- 【追加】計測データのリセット ---
                     print("[INFO] Resetting metrics for new episode.")
                     self.metrics_data = {
-                    "total_steps": 0,
-                    "success": False,
-                    "saved": False,
-                    "wide_area_steps": 0,
-                    "maintained_steps": {eps: 0 for eps in self.test_epsilons},
-                    "frt_events": {eps: [] for eps in self.test_epsilons},
-                    "current_frt_start": {eps: None for eps in self.test_epsilons},
-                    "is_in_wide_area": False,
-                    "prev_centroid_m": None,
-                    "fps_sum": 0.0,
-                    "fps_count": 0
-                }
+                        "total_steps": 0,
+                        "success": False,
+                        "success_time": 0.0,
+                        "fmr_maintain_steps": 0,
+                        "fmr_valid_steps": 0,
+                        "frt_events": [],
+                        "is_broken": False,
+                        "break_start_time": 0.0,
+                        "prev_centroid_m": None,
+                        "step_errors": [],
+                        "fps_sum": 0.0,
+                        "fps_count": 0
+                    }
                     # --------------------------------
                 else:
                     self.manual_control = self._manual_control_enabled
@@ -534,8 +542,7 @@ class MultiRobotSimulator:
             if target_theta is None:
                 target_theta = self._infer_target_heading(robot.position, target)
             robot.target_theta = target_theta
-        # FormationManagerにターゲットを通知して、リーダー/フォロワーの追従ロジックを有効化する
-        self.formation.register_direct_target(robot_index, target, robot.target_theta)
+        # self.formation.register_direct_target(robot_index, target, robot.target_theta)
         if target is None:
             self.formation.clear()
 
@@ -647,16 +654,14 @@ class MultiRobotSimulator:
         
         # 2. マスク（マージン計算用）を取得
         mask = self._get_obstacle_mask()
-
-        self.vw_planner.update_map(mask)
         
         # 3. 障害物レイヤーを一度クリア
         self.env.obstacle_layer.fill((0, 0, 0, 0))
         
         # 4. マージン（インフレート領域）を描画 [下層]
-        # self.vw_planner.update_map(mask)
-        # if self.show_margin_map:
-        #     self.vw_planner.draw_inflation(self.env.obstacle_layer)
+        self.vw_planner.update_map(mask)
+        if self.show_margin_map:
+            self.vw_planner.draw_inflation(self.env.obstacle_layer)
         
         # 5. 退避しておいた壁を上から重ねる [上層]
         self.env.obstacle_layer.blit(walls_surface, (0, 0))
@@ -703,14 +708,14 @@ class MultiRobotSimulator:
     def _draw_sidebar(self) -> None:
         self.sidebar_surface.fill((20, 20, 20)) # Dark gray background
 
-        # lookahead = self.team_nav.lookahead_dist_m if hasattr(self.team_nav, "lookahead_dist_m") else "?"
-        # spacing = self.team_nav.robot_spacing_m if hasattr(self.team_nav, "robot_spacing_m") else "?"
-        # margins = self.vw_planner.config.InflateRadiusListM if hasattr(self, "vw_planner") else []
-        # margin_val = margins[0] if margins else "?"
+        lookahead = self.team_nav.lookahead_dist_m if hasattr(self.team_nav, "lookahead_dist_m") else "?"
+        spacing = self.team_nav.robot_spacing_m if hasattr(self.team_nav, "robot_spacing_m") else "?"
+        margins = self.vw_planner.config.InflateRadiusListM if hasattr(self, "vw_planner") else []
+        margin_val = margins[0] if margins else "?"
         
         # Policy Params (dummy for now)
-        brake_dist = 2.0 
-        brake_angle = 20 
+        brake_dist = 1.5 
+        brake_angle = 45 
 
         avg_fps = 0.0
         if self.metrics_data.get("fps_count", 0) > 0:
@@ -723,15 +728,12 @@ class MultiRobotSimulator:
             f"Avg FPS:  {avg_fps:.1f}",
             f"",
             f"=== Params ===",
-            f"Start Pos: {self.raw_start}",
-            f"Goal Pos:  {self.raw_goal}",
-            f"Lookback Steps: {self.formation._centroid_look_back_steps} steps",
-            f"Weight[0]:      {self.formation.weights[0]}",
-            f"Weight[1]:      {self.formation.weights[1]}",
-            f"Weight[2]:      {self.formation.weights[2]}",
-            f"Weight[3]:      {self.formation.weights[3]}",
-            f"Weight[4]:      {self.formation.weights[4]}",
-            f"Omega_f:        {self.omega_f} rad/s",
+            f"Start Pos:      {self.raw_start[:-1]}",
+            f"Goal Pos:       {self.fixed_goal_pos_m}",
+            f"Lookahead Dist: {lookahead} m",
+            f"Form. Spacing:  {self.formation_spacing_side} m",
+            f"Form. Costs:    {self.formation_costs}",
+            f"Safety Margin:  {margin_val} m",
             f"Brake Dist:     {brake_dist} m",
             f"Brake Angle:    {brake_angle} deg",
             f"",
@@ -767,15 +769,13 @@ class MultiRobotSimulator:
             self._clock.tick()
         self._fps = self._clock.get_fps()
 
-        # === 【追加】平均FPS計測 (ポリシー実行中のみ) ===
         if self.policy_control_active and self.metrics_enabled:
             # 最初の数フレームは0になることがあるため除外してもよいが、単純な平均をとる
             self.metrics_data["fps_sum"] += self._fps
             self.metrics_data["fps_count"] += 1
-        # ==========================================
 
-        # if self.policy_control_active:
-        #      self.team_nav.update()
+        if self.policy_control_active:
+             self.team_nav.update()
 
         # ---------------------------------------------------------
         # 【重要】描画のベースを作成
@@ -794,7 +794,7 @@ class MultiRobotSimulator:
              self.env.robot_and_lidar_layer.fill((0, 0, 0, 0))
 
         # --- 追加: チーム重心のマージンを描画 ---
-        # self._draw_team_centroid_margin()
+        self._draw_team_centroid_margin()
         # -------------------------------------
 
         for robot in self.robot_states:
@@ -818,15 +818,11 @@ class MultiRobotSimulator:
                 self._draw_label(robot)
 
         # --- 【修正】VWA*パスの描画制御 ---
-        # if self.show_global_path:
-        #     self.team_nav.draw(self.env.robot_and_lidar_layer)
-        # elif self.team_nav.team_goal:
-        #     pygame.draw.circle(self.env.robot_and_lidar_layer, (255, 0, 0), (int(self.team_nav.team_goal[0]), int(self.team_nav.team_goal[1])), 8)
+        if self.show_global_path:
+            self.team_nav.draw(self.env.robot_and_lidar_layer)
+        elif self.team_nav.team_goal:
+            pygame.draw.circle(self.env.robot_and_lidar_layer, (255, 0, 0), (int(self.team_nav.team_goal[0]), int(self.team_nav.team_goal[1])), 8)
         # -------------------------------
-
-        self.formation.update_visualisation()
-        self.formation.draw()
-        self.formation.draw_parallel_overlay()
 
         self._draw_hud()
 
@@ -872,156 +868,6 @@ class MultiRobotSimulator:
         array = pygame.surfarray.array3d(surface)
         return np.transpose(array, (1, 0, 2))
 
-    # クラス内の適当な場所に追加してください（process_eventsの直前など）
-    def _save_metrics(self) -> None:
-        """実験結果（所要時間）をCSVに保存する"""
-        if self.metrics_data["saved"]:
-            return
-
-        md = self.metrics_data
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = "experiment_results_previous.csv" # ファイル名を区別
-        
-        # ステップ数から時間を計算 (30FPS想定)
-        duration_sec = md["total_steps"] * (1.0/10.0)
-
-        wide_steps = md["wide_area_steps"]
-
-        avg_fps = 0.0
-        if md.get("fps_count", 0) > 0:
-            avg_fps = md["fps_sum"] / md["fps_count"]
-
-        header = ["Timestamp", "Result", "Duration_sec", "Avg_FPS", "Wide_Steps"]
-        row = [timestamp, "Success" if md["success"] else "Failed", f"{duration_sec:.2f}", f"{avg_fps:.1f}", wide_steps]
-
-        for eps in self.test_epsilons:
-            # FMR
-            maintained = md["maintained_steps"][eps]
-            fmr = maintained / wide_steps if wide_steps > 0 else 0.0
-            
-            # FRT (平均)
-            frt_list = md["frt_events"][eps]
-            avg_frt = np.mean(frt_list) if frt_list else 0.0
-            count_frt = len(frt_list)
-
-            header.extend([f"FMR_e{eps}", f"FRT_e{eps}", f"Recov_Count_e{eps}"])
-            row.extend([f"{fmr:.4f}", f"{avg_frt:.1f}", count_frt])
-        
-        try:
-            file_exists = os.path.isfile(filename)
-            with open(filename, "a", newline="") as f:
-                writer = csv.writer(f)
-                if not file_exists:
-                    writer.writerow(header)
-                
-                writer.writerow(row)
-            print(f"\n[INFO] Result saved to {filename} (Time: {duration_sec:.2f}s)")
-            self.metrics_data["saved"] = True
-            
-        except Exception as e:
-            print(f"[ERROR] Failed to save CSV: {e}")
-
-    # === 【追加】FMR / FRT 計測ロジック ===
-    def _update_metrics(self) -> None:
-        """重心位置と隊形誤差に基づき FMR, FRT を更新する"""
-        if not self.policy_control_active or not self.metrics_enabled:
-            return
-        
-        # ロボット位置 (メートル)
-        positions_m = np.array([self.pixels_to_meters(*r.position) for r in self.robot_states])
-        centroid_m = np.mean(positions_m, axis=0)
-        
-        # --- 1. 領域判定 (Wide or Narrow) ---
-        # 重心位置のピクセル座標を取得
-        cx_px, cy_px = self.meters_to_pixels(centroid_m[0], centroid_m[1])
-        ix, iy = int(cx_px), int(cy_px)
-        
-        # 画面外チェック
-        h, w = self.vw_planner.label_maps[0].shape
-        if not (0 <= ix < w and 0 <= iy < h):
-            is_wide = True # 画面外は一旦Wide扱い（あるいは計測除外）
-        else:
-            # label_maps[0] は「広いマージンでの障害物領域(True)」
-            # つまり False ならフリー＝広い領域 (Wide Area)
-            # True なら障害物または狭い領域 (Narrow Area)
-            is_occupied_wide = self.vw_planner.label_maps[0][iy, ix]
-            is_wide = not is_occupied_wide
-
-        prev_is_wide = self.metrics_data["is_in_wide_area"]
-        self.metrics_data["is_in_wide_area"] = is_wide
-
-        # --- 2. 理想隊形との誤差計算 ---
-        # 進行ベクトル計算
-        if self.metrics_data["prev_centroid_m"] is not None:
-            move_vec = centroid_m - self.metrics_data["prev_centroid_m"]
-        else:
-            move_vec = np.array([0.0, 0.0])
-        self.metrics_data["prev_centroid_m"] = centroid_m
-
-        dist = np.linalg.norm(move_vec)
-        if dist > 1e-4:
-            unit_v = move_vec / dist
-        else:
-            # 動いていない場合は、平均向きなどを使うか、計算スキップ
-            # ここでは便宜上、ロボット0の向きを使うなどの代替案も考えられるが
-            # 前回値を保持していないため、X軸正方向(仮)またはスキップとする
-            unit_v = np.array([1.0, 0.0]) 
-
-        # 理想位置：進行方向に垂直（右側）に展開
-        # unit_v = (vx, vy) -> right_vec = (vy, -vx)  (数学座標系)
-        # ※Pygame座標系(y下)でもベクトル演算としては同様の直交関係でOK
-        right_vec = np.array([unit_v[1], -unit_v[0]])
-
-        num = len(self.robot_states)
-        spacing = self.default_formation_spacing_m
-        offsets = (np.arange(num) - (num - 1) / 2) * spacing
-
-        # 各ロボットを理想ラインに投影して、順序を合わせる（ソート）
-        # これによりIDが入れ替わっても幾何学的な形状誤差を評価できる
-        projections = [np.dot(pos - centroid_m, right_vec) for pos in positions_m]
-        sorted_indices = np.argsort(projections)
-        sorted_positions = positions_m[sorted_indices]
-
-        errors = []
-        for i in range(num):
-            ideal_pos = centroid_m + offsets[i] * right_vec
-            err = np.linalg.norm(sorted_positions[i] - ideal_pos)
-            errors.append(err)
-        
-        max_error = max(errors) if errors else 0.0
-
-        # --- 3. 指標の更新 (各εに対して) ---
-        current_step = self.metrics_data["total_steps"]
-
-        # FMR用の分母加算
-        if is_wide:
-            self.metrics_data["wide_area_steps"] += 1
-
-        for eps in self.test_epsilons:
-            is_maintained = (max_error <= eps)
-
-            # --- FMR (Formation Maintenance Ratio) ---
-            if is_wide and is_maintained:
-                self.metrics_data["maintained_steps"][eps] += 1
-
-            # --- FRT (Formation Recovery Time) ---
-            # トリガー: Narrow -> Wide への切り替わり
-            if (not prev_is_wide) and is_wide:
-                # 計測開始（上書き）
-                self.metrics_data["current_frt_start"][eps] = current_step
-            
-            # 計測終了判定
-            start_step = self.metrics_data["current_frt_start"][eps]
-            if start_step is not None:
-                # 広い領域にいる状態で、誤差がε以下になったら終了
-                if is_wide and is_maintained:
-                    duration = current_step - start_step
-                    self.metrics_data["frt_events"][eps].append(duration)
-                    self.metrics_data["current_frt_start"][eps] = None # 計測完了
-                elif not is_wide:
-                    # もし回復せずに狭い領域に戻ってしまった場合は計測キャンセル
-                    self.metrics_data["current_frt_start"][eps] = None
-    # ============================================
 
     def process_events(self) -> None:
         for event in pygame.event.get():
@@ -1079,40 +925,245 @@ class MultiRobotSimulator:
             self._policy_controller.step()
             self.policy_control_active = self._policy_controller.active
 
-            # --- 【追加】ステップカウントとゴール判定 ---
+            # --- 【追加】Metrics Update ---
             if self.policy_control_active:
-                self.metrics_data["total_steps"] += 1
-
-                self._update_metrics() # <--- 追加
-                
-                # ゴール判定 (重心がゴール付近に到達したか)
-                if self.fixed_goal_pos_m:
-                    positions_m = np.array([self.pixels_to_meters(*r.position) for r in self.robot_states])
-                    centroid = np.mean(positions_m, axis=0)
-                    goal_arr = np.array(self.fixed_goal_pos_m)
-                    
-                    dist = np.linalg.norm(centroid - goal_arr)
-                    
-                    # 1.0m以内ならゴールとみなす
-                    if dist < 0.5:
-                        print(f"[INFO] Goal Reached! Distance: {dist:.2f}m")
-                        self.metrics_data["success"] = True
-                        self._save_metrics()
-                        
-                        # 録画停止などの終了処理
-                        if self.is_recording:
-                            self.stop_recording("goal")
-                        
-                        # 制御を止める場合
-                        self.policy_control_active = False
-                        self._policy_controller.active = False
-            # ---------------------------------------------
+                self._update_metrics()
+            # ---------------------------
 
             # Active -> Inactive に切り替わった場合 (=ゴール到達完了)
             if was_active and not self.policy_control_active:
                 if self.is_recording:
                     self.stop_recording("goal")
+
+                # --- 【追加】成功判定と保存 ---
+                # 簡易的にチームゴールから1m以内なら成功とみなす
+                if self.team_nav.team_goal:
+                    positions_m = np.array([self.pixels_to_meters(*r.position) for r in self.robot_states])
+                    centroid_m = np.mean(positions_m, axis=0)
+                    goal_m = np.array(self.pixels_to_meters(*self.team_nav.team_goal))
+                    dist = np.linalg.norm(centroid_m - goal_m)
+                    if dist < 1.0:
+                        self.metrics_data["success"] = True
+                
+                self._save_metrics()
+                # -----------------------------
             # ------------------------------------
+
+    # --- 【追加】Metrics Update Logic ---
+    def _update_metrics(self) -> None:
+        """毎ステップ呼び出され、サブゴールの配置からモード(横/縦)を判定し、誤差を記録する"""
+        if not self.policy_control_active or not self.metrics_enabled:
+            return
+        
+        # 1. 現在のロボット位置 (メートル)
+        positions_m = np.array([self.pixels_to_meters(*r.position) for r in self.robot_states])
+        curr_centroid_m = np.mean(positions_m, axis=0)
+        
+        # 2. 現在のサブゴール(ターゲット)位置の重心と配列を取得
+        targets_m = []
+        for r in self.robot_states:
+            if r.target is not None:
+                targets_m.append(np.array(self.pixels_to_meters(*r.target)))
+            else:
+                targets_m.append(np.array(self.pixels_to_meters(*r.position)))
+        targets_m = np.array(targets_m)
+        target_centroid_m = np.mean(targets_m, axis=0)
+
+        self.metrics_data["total_steps"] += 1
+        
+        # 記録用データ初期化
+        step_record = {
+            "error": np.nan,
+            "mode": "UNKNOWN" # 'SIDE' or 'COL'
+        }
+
+        # 重心の移動ベクトル (現在地 -> サブゴール重心) を進行方向とする
+        move_vec = target_centroid_m - curr_centroid_m
+        dist_to_subgoal = np.linalg.norm(move_vec)
+
+        # ある程度サブゴールまで距離がある場合のみ計算
+        if dist_to_subgoal > 0.001:
+            unit_v = move_vec / dist_to_subgoal # 進行方向単位ベクトル
+            
+            # --- モード判定ロジック (サブゴールの並び方を見る) ---
+            if len(targets_m) >= 2:
+                # ロボット0番のターゲットから最後のロボットのターゲットへのベクトル
+                formation_vec = targets_m[-1] - targets_m[0]
+                dist_formation = np.linalg.norm(formation_vec)
+                
+                if dist_formation > 0.001:
+                    form_v_norm = formation_vec / dist_formation
+                    
+                    # 進行方向と隊形ベクトルの内積をとる (0に近い=垂直=横並び, 1に近い=平行=縦列)
+                    dot_val = abs(np.dot(unit_v, form_v_norm))
+                    
+                    if dot_val < 0.5: # 45度未満なら横並び
+                        step_record["mode"] = "SIDE"
+                    else:
+                        step_record["mode"] = "COL"
+                else:
+                    # サブゴールが重なっている等の例外時はとりあえずSIDE
+                    step_record["mode"] = "SIDE"
+            else:
+                step_record["mode"] = "SIDE"
+
+            # --- 判定されたモードに基づいて理想位置との誤差を計算 ---
+            
+            # 理想位置計算用のベクトル準備
+            if step_record["mode"] == "SIDE":
+                # 横並び: 進行方向に対して垂直(右)
+                calc_vec = np.array([unit_v[1], -unit_v[0]])
+            else: 
+                # 縦列: 進行方向と同じ向き
+                calc_vec = unit_v
+
+            # オフセット計算 (ロボット間の距離に基づき展開)
+            num = len(self.robot_states)
+            spacing = self.formation_spacing_side + self.robot_radius_m * 2
+            offsets = (np.arange(num) - (num - 1) / 2) * spacing
+            
+            # 1. 各ロボットの「軸上の位置」を計算
+            projections = [np.dot(pos - curr_centroid_m, calc_vec) for pos in positions_m]
+            
+            # 2. 軸上の位置でロボットを並び替え
+            sorted_indices = np.argsort(projections)
+            sorted_positions = positions_m[sorted_indices]
+
+            errors = []
+            for i, r_pos in enumerate(positions_m):
+                # 重心基準で理想位置を展開
+                ideal_pos = curr_centroid_m + offsets[i] * calc_vec
+                errors.append(np.linalg.norm(sorted_positions[i] - ideal_pos))
+            
+            step_record["error"] = max(errors)
+        
+        # データをリストに追加
+        if "step_records" not in self.metrics_data:
+            self.metrics_data["step_records"] = []
+        self.metrics_data["step_records"].append(step_record)
+
+        self.metrics_data["prev_centroid_m"] = curr_centroid_m
+
+    def _save_metrics(self) -> None:
+        """実験終了時に、モード別FMRとFRT(ステップ数)を計算し、1行にまとめて追記保存する"""
+        md = self.metrics_data
+        records = md.get("step_records", [])
+        
+        if not records:
+            print("[WARN] No metrics data to save.")
+            return
+
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        # 固定ファイル名（追記用）
+        filename = "experiment_results_multi.csv"
+        
+        # 基本情報
+        total_duration = md["total_steps"] * (1.0/10.0)
+        avg_fps = 0.0
+        if md.get("fps_count", 0) > 0:
+            avg_fps = md["fps_sum"] / md["fps_count"]
+
+        # ヘッダーとデータ行の初期化
+        header = [
+            "Timestamp", "Result", "Duration_sec", "Avg_FPS", 
+            "Spacing_m", "Map_Type"
+        ]
+        row = [
+            timestamp,
+            "Success" if md["success"] else "Failed",
+            f"{total_duration:.2f}",
+            f"{avg_fps:.1f}",
+            self.formation_spacing_side,
+            self.env.map_type
+        ]
+
+        # 各イプシロンごとに指標を計算して横に追加
+        for eps in self.test_epsilons:
+            # --- 集計用変数 ---
+            count_total = 0
+            maintain_total = 0
+            
+            count_side = 0
+            maintain_side = 0
+            
+            count_col = 0
+            maintain_col = 0
+            
+            # FRT計算用 (ステップ数)
+            frt_events_steps = []
+            is_broken = False
+            break_start_idx = 0
+            
+            # --- 全ステップを走査 ---
+            for i, rec in enumerate(records):
+                err = rec["error"]
+                mode = rec["mode"]
+                
+                if np.isnan(err): continue
+                
+                # 判定
+                in_formation = (err < eps)
+                
+                # 1. 全体(Total)
+                count_total += 1
+                if in_formation: maintain_total += 1
+                
+                # 2. 横並び(Side)のみ
+                if mode == "SIDE":
+                    count_side += 1
+                    if in_formation: maintain_side += 1
+                    
+                # 3. 縦列(Col)のみ
+                if mode == "COL":
+                    count_col += 1
+                    if in_formation: maintain_col += 1
+                    
+                # FRT計算 (ステップ数)
+                if not is_broken and err > eps:
+                    # 崩壊開始
+                    is_broken = True
+                    break_start_idx = i
+                elif is_broken and err <= eps:
+                    # 復帰完了
+                    is_broken = False
+                    steps_needed = (i - break_start_idx)
+                    frt_events_steps.append(steps_needed)
+
+            # --- 率の計算 ---
+            fmr_total = maintain_total / count_total if count_total > 0 else 0.0
+            fmr_side  = maintain_side / count_side if count_side > 0 else 0.0
+            fmr_col   = maintain_col / count_col if count_col > 0 else 0.0
+            
+            # FRT平均 (ステップ数)
+            frt_avg_steps = np.mean(frt_events_steps) if frt_events_steps else 0.0
+            
+            # ヘッダー拡張
+            header.extend([
+                f"FMR_Tot_e{eps}", f"FMR_Side_e{eps}", f"FMR_Col_e{eps}",
+                f"FRT_e{eps}", f"Rec_Cnt_e{eps}"
+            ])
+            # データ行拡張
+            row.extend([
+                f"{fmr_total:.4f}", f"{fmr_side:.4f}", f"{fmr_col:.4f}",
+                f"{frt_avg_steps:.1f}", len(frt_events_steps)
+            ])
+
+        try:
+            file_exists = os.path.isfile(filename)
+            # 追記モード 'a' で開く
+            with open(filename, "a", newline="") as f:
+                writer = csv.writer(f)
+                
+                # 新規作成時のみヘッダー書き込み
+                if not file_exists:
+                    writer.writerow(header)
+                
+                writer.writerow(row)
+                    
+            print(f"\n[INFO] Metrics appended to {os.path.abspath(filename)}")
+            
+        except Exception as e:
+            print(f"[ERROR] Failed to save CSV: {e}")
 
     def _draw_final_result(self) -> None:
         """終了時のスナップショット用に、LiDARを除外してきれいに再描画する"""
@@ -1129,7 +1180,7 @@ class MultiRobotSimulator:
         self.env.robot_and_lidar_layer.fill((0, 0, 0, 0))
         
         # 4. チームマージン
-        # self._draw_team_centroid_margin()
+        self._draw_team_centroid_margin()
         
         # 5. ロボット・パス・履歴の描画 (LiDAR更新は行わない)
         for robot in self.robot_states:
@@ -1139,7 +1190,7 @@ class MultiRobotSimulator:
             if self.show_labels and self.show_debug_text: self._draw_label(robot)
             
         # 6. VWAstarパス
-        # self.team_nav.draw(self.env.robot_and_lidar_layer)
+        self.team_nav.draw(self.env.robot_and_lidar_layer)
         
         # 7. 合成
         self.env.screen.blit(self.env.robot_and_lidar_layer, (0, 0))
@@ -1166,63 +1217,63 @@ class MultiRobotSimulator:
     # Drawing helpers
     # ------------------------------------------------------------------
 
-    # def _draw_team_centroid_margin(self) -> None:
-    #     """チームの重心にフォーメーション用（広い）マージンを描画する"""
-    #     if not self.robot_states or not hasattr(self, 'vw_planner') or not self.vw_planner:
-    #         return
+    def _draw_team_centroid_margin(self) -> None:
+        """チームの重心にフォーメーション用（広い）マージンを描画する"""
+        if not self.robot_states or not hasattr(self, 'vw_planner') or not self.vw_planner:
+            return
 
-    #     # チームの重心（Centroid）を計算
-    #     avg_x = sum(r.position[0] for r in self.robot_states) / len(self.robot_states)
-    #     avg_y = sum(r.position[1] for r in self.robot_states) / len(self.robot_states)
+        # チームの重心（Centroid）を計算
+        avg_x = sum(r.position[0] for r in self.robot_states) / len(self.robot_states)
+        avg_y = sum(r.position[1] for r in self.robot_states) / len(self.robot_states)
 
-    #     # マージン設定を取得
-    #     margins = self.vw_planner.config.InflateRadiusListM
+        # マージン設定を取得
+        margins = self.vw_planner.config.InflateRadiusListM
         
-    #     # 1つ目のマージン（Index 0: 広い方）があれば描画
-    #     if len(margins) > 0:
-    #         radius_m = margins[0]
-    #         radius_px = int(radius_m * self.env.PIXELS_PER_METER)
-    #         color = (0, 255, 255) # シアン
-    #         centor_color = (255, 165, 0)
+        # 1つ目のマージン（Index 0: 広い方）があれば描画
+        if len(margins) > 0:
+            radius_m = margins[0]
+            radius_px = int(radius_m * self.env.PIXELS_PER_METER)
+            color = (0, 255, 255) # シアン
+            centor_color = (255, 165, 0)
             
-    #         # 重心に円を描画
-    #         if self.show_formation_margin:
-    #             pygame.draw.circle(
-    #                 self.env.robot_and_lidar_layer, 
-    #                 color, 
-    #                 (int(avg_x), int(avg_y)), 
-    #                 radius_px, 
-    #                 width=1
-    #             )
-    #         # 重心点も小さく表示（分かりやすさのため）
-    #         pygame.draw.circle(
-    #             self.env.robot_and_lidar_layer, 
-    #             centor_color, 
-    #             (int(avg_x), int(avg_y)), 
-    #             3
-    #         )
+            # 重心に円を描画
+            if self.show_formation_margin:
+                pygame.draw.circle(
+                    self.env.robot_and_lidar_layer, 
+                    color, 
+                    (int(avg_x), int(avg_y)), 
+                    radius_px, 
+                    width=1
+                )
+            # 重心点も小さく表示（分かりやすさのため）
+            pygame.draw.circle(
+                self.env.robot_and_lidar_layer, 
+                centor_color, 
+                (int(avg_x), int(avg_y)), 
+                3
+            )
 
     def _draw_robot(self, robot: RobotState) -> None:
         pos = robot.position
         
-        # # --- 修正: ロボット個別には「2つ目のマージン（狭い方）」だけを描画 ---
-        # if hasattr(self, 'vw_planner') and self.vw_planner and self.show_robot_margin:
-        #     margins = self.vw_planner.config.InflateRadiusListM
+        # --- 修正: ロボット個別には「2つ目のマージン（狭い方）」だけを描画 ---
+        if hasattr(self, 'vw_planner') and self.vw_planner and self.show_robot_margin:
+            margins = self.vw_planner.config.InflateRadiusListM
             
-        #     # Index 1 (2番目のマージン) が存在すれば描画
-        #     if len(margins) > 1:
-        #         margin_m = margins[1]
-        #         radius_px = int(margin_m * self.env.PIXELS_PER_METER)
-        #         color = (255, 0, 255) # マゼンタ
+            # Index 1 (2番目のマージン) が存在すれば描画
+            if len(margins) > 1:
+                margin_m = margins[1]
+                radius_px = int(margin_m * self.env.PIXELS_PER_METER)
+                color = (255, 0, 255) # マゼンタ
                 
-        #         pygame.draw.circle(
-        #             self.env.robot_and_lidar_layer, 
-        #             color, 
-        #             (int(pos[0]), int(pos[1])), 
-        #             radius_px, 
-        #             width=1
-        #         )
-        # # -------------------------------------------------------------
+                pygame.draw.circle(
+                    self.env.robot_and_lidar_layer, 
+                    color, 
+                    (int(pos[0]), int(pos[1])), 
+                    radius_px, 
+                    width=1
+                )
+        # -------------------------------------------------------------
 
         # ロボット本体（物理サイズ）の描画
         body_radius_px = int(self.env.ROBOT_BODY_RADIUS_M * self.env.PIXELS_PER_METER)
@@ -1615,7 +1666,6 @@ class MultiRobotSimulator:
             robot_positions = self.formation.generate_randomized_positions(start_area, len(self.robot_states), spacing)
         # ------------------------------------------
 
-
         for robot, position in zip(self.robot_states, robot_positions):
             robot.position = (float(position[0]), float(position[1]))
             robot.theta = self.fixed_start_theta
@@ -1652,26 +1702,14 @@ class MultiRobotSimulator:
         # --- 修正: 固定ゴール位置がある場合の分岐 ---
         if self.fixed_goal_pos_m:
             cx_m, cy_m = self.fixed_goal_pos_m
-            goal_theta = self.fixed_goal_theta
             cx_px, cy_px = self.meters_to_pixels(cx_m, cy_m)
             
             # 指定座標を中心に横並び配置（ターゲット）
             num = len(self.robot_states)
             offsets = (np.arange(num) - (num - 1) / 2) * spacing
-
-            ux = math.cos(goal_theta)
-            uy = -math.sin(goal_theta) # Y軸反転のためマイナス
+            target_positions = [(cx_px + o, cy_px) for o in offsets]
             
-            target_positions = []
-            for o in offsets:
-                # 重心 + (右方向ベクトル * オフセット)
-                px = cx_px + o * ux
-                py = cy_px + o * uy
-                target_positions.append((px, py))
-
-            # target_positions = [(cx_px + o, cy_px) for o in offsets]
-            
-            print(f"[DEBUG] Placing robots at fixed goal: {self.fixed_goal_pos_m}, theta: {goal_theta:.2f}")
+            print(f"[DEBUG] Setting fixed goal: {self.fixed_goal_pos_m}")
         else:
             # 従来通りランダムエリアから生成
             target_positions = self.formation.generate_randomized_positions(target_spawn_area, len(self.robot_states), spacing)
@@ -1682,14 +1720,13 @@ class MultiRobotSimulator:
         for index, (robot, target) in enumerate(zip(self.robot_states, target_positions)):
             heading = self._infer_target_heading(robot.position, target)
             robot.target = target
-            robot.target_theta = goal_theta
-            self.formation.register_direct_target(index, target, heading)
+            robot.target_theta = heading
             
         if target_positions:
             avg_x = sum(t[0] for t in target_positions)/len(target_positions)
             avg_y = sum(t[1] for t in target_positions)/len(target_positions)
             print(f"Auto-setting team goal: {avg_x:.1f}, {avg_y:.1f}")
-            # self.team_nav.set_team_goal((avg_x, avg_y))
+            self.team_nav.set_team_goal((avg_x, avg_y))
 
     def _invalidate_obstacle_cache(self) -> None:
         self._obstacle_mask = None

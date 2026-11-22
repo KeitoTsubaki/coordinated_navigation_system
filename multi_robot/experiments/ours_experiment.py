@@ -2,7 +2,7 @@ import numpy as np
 import pygame
 import time
 import matplotlib.pyplot as plt
-from .simulator_v5_multi import MultiRobotSimulator
+from multi_robot.navigation.simulator_v5_multi import MultiRobotSimulator
 
 # ==========================================
 # 実験設定

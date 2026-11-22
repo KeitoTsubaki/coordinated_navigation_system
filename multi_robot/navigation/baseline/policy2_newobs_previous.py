@@ -18,11 +18,16 @@ import yaml
 from typing import TYPE_CHECKING
 
 # from .speed_adjustment import adjust_velocity
-from .types import RobotState
-from .utils import ensure_repo_root_on_path
+from ..types import RobotState
+from ..utils import ensure_repo_root_on_path
+
+# --- 【追加】速度調整モジュールのインポート ---
+from ..speed_adjustment import adjust_velocity
+from ..types import RobotState
+from ..utils import ensure_repo_root_on_path
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    from .simulator_v5 import MultiRobotSimulator
+    from .simulator_v5_previous import MultiRobotSimulator
 
 
 @dataclass
@@ -35,6 +40,30 @@ class PolicyRobotControlState:
     current_omega: float = 0.0
     policy_omega_n: float = 0.0
 
+# --- 【追加】インナーターゲット判定関数 (policy.pyより移植) ---
+def _determine_target_is_inner(
+    robot_position: Tuple[float, float],
+    target: Tuple[float, float],
+    *,
+    formation_center: Optional[Tuple[float, float]] = None,
+) -> bool:
+    """Return ``True`` when the formation target is no farther from the center."""
+    if formation_center is None:
+        return False
+
+    cx, cy = formation_center
+    rx, ry = robot_position
+    tx, ty = target
+
+    target_vec_x = tx - cx
+    target_vec_y = ty - cy
+    robot_vec_x = rx - cx
+    robot_vec_y = ry - cy
+
+    target_dist_sq = target_vec_x * target_vec_x + target_vec_y * target_vec_y
+    robot_dist_sq = robot_vec_x * robot_vec_x + robot_vec_y * robot_vec_y
+
+    return target_dist_sq <= robot_dist_sq
 
 class PolicyController:
     """Applies a trained policy to control a robot inside the simulator."""
@@ -64,7 +93,12 @@ class PolicyController:
             "V_MAX": 1.0,
             "OMEGA_MAX": 1.0,
             "A_MAX": 1.0,
-            "ALPHA_MAX": 1.0
+            "ALPHA_MAX": 1.0,
+            "ETA_THETA": 1.0,
+            "ETA_D": 1.0,
+            "K_D": 1.0,
+            "OMEGA_FIXED": 1.2,
+            "T_DF": 0.5
         }
         self._load_local_params()
         
@@ -73,7 +107,7 @@ class PolicyController:
 
     def _load_local_params(self) -> None:
         try:
-            config_path = Path(__file__).parent / "policy_params.yaml"
+            config_path = Path(__file__).resolve().parents[2] / "config" / "policy_params.yaml"
             if config_path.exists():
                 with open(config_path, "r", encoding="utf-8") as f:
                     data = yaml.safe_load(f)
@@ -125,10 +159,22 @@ class PolicyController:
                 return
 
         robot_states = self.simulator.robot_states
+        formation_manager = self.simulator.formation
 
+        # =================================================================
+        # 【修正】LiDAR更新とフォーメーション更新の順序整理
+        # =================================================================
+        # 1. 全ロボットのLiDARを更新（生データ取得）
         for robot in robot_states:
             self.simulator._update_lidar(robot)
-        lidar_preupdated = True
+        
+        # 2. フォーメーションターゲットの計算（最新のLiDARデータが必要）
+        #    ポリシー制御中は強制的にターゲット計算を回すため、一時的に有効化して呼ぶ
+        #    （元々有効ならそのまま、無効なら計算だけさせる意図）
+        #    ※ simulator側で follow_formation_targets=True になっていれば
+        #       update_visualisation() だけで十分だが、念のためここでも呼ぶ。
+        formation_manager.update_visualisation()
+        # =================================================================
 
         stale_indices = [
             index for index in self._control_state if index >= len(robot_states)
@@ -147,55 +193,23 @@ class PolicyController:
 
             robot.braking = False
 
-            # =================================================================
-            # 【修正】最終ゴールの場合のみ、到達判定と停止を行う
-            # =================================================================
-            is_final = getattr(robot, 'is_final_target', False)
-
+            # 到達判定
+            is_final = getattr(robot, 'is_final_target', True)
             if robot_index in self._completed_robots:
-                # 既に到達済みで、まだゴール付近にいるなら停止継続
-                if self._has_reached_target(robot) :
+                if self._has_reached_target(robot):
                     self._stop_robot(robot, control_state)
                     continue
-                # ゴールから離れた、または新しいゴールが設定された（is_final=False）場合
                 self._completed_robots.discard(robot_index)
 
             if is_final and self._has_reached_target(robot):
                 self._completed_robots.add(robot_index)
                 self._stop_robot(robot, control_state)
                 continue
-            # =================================================================
 
-            # =================================================================
-            # 【追加】サブゴール(is_final=False)での一時停止ロジック
-            # =================================================================
-            # if not is_final:
-            #     # ターゲット(サブゴール)までの距離を計算
-            #     dist_m, _ = self._compute_goal_info(robot)
-
-            #     # 初回アクセスの初期化
-            #     if robot_index not in self._waiting_at_subgoal:
-            #         self._waiting_at_subgoal[robot_index] = False
+            # 【修正】ここで再度 _update_lidar を呼ぶとフィルタ結果が消えるので削除
+            # if not lidar_preupdated: self.simulator._update_lidar(robot) <-- 削除
                 
-            #     # 状態遷移判定 (ヒステリシス)
-            #     if self._waiting_at_subgoal[robot_index]:
-            #         # 待機中: 目標が十分離れたら(resume_threshold超え)、移動再開
-            #         if dist_m > self.subgoal_resume_threshold:
-            #             self._waiting_at_subgoal[robot_index] = False
-            #     else:
-            #         # 移動中: 目標に十分近づいたら(stop_threshold未満)、一時停止
-            #         if dist_m < self.subgoal_stop_threshold:
-            #             self._waiting_at_subgoal[robot_index] = True
-                
-            #     # 待機状態なら強制停止して次のロボットへ (推論をスキップ)
-            #     if self._waiting_at_subgoal[robot_index]:
-            #         self._stop_robot(robot, control_state)
-            #         continue
-            # =================================================================
-
-            if not lidar_preupdated:
-                self.simulator._update_lidar(robot)
-                
+            # 観測の構築（内部で _process_lidar_data -> _filter_robot_reflections が呼ばれる）
             observation = self._build_observation(robot_index, robot, control_state)
             if observation is None:
                 continue
@@ -218,8 +232,45 @@ class PolicyController:
             robot.executable_velocity = v_e
             robot.executable_angular_velocity = omega_e
 
-            v_a, omega_a = v_e, omega_e
+            # 速度調整 (Formation Adjustment)
+            formation_target = self.simulator.formation.get_formation_target(robot_index)
             
+            if formation_target is not None:
+                formation_plan = self.simulator.formation.current_plan
+                formation_center = (
+                    formation_plan.center if formation_plan is not None else None
+                )
+                target_is_inner = _determine_target_is_inner(
+                    robot.position,
+                    formation_target,
+                    formation_center=formation_center,
+                )
+                d_f, theta_f = self._compute_goal_info_for_target(robot, formation_target)
+                d_o = -d_f * math.sin(theta_f)
+
+                closest_distance, _ = robot.closest_obstacle
+                obstacle_is_close = closest_distance <= self.simulator.env.ROBOT_RADIUS_M * 3
+
+                v_a, omega_a = adjust_velocity(
+                    v_e,
+                    omega_e,
+                    d_f,
+                    d_o,
+                    theta_f,
+                    target_is_inner,
+                    obstacle_is_close,
+                    self.params.get("ETA_THETA"),
+                    self.params.get("ETA_D"),
+                    self.params.get("K_D"),
+                    self.params.get("OMEGA_FIXED"),
+                    self.params.get("T_DF"),
+                    V_MAX,
+                    OMEGA_MAX,
+                )
+            else:
+                v_a, omega_a = v_e, omega_e
+
+            # 衝突回避（Translation Block）
             translation_blocked = self._should_block_translation(robot)
             robot.braking = translation_blocked
             if translation_blocked:
@@ -244,8 +295,9 @@ class PolicyController:
 
             if self.simulator.path_history != 0 and moved:
                 robot.path.append((robot.position, robot.theta))
-
-            self.simulator._update_lidar(robot)
+            
+            # 【重要】LiDAR更新はループ外で行うため、ここでは行わない
+            # self.simulator._update_lidar(robot) <-- 削除
 
         if now is not None:
             self._last_action_timestamp = now
@@ -372,27 +424,119 @@ class PolicyController:
             "closest_obstacle": obs_closest,
         }
 
+    # --- 【追加/修正】LiDARフィルタリング処理 ---
     def _process_lidar_data(self, robot: RobotState) -> np.ndarray:
         sensor_data = robot.sensor_data
-        lidar_range = self.simulator.env.LIDAR_RANGE_M
         
-        # データがない場合は、学習環境に合わせて100.0で埋める
-        if not sensor_data:
+        # 1. フィルタリング (policy.pyの機能を統合)
+        #    他のロボットを検出データから除去する
+        if sensor_data:
+            filtered_data, replaced_measurements = self._filter_robot_reflections(robot, sensor_data)
+            # ロボットの状態も更新（レンダラーでの表示等に反映）
+            robot.sensor_data = list(filtered_data)
+            robot.filtered_sensor_data = list(replaced_measurements)
+            # 処理用データ
+            data_to_process = robot.sensor_data
+        else:
+            robot.filtered_sensor_data = []
+            data_to_process = []
+        
+        # 2. 観測データ形式への変換 (newobsのロジック維持)
+        lidar_range = self.simulator.env.LIDAR_RANGE_M
+        if not data_to_process:
             return np.full(self._n_l + self._n_e, 100.0, dtype=np.float32)
 
         processed_lidar = []
-        for data in sensor_data:
+        for data in data_to_process:
             dist = data[0]
             if dist < lidar_range:
                 distance = dist / lidar_range
             else:
-                # レンジ外は 100.0
                 distance = 100.0
             processed_lidar.append(distance)
         
+        # 必要ならパディング（newobsの仕様に従い、足りない分を先頭データで埋める等ではなく、単に拡張している）
+        # 元のコードでは processed_lidar += processed_lidar[: self._n_e] となっていた
         processed_lidar += processed_lidar[: self._n_e]
 
         return np.array(processed_lidar, dtype=np.float32)
+
+    # --- 【追加】ロボット反射除去フィルター (policy.pyより移植) ---
+    def _filter_robot_reflections(
+        self,
+        robot: RobotState,
+        sensor_data: Sequence[Tuple[float, float]],
+    ) -> Tuple[list[Tuple[float, float]], list[Tuple[float, float]]]:
+        sensor = robot.sensor
+        if sensor is None:
+            return list(sensor_data), []
+
+        env = self.simulator.env
+        robot_radius_m = env.ROBOT_RADIUS_M
+        lidar_range = sensor.LIDAR_RANGE_M
+        pixels_per_meter = env.PIXELS_PER_METER
+        other_robot_filters: list[Tuple[float, float, float, float]] = []
+
+        for other in self.simulator.robot_states:
+            if other is robot:
+                continue
+
+            dx_pixels = other.position[0] - robot.position[0]
+            dy_pixels = other.position[1] - robot.position[1]
+            distance_pixels = math.hypot(dx_pixels, dy_pixels)
+            if distance_pixels == 0:
+                continue
+
+            distance_m = distance_pixels / pixels_per_meter
+            if distance_m > lidar_range + robot_radius_m:
+                continue
+
+            global_angle = math.atan2(-dx_pixels, -dy_pixels)
+            if global_angle < 0:
+                global_angle += 2 * math.pi
+
+            if distance_m <= robot_radius_m:
+                angle_half_width = math.pi
+            else:
+                ratio = min(1.0, robot_radius_m / distance_m)
+                angle_half_width = math.asin(ratio)
+
+            distance_min = max(0.0, distance_m - robot_radius_m)
+            distance_max = distance_m + robot_radius_m
+            other_robot_filters.append(
+                (global_angle, angle_half_width, distance_min, distance_max)
+            )
+
+        if not other_robot_filters:
+            return list(sensor_data), []
+
+        filtered_data: list[Tuple[float, float]] = []
+        replaced_measurements: list[Tuple[float, float]] = []
+        theta = robot.theta
+        buffer = 1.1
+
+        for distance, relative_angle in sensor_data:
+            global_angle = (theta - math.pi / 2 - relative_angle) % (2 * math.pi)
+            replaced = False
+
+            for angle_center, angle_half_width, distance_min, distance_max in other_robot_filters:
+                angle_diff = abs(global_angle - angle_center)
+                angle_diff = min(angle_diff, 2 * math.pi - angle_diff)
+
+                if (
+                    angle_diff <= angle_half_width * buffer
+                    and distance_min * (2 - buffer) <= distance <= distance_max * buffer
+                ):
+                    replaced_measurements.append((distance, relative_angle))
+                    filtered_data.append((sensor.out_of_range_value, relative_angle))
+                    replaced = True
+                    break
+
+            if not replaced:
+                filtered_data.append((distance, relative_angle))
+
+        return filtered_data, replaced_measurements
+    # -------------------------------------------------------------
 
     def _action_to_executable_action(self, v_n, omega_n, control_state):
         V_MAX = self.params["V_MAX"]
@@ -442,7 +586,7 @@ class PolicyController:
             dy_pixels = other.position[1] - robot.position[1]
             distance = math.hypot(dx_pixels, dy_pixels)
             
-            if distance <= other_radius + robot_radius + 0.3 * self.simulator.env.PIXELS_PER_METER:   # brake 0.5m
+            if distance <= other_radius + 2.0 * robot_radius:   # brake 1.5
                 dy_global = -dy_pixels
                 global_angle = math.atan2(dy_global, dx_pixels)
                 robot_global_angle = robot.theta + math.pi / 2
@@ -450,7 +594,7 @@ class PolicyController:
                     (global_angle - robot_global_angle + math.pi) % (2 * math.pi)
                     - math.pi
                 )
-                if abs(angle_diff) <= math.radians(45.0):   # angle 20
+                if abs(angle_diff) <= math.radians(20.0):   # angle 20
                     return True
         return False
         
