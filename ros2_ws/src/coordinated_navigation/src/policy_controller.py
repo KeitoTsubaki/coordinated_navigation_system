@@ -1,6 +1,6 @@
 """Policy-backed velocity controller for ROS 2 integration.
 
-This module adapts the renderer's :mod:`multi_robot.renderer.policy` controller
+This module adapts the renderer's :mod:`multi_robot.navigation.policy` controller
 logic so that a pre-trained DDPG policy can be executed inside a ROS 2 node.
 """
 

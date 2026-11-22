@@ -2,7 +2,10 @@ import numpy as np
 import pygame
 import time
 import matplotlib.pyplot as plt
+from pathlib import Path
 from multi_robot.navigation.simulator_v5_multi import MultiRobotSimulator
+
+MAPS_DIR = Path(__file__).resolve().parents[1] / "maps"
 
 # ==========================================
 # 実験設定
@@ -11,7 +14,7 @@ CONFIG = {
     "num_robots": 2,                # ロボット台数
     "num_trials": 1,                # 【変更】試行回数を1回に固定
     "max_steps": 2000,              # 1エピソードの最大ステップ数
-    "map_path": "/home/aisl/coordinated_navigation_system/experiments/straight.jpg",# 画像マップのパス
+    "map_path": str(MAPS_DIR / "straight.jpg"),  # 画像マップのパス (multi_robot/maps/)
     "formation_spacing": 0.5,       # ロボット間隔 (m)
     "render": True,                 # 描画ON
     "fps_limit": 60,                # 1回だけなので見やすい速度(60fps)に設定

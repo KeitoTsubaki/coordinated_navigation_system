@@ -1,4 +1,4 @@
-"""Local copy of policy-related helpers from :mod:`multi_robot.renderer.utils`."""
+"""Local copy of policy-related helpers from :mod:`multi_robot.navigation.utils`."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ __all__ = [
 def ensure_repo_root_on_path() -> Path:
     """Ensure the repository root is present on :data:`sys.path`.
 
-    The upstream helper from :mod:`multi_robot.renderer.utils` simply climbs two
+    The upstream helper from :mod:`multi_robot.navigation.utils` simply climbs two
     directories up from the renderer package.  Because the ROS package lives in a
     different subtree, we replicate the search here by walking up until we find
     a folder containing ``.git`` or the ``multi_robot`` sources, and then make
@@ -44,7 +44,7 @@ def process_lidar_for_observation(
 ) -> np.ndarray:
     """Convert LiDAR measurements into the policy observation format.
 
-    This function is copied from :func:`multi_robot.renderer.utils.process_lidar_for_observation`
+    This function is copied from :func:`multi_robot.navigation.utils.process_lidar_for_observation`
     so that the ROS integration can reuse the exact same preprocessing routine
     without depending on the renderer package at runtime.
     """
