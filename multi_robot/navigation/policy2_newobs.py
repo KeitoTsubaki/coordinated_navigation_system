@@ -54,7 +54,7 @@ class PolicyController:
         self._n_l = 0
         self._n_e = 0
 
-        # --- 【追加】サブゴール待機用の変数を追加 ---
+        # --- サブゴール待機用の変数を追加 ---
         self._waiting_at_subgoal: Dict[int, bool] = {} # ロボット毎の待機フラグ
         self.subgoal_stop_threshold = 0.1   # この距離(m)以内に入ったら停止
         self.subgoal_resume_threshold = 0.3 # この距離(m)以上離れたら再開
@@ -148,7 +148,7 @@ class PolicyController:
             robot.braking = False
 
             # =================================================================
-            # 【修正】最終ゴールの場合のみ、到達判定と停止を行う
+            # 最終ゴールの場合のみ、到達判定と停止を行う
             # =================================================================
             is_final = getattr(robot, 'is_final_target', False)
 
@@ -167,7 +167,7 @@ class PolicyController:
             # =================================================================
 
             # =================================================================
-            # 【追加】サブゴール(is_final=False)での一時停止ロジック
+            # サブゴール(is_final=False)での一時停止ロジック
             # =================================================================
             # if not is_final:
             #     # ターゲット(サブゴール)までの距離を計算
@@ -417,7 +417,7 @@ class PolicyController:
         next_position = (robot.position[0] + dx, robot.position[1] + dy)
         moved = False
         
-        # 【修正】衝突判定を行い、結果をロボットの状態に記録する
+        # 衝突判定を行い、結果をロボットの状態に記録する
         if not self.simulator._is_collision(next_position, ignore_robot=robot):
             self.simulator._update_robot_motion(robot, next_position)
             moved = True

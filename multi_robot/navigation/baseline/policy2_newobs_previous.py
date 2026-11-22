@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 from ..types import RobotState
 from ..utils import ensure_repo_root_on_path
 
-# --- 【追加】速度調整モジュールのインポート ---
+# --- 速度調整モジュールのインポート ---
 from ..speed_adjustment import adjust_velocity
 from ..types import RobotState
 from ..utils import ensure_repo_root_on_path
@@ -40,7 +40,7 @@ class PolicyRobotControlState:
     current_omega: float = 0.0
     policy_omega_n: float = 0.0
 
-# --- 【追加】インナーターゲット判定関数 (policy.pyより移植) ---
+# --- インナーターゲット判定関数 ---
 def _determine_target_is_inner(
     robot_position: Tuple[float, float],
     target: Tuple[float, float],
@@ -83,7 +83,7 @@ class PolicyController:
         self._n_l = 0
         self._n_e = 0
 
-        # --- 【追加】サブゴール待機用の変数を追加 ---
+        # --- サブゴール待機用の変数を追加 ---
         self._waiting_at_subgoal: Dict[int, bool] = {} # ロボット毎の待機フラグ
         self.subgoal_stop_threshold = 0.1   # この距離(m)以内に入ったら停止
         self.subgoal_resume_threshold = 0.3 # この距離(m)以上離れたら再開
@@ -162,7 +162,7 @@ class PolicyController:
         formation_manager = self.simulator.formation
 
         # =================================================================
-        # 【修正】LiDAR更新とフォーメーション更新の順序整理
+        # LiDAR更新とフォーメーション更新の順序整理
         # =================================================================
         # 1. 全ロボットのLiDARを更新（生データ取得）
         for robot in robot_states:
@@ -206,7 +206,7 @@ class PolicyController:
                 self._stop_robot(robot, control_state)
                 continue
 
-            # 【修正】ここで再度 _update_lidar を呼ぶとフィルタ結果が消えるので削除
+            # ここで再度 _update_lidar を呼ぶとフィルタ結果が消えるので削除
             # if not lidar_preupdated: self.simulator._update_lidar(robot) <-- 削除
                 
             # 観測の構築（内部で _process_lidar_data -> _filter_robot_reflections が呼ばれる）
@@ -296,7 +296,7 @@ class PolicyController:
             if self.simulator.path_history != 0 and moved:
                 robot.path.append((robot.position, robot.theta))
             
-            # 【重要】LiDAR更新はループ外で行うため、ここでは行わない
+            # LiDAR更新はループ外で行うため、ここでは行わない
             # self.simulator._update_lidar(robot) <-- 削除
 
         if now is not None:
@@ -424,7 +424,7 @@ class PolicyController:
             "closest_obstacle": obs_closest,
         }
 
-    # --- 【追加/修正】LiDARフィルタリング処理 ---
+    # --- LiDARフィルタリング処理 ---
     def _process_lidar_data(self, robot: RobotState) -> np.ndarray:
         sensor_data = robot.sensor_data
         
@@ -456,12 +456,11 @@ class PolicyController:
             processed_lidar.append(distance)
         
         # 必要ならパディング（newobsの仕様に従い、足りない分を先頭データで埋める等ではなく、単に拡張している）
-        # 元のコードでは processed_lidar += processed_lidar[: self._n_e] となっていた
         processed_lidar += processed_lidar[: self._n_e]
 
         return np.array(processed_lidar, dtype=np.float32)
 
-    # --- 【追加】ロボット反射除去フィルター (policy.pyより移植) ---
+    # --- ロボット反射除去フィルター ---
     def _filter_robot_reflections(
         self,
         robot: RobotState,
@@ -561,7 +560,7 @@ class PolicyController:
         next_position = (robot.position[0] + dx, robot.position[1] + dy)
         moved = False
         
-        # 【修正】衝突判定を行い、結果をロボットの状態に記録する
+        # 衝突判定を行い、結果をロボットの状態に記録する
         if not self.simulator._is_collision(next_position, ignore_robot=robot):
             self.simulator._update_robot_motion(robot, next_position)
             moved = True

@@ -12,14 +12,14 @@ MAPS_DIR = Path(__file__).resolve().parents[1] / "maps"
 # ==========================================
 CONFIG = {
     "num_robots": 2,                # ロボット台数
-    "num_trials": 1,                # 【変更】試行回数を1回に固定
+    "num_trials": 1,                # 試行回数を1回に固定
     "max_steps": 2000,              # 1エピソードの最大ステップ数
     "map_path": str(MAPS_DIR / "straight.jpg"),  # 画像マップのパス (multi_robot/maps/)
     "formation_spacing": 0.5,       # ロボット間隔 (m)
     "render": True,                 # 描画ON
     "fps_limit": 60,                # 1回だけなので見やすい速度(60fps)に設定
     
-    # === 【追加】スタート・ゴール位置の設定 (メートル単位) ===
+    # === スタート・ゴール位置の設定 (メートル単位) ===
     # Start: (x, y, theta_rad) 
     # ※thetaはラジアン (0: 右, pi/2: 下, pi: 左, -pi/2: 上 ※pygame座標系依存)
     "start_pos": (-7.5, 0.0, -1.57),   
@@ -106,7 +106,7 @@ class ExperimentData:
 
         self._plot_graphs(epsilons, fmr_values, frt_values)
 
-        # === 【追加】CSV保存機能 ===
+        # === CSV保存機能 ===
         import csv
         csv_filename = "experiment_result.csv"
         with open(csv_filename, "w", newline="") as f:
@@ -154,7 +154,7 @@ def run_experiment():
         # trail_step_interval=10
     )
     
-    # === 【変更】固定座標を設定 ===
+    # === 固定座標を設定 ===
     # 内部の _recenter_robots, _assign_random_targets でこの値が使われます
     start_config = CONFIG["start_pos"]
     sim.fixed_start_pos_m = (start_config[0], start_config[1]) # (x, y)のみ

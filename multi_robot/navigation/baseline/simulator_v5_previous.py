@@ -10,8 +10,8 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 import yaml
 from pathlib import Path
 import datetime
-import csv  # 【追加】
-import os   # (あればそのままでOK)
+import csv
+import os
 
 import numpy as np
 import pygame
@@ -63,7 +63,7 @@ class MultiRobotSimulator:
         formation_type: Optional[str] = None,
         formation_spacing_m: Optional[float] = None,
         image_map_path: Optional[str] = None,
-        map_type: Optional[str] = None,  # 【追加】引数にmap_typeを追加
+        map_type: Optional[str] = None,
         show_trail: bool = True,
         trail_step_interval: int = 20, # steps
     ) -> None:
@@ -91,7 +91,7 @@ class MultiRobotSimulator:
 
         self.filter_robot = True
 
-        # --- 【追加】録画用変数 ---
+        # --- 録画用変数 ---
         self.is_recording = False
         self.frames = []
         # ----------------------
@@ -135,7 +135,6 @@ class MultiRobotSimulator:
         self.default_formation_spacing = self.env.DEFAULT_FORMATION_SPACING_PIXELS
         self.default_formation_spacing_m = self.env.DEFAULT_FORMATION_SPACING_M
         
-        # ... (formationパラメータの設定などは元のコードを維持) ...
         if formation_type is not None:
             self.default_formation_type = formation_type
         if formation_spacing_m is not None:
@@ -163,7 +162,7 @@ class MultiRobotSimulator:
         self.lidar_filtered_points_color: Color = (64, 224, 208)
         self._lidar_detection_surface = pygame.Surface((self.env.SCREEN_W, self.env.SCREEN_H), pygame.SRCALPHA)
 
-        # === 【追加】VWA* Planner（コストマップ計算用）の初期化 ===
+        # === VWA* Planner（コストマップ計算用）の初期化 ===
         # FRT/FMR計測のために「広い領域」と「狭い領域」を判定するマップを作成する
         vw_config = VWAstarConfig()
         # 必要に応じてインフレート半径を調整してください（例: [Wide用, Narrow用]）
@@ -194,7 +193,7 @@ class MultiRobotSimulator:
         }
 
         # =========================================================================
-        # 【修正】Config読み込みと VW-Astar パラメータ計算
+        # Config読み込みと VW-Astar パラメータ計算
         # =========================================================================
         previous_research_config_path = Path(__file__).resolve().parents[2] / "config" / "previous_research_params.yaml"
         previous_research_params = {
@@ -215,7 +214,7 @@ class MultiRobotSimulator:
 
         
 
-        # === 【追加】可視化設定の適用 ===
+        # === 可視化設定の適用 ===
         viz_params = previous_research_params.get("visualization", {})
         
         # デフォルト値は既存の変数の状態(CLI引数など)を維持しつつ、YAMLにあれば上書き
@@ -271,7 +270,7 @@ class MultiRobotSimulator:
             self.start_policy_control()
 
 
-        # 【重要】地図画像を保持する変数を初期化
+        # 地図画像を保持する変数を初期化
         self.map_surface: Optional[pygame.Surface] = None 
         self._brake_font: Optional[pygame.font.Font] = None
         self._obstacle_mask: Optional[np.ndarray] = None
@@ -346,7 +345,7 @@ class MultiRobotSimulator:
             "image": self._describe_image_map(),
         }
 
-        # 【重要】指定されたマップタイプ、またはデフォルト設定で初期化（1回のみ実行）
+        # 指定されたマップタイプ、またはデフォルト設定で初期化（1回のみ実行）
         target_map_type = map_type if map_type is not None else self.env.map_type
         print(f"[DEBUG] Initializing map with type: {target_map_type}")
         self.set_map(target_map_type)
@@ -354,7 +353,7 @@ class MultiRobotSimulator:
         
 
 
-    # --- 【追加】録画制御メソッド ---
+    # --- 録画制御メソッド ---
     def start_recording(self) -> None:
         self.is_recording = True
         self.frames = []
@@ -398,7 +397,7 @@ class MultiRobotSimulator:
                     self.manual_control = False
                     self.start_recording()
 
-                    # --- 【修正】計測データのリセット ---
+                    # --- 計測データのリセット ---
                     print("[INFO] Resetting metrics for new episode.")
                     self.metrics_data = {
                     "total_steps": 0,
@@ -640,7 +639,7 @@ class MultiRobotSimulator:
             self.map_surface = self.env.screen.copy()
 
         # =========================================================================
-        # 【修正】マージン描画順序の制御
+        # マージン描画順序の制御
         # =========================================================================
         # 1. 現在の壁（障害物）をコピーして退避
         walls_surface = self.env.obstacle_layer.copy()
@@ -767,7 +766,7 @@ class MultiRobotSimulator:
             self._clock.tick()
         self._fps = self._clock.get_fps()
 
-        # === 【追加】平均FPS計測 (ポリシー実行中のみ) ===
+        # === 平均FPS計測 (ポリシー実行中のみ) ===
         if self.policy_control_active and self.metrics_enabled:
             # 最初の数フレームは0になることがあるため除外してもよいが、単純な平均をとる
             self.metrics_data["fps_sum"] += self._fps
@@ -778,7 +777,7 @@ class MultiRobotSimulator:
         #      self.team_nav.update()
 
         # ---------------------------------------------------------
-        # 【重要】描画のベースを作成
+        # 描画のベースを作成
         # 1. まず背景色で塗りつぶす（これで黒画面を防ぐ）
         # ---------------------------------------------------------
         self.env.screen.fill(self.env.BACKGROUND_COLOR)
@@ -804,7 +803,7 @@ class MultiRobotSimulator:
             if robot.target is not None:
                 self._draw_target(robot)
 
-            # 【変更】軌跡の描画 (リスト内の全点を描画)
+            # 軌跡の描画 (リスト内の全点を描画)
             if self.show_trail and hasattr(robot, 'trail_points'):
                 for pt in robot.trail_points:
                     pygame.draw.circle(
@@ -817,7 +816,7 @@ class MultiRobotSimulator:
             if self.show_labels and self.show_debug_text:
                 self._draw_label(robot)
 
-        # --- 【修正】VWA*パスの描画制御 ---
+        # --- VWA*パスの描画制御 ---
         # if self.show_global_path:
         #     self.team_nav.draw(self.env.robot_and_lidar_layer)
         # elif self.team_nav.team_goal:
@@ -845,7 +844,7 @@ class MultiRobotSimulator:
         if self.env.render_mode == "human":
             pygame.display.flip()
 
-        # --- 【追加】録画中のフレーム保存 ---
+        # --- 録画中のフレーム保存 ---
         if self.is_recording:
             # display_surface(表示されている画面そのまま)をキャプチャ
             # pygameは (width, height, 3) で返すので、(height, width, 3) に変換
@@ -921,7 +920,7 @@ class MultiRobotSimulator:
         except Exception as e:
             print(f"[ERROR] Failed to save CSV: {e}")
 
-    # === 【追加】FMR / FRT 計測ロジック ===
+    # === FMR / FRT 計測ロジック ===
     def _update_metrics(self) -> None:
         """重心位置と隊形誤差に基づき FMR, FRT を更新する"""
         if not self.policy_control_active or not self.metrics_enabled:
@@ -1079,7 +1078,7 @@ class MultiRobotSimulator:
             self._policy_controller.step()
             self.policy_control_active = self._policy_controller.active
 
-            # --- 【追加】ステップカウントとゴール判定 ---
+            # --- ステップカウントとゴール判定 ---
             if self.policy_control_active:
                 self.metrics_data["total_steps"] += 1
 
@@ -1551,7 +1550,7 @@ class MultiRobotSimulator:
         robot.last_update_time = current_time
         robot.position = (float(new_position[0]), float(new_position[1]))
 
-        # 【変更】ステップ数ベースの軌跡記録
+        # ステップ数ベースの軌跡記録
         if self.show_trail:
             # 属性の初期化 (念のため)
             if not hasattr(robot, 'trail_step_counter'):
@@ -1951,7 +1950,7 @@ class MultiRobotSimulator:
         return True
 
     def _is_collision(self, position: Position, *, ignore_robot: Optional[RobotState] = None) -> bool:
-        # 【修正】安全マージンではなく、物理サイズ(本体半径)で判定する
+        # 安全マージンではなく、物理サイズ(本体半径)で判定する
         body_radius_px = self.env.ROBOT_BODY_RADIUS_M * self.env.PIXELS_PER_METER
 
         # 1. 壁（障害物）との衝突判定
@@ -2240,7 +2239,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         formation_type=args.formation_type,
         formation_spacing_m=args.formation_spacing,
         image_map_path=args.image_map_path,
-        map_type=args.map_type,  # 【追加】引数として渡す
+        map_type=args.map_type,
         show_trail=True,
         trail_step_interval=args.trail_step_interval,
     )

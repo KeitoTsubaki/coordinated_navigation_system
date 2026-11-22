@@ -430,7 +430,7 @@ class TeamNavigationController:
                 else:
                     ref_point = curr_pt
                 
-                # 【重要】ここで「サブゴールがいる区間」のフォーメーションIDを取得
+                # ここで「サブゴールがいる区間」のフォーメーションIDを取得
                 ref_idx = curr_idx
                 ref_fmt_idx = self.current_path_nodes[curr_idx].formation_idx
                 # f1 = self.current_path_nodes[curr_idx].formation_idx
@@ -466,7 +466,6 @@ class TeamNavigationController:
                 found_next_wide = False
                 for k in range(ref_idx + 1, len(self.current_path_nodes)):
                     if self.current_path_nodes[k].formation_idx == 0:
-                        # 省略: skipロジック (前回の通り)
                         norm = np.linalg.norm(path_points[k+1] - path_points[k])
                         t_next = (path_points[k+1] - path_points[k]) / norm if norm > 0 else np.array([1.0, 0.0])
                         ref_point = path_points[k]

@@ -574,7 +574,7 @@ class CoordinatedNavigationNode(Node):
                 min_dist_sq = d_sq
                 closest_idx = i
 
-        # --- 2. 【修正】ロボットからの直線距離でターゲットを探す ---
+        # --- 2. ロボットからの直線距離でターゲットを探す ---
         # これにより、ロボットが動けば即座にターゲットも更新されます
         
         target_point = Point()
@@ -1037,7 +1037,7 @@ class CoordinatedNavigationNode(Node):
             else:
                  yaw = quaternion_to_yaw(center_target.pose.orientation)
 
-        # 4. 【重要】自分の位置がパスの左右どちらにあるか判定 (外積)
+        # 4. 自分の位置がパスの左右どちらにあるか判定 (外積)
         # パス上の点(target_idx)から見たロボットの相対ベクトル
         path_pt = path.poses[target_idx].pose.position
         dx_robot = rx - path_pt.x
@@ -1205,8 +1205,6 @@ class CoordinatedNavigationNode(Node):
         clean_scan.scan_time = scan_to_use.scan_time
         clean_scan.range_min = scan_to_use.range_min
         clean_scan.range_max = scan_to_use.range_max
-        # ... (前回のコードと同じクリーニング処理) ...
-        # 省略... clean_scan.ranges = cleaned_ranges
         # self._prev_clean_scan = clean_scan
 
         cleaned_ranges = []

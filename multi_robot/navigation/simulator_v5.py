@@ -59,7 +59,7 @@ class MultiRobotSimulator:
         formation_type: Optional[str] = None,
         formation_spacing_m: Optional[float] = None,
         image_map_path: Optional[str] = None,
-        map_type: Optional[str] = None,  # 【追加】引数にmap_typeを追加
+        map_type: Optional[str] = None,
         show_trail: bool = True,
         trail_step_interval: int = 20, # steps
     ) -> None:
@@ -117,13 +117,11 @@ class MultiRobotSimulator:
             else:
                 print(f"\n[ERROR] Image map file NOT found: {image_map_path}")
 
-        # ... (中略: formationなどの設定はそのまま) ...
         self.default_formation_robot_count = self.env.DEFAULT_FORMATION_ROBOT_COUNT
         self.default_formation_type = self.env.DEFAULT_FORMATION_TYPE
         self.default_formation_spacing = self.env.DEFAULT_FORMATION_SPACING_PIXELS
         self.default_formation_spacing_m = self.env.DEFAULT_FORMATION_SPACING_M
         
-        # ... (formationパラメータの設定などは元のコードを維持) ...
         if formation_type is not None:
             self.default_formation_type = formation_type
         if formation_spacing_m is not None:
@@ -152,7 +150,7 @@ class MultiRobotSimulator:
         self._lidar_detection_surface = pygame.Surface((self.env.SCREEN_W, self.env.SCREEN_H), pygame.SRCALPHA)
 
         # =========================================================================
-        # 【修正】Config読み込みと VW-Astar パラメータ計算
+        # Config読み込みと VW-Astar パラメータ計算
         # =========================================================================
         planner_config_path = Path(__file__).resolve().parents[1] / "config" / "planner_params.yaml"
         planner_params = {
@@ -214,7 +212,7 @@ class MultiRobotSimulator:
         print(f"[DEBUG] Converted Center-to-Center Spacing: {s_side:.2f}m")
         # =========================================================================
 
-        # 【重要】地図画像を保持する変数を初期化
+        # 地図画像を保持する変数を初期化
         self.map_surface: Optional[pygame.Surface] = None 
         self._brake_font: Optional[pygame.font.Font] = None
         self._obstacle_mask: Optional[np.ndarray] = None
@@ -280,7 +278,7 @@ class MultiRobotSimulator:
             "image": self._describe_image_map(),
         }
 
-        # 【重要】指定されたマップタイプ、またはデフォルト設定で初期化（1回のみ実行）
+        # 指定されたマップタイプ、またはデフォルト設定で初期化（1回のみ実行）
         target_map_type = map_type if map_type is not None else self.env.map_type
         print(f"[DEBUG] Initializing map with type: {target_map_type}")
         self.set_map(target_map_type)
@@ -506,7 +504,7 @@ class MultiRobotSimulator:
             self.map_surface = self.env.screen.copy()
 
         # =========================================================================
-        # 【修正】マージン描画順序の制御
+        # マージン描画順序の制御
         # =========================================================================
         # 1. 現在の壁（障害物）をコピーして退避
         walls_surface = self.env.obstacle_layer.copy()
@@ -578,7 +576,7 @@ class MultiRobotSimulator:
              self.team_nav.update()
 
         # ---------------------------------------------------------
-        # 【重要】描画のベースを作成
+        # 描画のベースを作成
         # 1. まず背景色で塗りつぶす（これで黒画面を防ぐ）
         # ---------------------------------------------------------
         self.env.screen.fill(self.env.BACKGROUND_COLOR)
@@ -604,7 +602,7 @@ class MultiRobotSimulator:
             if robot.target is not None:
                 self._draw_target(robot)
 
-            # 【変更】軌跡の描画 (リスト内の全点を描画)
+            # 軌跡の描画 (リスト内の全点を描画)
             if self.show_trail and hasattr(robot, 'trail_points'):
                 for pt in robot.trail_points:
                     pygame.draw.circle(
@@ -1331,7 +1329,7 @@ class MultiRobotSimulator:
         robot.last_update_time = current_time
         robot.position = (float(new_position[0]), float(new_position[1]))
 
-        # 【変更】ステップ数ベースの軌跡記録
+        # ステップ数ベースの軌跡記録
         if self.show_trail:
             # 属性の初期化 (念のため)
             if not hasattr(robot, 'trail_step_counter'):
@@ -1701,7 +1699,7 @@ class MultiRobotSimulator:
         return True
 
     def _is_collision(self, position: Position, *, ignore_robot: Optional[RobotState] = None) -> bool:
-        # 【修正】安全マージンではなく、物理サイズ(本体半径)で判定する
+        # 安全マージンではなく、物理サイズ(本体半径)で判定する
         body_radius_px = self.env.ROBOT_BODY_RADIUS_M * self.env.PIXELS_PER_METER
 
         # 1. 壁（障害物）との衝突判定
@@ -1984,7 +1982,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         formation_type=args.formation_type,
         formation_spacing_m=args.formation_spacing,
         image_map_path=args.image_map_path,
-        map_type=args.map_type,  # 【追加】引数として渡す
+        map_type=args.map_type,
         show_trail=True,
         trail_step_interval=args.trail_step_interval,
     )
