@@ -76,7 +76,6 @@ cd coordinated_navigation_system
 uv sync
 ```
 
-`uv sync` で、PyTorch と `simulation_core`（editable）を含むすべての依存パッケージが `.venv` にインストールされます。
 
 ROS 2 ワークスペース：
 
@@ -89,7 +88,7 @@ source install/setup.bash
 
 ## 使い方
 
-Python のコマンドは、リポジトリのルートで `uv run` を付けて実行します。
+
 
 ### 2Dシミュレータ
 ```bash
@@ -135,7 +134,6 @@ uv run python -m multi_robot.navigation.simulator_v5_multi --robots 2 --map-type
 uv run python -m rl_training.train_v4 --total-timesteps 10000000
 ```
 
-ログとチェックポイントは `rl_training/logs/` に保存されます。
 
 ### ROS 2 / Gazebo
 
