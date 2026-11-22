@@ -1,157 +1,145 @@
-# Coordinated Formation Control of Multi-robot using WHILL
+# 複数のパーソナルモビリティの隊列協調ナビゲーション
 
-## Overview
-This project aims to develop a multi-robot navigation system for WHILL mobility devices. <br>
-Each robots navigate to the goal keeping formation optimized in their surrounding environment. Based on their surrounding objects, they should optimize their formation (e.g., line formation in the narrow passage, or moving side by side in an afordable situation).<br>
-Considering this system is developed for WHILL mobilities that is ridden by human, the adaptation of formation is kind to humans, such as not too high speed, not too close to obstacles.  
+複数台の WHILL（パーソナルモビリティ）が、周囲の空間に合わせて隊形を変えながら共通のゴールへ自律移動するマルチロボットナビゲーションシステムです。広い場所では横並び、狭い通路では一列になって進みます。
 
-## Features
-- **Coordinated Navigation**: Multiple WHILL devices moving in unison. (At first, I only use two WHILLs)
-- **Formation Control**: Maintaining specific geometric formations (e.g., line, wedge)
-- **Reinforcement Learning**
-- **ROS2**
+![2台の WHILL が Gazebo 上で狭い通路を通過する様子](docs/images/demo.gif)
 
-## System Architecture
+*Gazebo / ROS 2：2台の WHILL が隊形を切り替えて狭い通路を通過している様子（右上は RVizでコストマップ、経路、サブゴールが表示されている）。*
+
+![2Dシミュレータで2台のロボットが狭い通路を通過する様子](docs/images/2d_demo.gif)
+
+*2Dシミュレータ：提案手法を pygame 上で実行した様子（右側は情報パネル）。*
+
+## 概要
+
+隊形の決定はチーム全体で行い、障害物の回避は各ロボットが個別に行います。この役割分担を、次の3つの要素で実現しています。
+
+1. **大域経路計画（VWA\*）**
+   リーダーが、チーム全体を1台の大きなロボットとみなして経路を計画します。隊形ごとにマージン幅を設定しておき、通路の幅に応じて経路上の各区間の隊形（横並び / 縦列）を決めます。計画した経路には、区間ごとの隊形の情報が含まれます。
+2. **サブゴール生成・割り当て**
+   経路上の隊形の情報をもとに、チームの進行方向に沿って各ロボットのサブゴールを生成します。生成したサブゴールは、ハンガリアン法によって移動距離が最小になるようにロボットへ割り当てます。
+3. **局所経路計画（DDPG）**
+   各ロボットは、強化学習（DDPG）で学習した方策によって、自分のサブゴールへ向かいます。方策の入力は LiDAR、サブゴールの情報、自分の速度です。
 
 
-## Repository Structure
+## システム構成
+
+![architecture](docs/images/architecture.png)
+
+![ros_architecture](docs/images/ros_architecture.png)
+
+| 要素 | 実装 |
+|---|---|
+| 大域経路計画（VWA\*） | `multi_robot/navigation/vwastar_planner.py`（2Dシミュレータ）、`ros2_ws/src/ros2_vwastar`（ROS 2） |
+| サブゴール生成・割り当て | `multi_robot/navigation/vwastar_planner.py` の `TeamNavigationController`、`multi_robot/navigation/formation_sidebyside_5.py` |
+| 局所経路計画（DDPG） | `rl_training/`（学習）、`multi_robot/navigation/policy2_newobs.py`（推論） |
+| 2Dシミュレータ | `multi_robot/navigation/simulator_v5_multi.py`、`simulation_core/` |
+| ROS 2 ノード | `ros2_ws/src/coordinated_navigation/src/node_2.py` |
+
+
+## リポジトリ構成
+
+```
+coordinated_navigation_system/
+├── multi_robot/
+│   ├── navigation/        # 提案手法：シミュレータ、VWA*、サブゴール生成、方策
+│   │   └── baseline/      # 比較手法（先行研究）
+│   ├── experiments/       # 評価実験のスクリプト
+│   ├── config/            # 経路計画 / 方策 / 比較手法のパラメータ
+│   ├── maps/              # 画像マップ
+│   └── models/            # 学習済みの方策
+├── rl_training/           # DDPG の学習：Gym 環境、ネットワーク、コールバック、設定
+├── simulation_core/       # 2Dシミュレータ：環境、LiDAR、マップ生成
+├── ros2_ws/src/
+│   ├── coordinated_navigation/             # 提案手法のROS2ノード
+│   ├── coordinated_navigation_interfaces/  # Formation メッセージ
+│   ├── ros2_vwastar/                       # VWA* 経路計画
+│   ├── maps/                               # 地図
+│   └── ros2_whill, ros2_whill_interfaces   # WHILL のドライバ
+├── results/               # 実験結果の CSV と動画
+└── archive/               # 開発時のコード
+```
+
+## 動作環境
+
+- Ubuntu 22.04
+- Python 3.10
+- uv
+- ROS 2 Humble、Gazebo Classic
+
+## インストール
+
 ```bash
-coordinated_navigation_system\
-├── .gitignore
-├── .gitmodules
-├── GEMINI.md
-├── README.md
-├── requirements.txt
-├── .vscode/
-│   └── settings.json
-│
-├── rl_training/                      # <-- "The Brain": Your RL algorithms live here.
-│   ├── train_ddpg.py
-│   ├── your_new_rl_agent.py          # Your new agent that learns from the simulator.
-│   ├── requirements.txt              # Python dependencies for RL (PyTorch, etc.).
-│   ├── ... (other existing files)
-│
-└── ros2_ws/                          # <-- "The Body": The robot environment lives here.
-    ├── src/
-    │   ├── ... (your other ros2 packages)
-    │   └── matplotlib_2d_simulator/  # <-- NEW: The ROS2 2D Simulator Package.
-    │       ├── matplotlib_2d_simulator/  # Python source code for the node.
-    │       │   ├── __init__.py
-    │       │   ├── simulator_node.py     # Main executable ROS2 node.
-    │       │   ├── environment.py        # Defines the 2D world.
-    │       │   └── robot.py              # Simulates robot physics & LiDAR.
-    │       ├── config/
-    │       │   ├── policy_simulator_limits.yaml # Policy controller actuator/sensor limits.
-    │       │   └── simulator_config.yaml        # Broader simulator parameters.
-    │       ├── launch/
-    │       │   └── simulator.launch.py   # A convenient way to run the node.
-    │       ├── resource/
-    │       │   └── matplotlib_2d_simulator # Required for package discovery.
-    │       ├── setup.py                  # Build instructions for colcon.
-    │       └── package.xml               # ROS2 package manifest.
-    │
-    ├── build/   (Will be created by `colcon build`)
-    ├── install/ (Will be created by `colcon build`)
-    └── log/     (Will be created by `colcon build`)
-```
-
-## Getting Started
-- PyTorchのインストール
-- 必要パッケージのインストール
-```
-uv init
-
-uv pip install torch --torch-backend=auto (NVIDIA DriverさえあればOK)
+git clone --recursive https://github.com/KeitoTsubaki/coordinated_navigation_system.git
+cd coordinated_navigation_system
 
 uv sync
-
-cd simulation_core
-uv pip install .
-# editable mode を使うなら
-uv pip install -e .
-```
-### Prerequisistes
-- Ubuntu 22.04
-- ROS2 Humble
-- Python 3.13
-### Installation
-
-
-## Usage
-
-
-## Modules
-
-### Navigation Module
-
-### Formation Module
-
-### Velocity Adjustment Module
-
-The renderer applies a formation-aware velocity adjustment helper
-(`multi_robot/navigation/speed_adjustment.py`). The helper implements the
-following attenuation scheme:
-
-* `l_theta = ((-cos(theta_f) + 1) / 2) ^ eta_theta` reflects the formation
-  heading error.
-* `l_d = min(((1 / d_f - 1 / T_df) ^ eta_d) / k_d, 1)` when `d_f < T_df`,
-  otherwise zero, captures how far the robot lags behind the formation target.
-* `l_t = max(l_theta - l_d, 0)` represents the lateral deviation gate.
-
-The executable commands are blended as `v_a = K[v_e * (1 - l_t)]` and
-`omega_a = K[omega_e + min(|d_o|, 1) * (omega_f - omega_e)]`. `K[·]` denotes
-saturation to the physical limits `[0, V_MAX]` and `[-OMEGA_MAX, OMEGA_MAX]`,
-while `omega_f` keeps a fixed magnitude of `0.4π rad/s` (its sign follows the
-heading error) so the robot turns at a consistent rate in the direction of the
-formation target.
-
-The tuning constants live in `simulation_core/config/simulator_config.yaml`, while the
-policy controllers read their actuator limits from
-`coordinated_navigation/config/policy_simulator_limits.yaml`:
-
-```yaml
-speed_adjustment:
-  eta_theta: 1.0  # Exponent for heading attenuation
-  eta_d: 1.0      # Exponent for distance attenuation
-  k_d: 0.5        # Distance attenuation gain
-  omega_fixed: 1.2566370614 # Fixed magnitude (0.4 * pi rad/s)
-  T_df: 1.0       # Distance threshold (m)
 ```
 
-The renderer (`PolicyController`) applies this helper whenever a viable
-formation navigation target is available. During reinforcement learning
-training, formation objectives are ignored and the raw policy commands are
-executed after applying only the acceleration limits, keeping the training
-signal focused on goal-seeking behaviour.
+`uv sync` で、PyTorch と `simulation_core`（editable）を含むすべての依存パッケージが `.venv` にインストールされます。
 
-### Formation defaults
+ROS 2 ワークスペース：
 
-The simulator reads default formation settings from
-`simulation_core/config/simulator_config.yaml`. The new `formation`
-section lets you control the initial robot count, preferred pattern, and
-robot spacing:
-
-```yaml
-formation:
-  robot_count: 3          # Number of robots spawned when no override is provided
-  default_type: "triangle"  # Formation label passed to the planner
-  spacing_m: 1.5          # Desired spacing in metres
+```bash
+source /opt/ros/humble/setup.bash
+cd ros2_ws
+colcon build
+source install/setup.bash
 ```
 
-`spacing_m` is specified in metres and automatically converted into pixels
-using the current map scale (`PIXELS_PER_METER`). The resolved value is
-exposed in `MultiRobotSimulator.default_formation_spacing` (pixels) and
-`MultiRobotSimulator.default_formation_spacing_m` (metres). Passing
-`None` for the `num_robots`, `formation_type`, or `spacing` arguments
-when constructing the simulator or optimising a formation causes these
-defaults to be used.
+## 使い方
 
-To visualise the formation-centre cost landscape during optimisation, set
-`formation_debug_plot_enabled` to `true` in the simulator configuration or
-toggle the attribute on a `MultiRobotSimulator` instance. When enabled, the
-renderer collects every candidate centre and displays a scatter plot coloured by
-cost using Matplotlib; this requires the optional `matplotlib` dependency to be
-installed.
+Python のコマンドは、リポジトリのルートで `uv run` を付けて実行します。
 
-## Roadmap
+### 2Dシミュレータ
+```bash
+uv run python -m multi_robot.navigation.simulator_v5_multi --robots 2 --map-type random
+```
+
+主なオプション：`--robots`、`--formation-type`、`--formation-spacing`、`--map-type {trap_shaped,zigzag,random,empty,image}`、`--image-map-path`、`--fps`、`--config`
+
+| キー | 操作 |
+|---|---|
+| `M` | 学習済み方策による走行の開始 / 停止（開始と同時に録画も始まる） |
+| `SPACE` | 新しいマップを生成 |
+| `R` | 今のマップで最初からやり直す |
+| `C` | マップの種類を切り替え |
+| `F` | 隊形に従う / 従わない（OFF にすると各ロボットが自分のゴールへ直接向かう） |
+| `V` | 隊形探索の直交制約の ON / OFF |
+| `TAB` / `1`〜`9` | 操作・表示の対象にするロボットを選択 |
+| `W` / `Q` / `E` | 方策が停止しているときに、選択中のロボットを手動で前進 / 左旋回 / 右旋回 |
+| `L` / `P` / `D` | LiDAR / 軌跡 / デバッグ表示の切り替え |
+| `ESC` | 終了 |
+
+### 実験で使ったマップで実行する
+
+評価実験で使ったマップは `multi_robot/maps/` に入っています。
+
+| マップ | ファイル | 内容 |
+|---|---|---|
+| straight | `straight.jpg` | 中央に狭い通路が1本ある直線のコース |
+| curve | `curve.png` | 斜めに曲がる狭い通路を通るコース |
+| shortcut | `shortcut.png` | 狭い近道と、広い回り道があるコース |
+
+`--map-type image` と `--image-map-path` でマップの画像を指定します。
+
+```bash
+uv run python -m multi_robot.navigation.simulator_v5_multi --robots 2 --map-type image --image-map-path multi_robot/maps/straight.jpg
+```
+
+スタート位置とゴール位置は `multi_robot/config/planner_params.yaml` の `start_pos_m` と `goal_pos_m` で指定します。
+
+### 学習
+
+```bash
+uv run python -m rl_training.train_v4 --total-timesteps 10000000
+```
+
+ログとチェックポイントは `rl_training/logs/` に保存されます。
+
+### ROS 2 / Gazebo
+
+```bash
+ros2 launch coordinated_navigation gazebo_policy_multi_vwastar.launch.py
+```
 
